@@ -20,7 +20,10 @@ class Provider(Enum):
 
 def get_provider():
     """Determine which provider to use based on the MODEL environment variable"""
-    if MODEL.startswith("grok"):
+    # Get the current model setting (might have been changed by commands)
+    current_model = os.environ.get('MODEL', MODEL)
+    
+    if current_model.startswith("grok"):
         return Provider.GROK
     return Provider.DEEPSEEK
 
@@ -48,11 +51,11 @@ def call_deepseek_api(user_message):
             "Authorization": f"Bearer {API_KEY}"
         }
         
-        # For together.ai, use deepseek-coder or deepseek-llm models
-        deepseek_model = "deepseek-ai/deepseek-chat-32b"
+        # Get current model (could be changed by commands)
+        current_model = os.environ.get('MODEL', "deepseek-ai/deepseek-chat-32b")
         
         data = {
-            "model": deepseek_model,
+            "model": current_model,
             "messages": [
                 {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_message}
@@ -100,8 +103,9 @@ def call_grok_api(user_message):
             "Authorization": f"Bearer {XAI_API_KEY}"
         }
         
+        current_model = os.environ.get('MODEL', MODEL)
         data = {
-            "model": MODEL,
+            "model": current_model,
             "messages": [
                 {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_message}
@@ -139,9 +143,10 @@ def generate_response(user_message):
         str: The generated response
     """
     provider = get_provider()
+    current_model = os.environ.get('MODEL', MODEL)
     
     try:
-        logger.info(f"Generating response using {provider.value} with model {MODEL}")
+        logger.info(f"Generating response using {provider.value} with model {current_model}")
         
         if provider == Provider.GROK:
             return call_grok_api(user_message)

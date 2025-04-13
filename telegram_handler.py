@@ -118,7 +118,56 @@ def process_update(update):
             user.last_interaction = datetime.utcnow()
             db.session.commit()
             
+            # Check for model switch commands
+            if text.lower().startswith('/model'):
+                parts = text.split()
+                if len(parts) > 1:
+                    model_name = parts[1].lower()
+                    
+                    # Process model change request
+                    if 'grok' in model_name:
+                        os.environ['MODEL'] = 'grok-2-1212'
+                        response = f"Model switched to Grok."
+                    elif 'deepseek' in model_name:
+                        os.environ['MODEL'] = 'deepseek-ai/deepseek-chat-32b'
+                        response = f"Model switched to DeepSeek."
+                    else:
+                        response = f"Unknown model: {model_name}. Available models: grok, deepseek."
+                        
+                    # Store command in database
+                    message_record = Message(
+                        user_id=user.id,
+                        user_message=text,
+                        bot_response=response,
+                        model_used=os.environ.get('MODEL', MODEL)
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
+                    logger.info(f"Model switch command stored: {message_record.id}")
+                    
+                    # Send response
+                    send_message(chat_id, response)
+                    return
+                else:
+                    current_model = os.environ.get('MODEL', MODEL)
+                    response = f"Current model: {current_model}\nAvailable models: grok, deepseek\nTo switch, use /model <model_name>"
+                    
+                    # Store command in database
+                    message_record = Message(
+                        user_id=user.id,
+                        user_message=text,
+                        bot_response=response,
+                        model_used=current_model
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
+                    
+                    # Send response
+                    send_message(chat_id, response)
+                    return
+            
             # Generate response from LLM
+            current_model = os.environ.get('MODEL', MODEL)
             llm_response = generate_response(text)
             
             # Store message in database
@@ -126,7 +175,7 @@ def process_update(update):
                 user_id=user.id,
                 user_message=text,
                 bot_response=llm_response,
-                model_used=MODEL
+                model_used=current_model
             )
             db.session.add(message_record)
             db.session.commit()
