@@ -45,7 +45,7 @@ def call_deepseek_api(user_message):
     
     try:
         # Use together.ai API for DeepSeek models
-        url = "https://api.together.xyz/v1/chat/completions"
+        url = "https://api.together.xyz/inference"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {API_KEY}"
@@ -54,14 +54,16 @@ def call_deepseek_api(user_message):
         # Get current model (could be changed by commands)
         current_model = os.environ.get('MODEL', "deepseek-ai/deepseek-chat-32b")
         
+        # Together.ai uses a different request format
+        system_prompt = get_system_prompt()
+        prompt = f"{system_prompt}\n\nUser: {user_message}\nAssistant:"
+        
         data = {
             "model": current_model,
-            "messages": [
-                {"role": "system", "content": get_system_prompt()},
-                {"role": "user", "content": user_message}
-            ],
+            "prompt": prompt,
             "temperature": 0.7,
-            "max_tokens": 1000
+            "max_tokens": 1000,
+            "stop": ["User:"]
         }
         
         logger.debug(f"Sending request to Together.ai for DeepSeek: {url}")
@@ -70,7 +72,10 @@ def call_deepseek_api(user_message):
         
         result = response.json()
         logger.debug(f"Together.ai response status code: {response.status_code}")
-        generated_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        logger.debug(f"Together.ai response body: {result}")
+        
+        # Together.ai uses a different response format
+        generated_text = result.get("output", {}).get("choices", [{}])[0].get("text", "")
         
         if not generated_text:
             return "Sorry, the AI model didn't generate a valid response."

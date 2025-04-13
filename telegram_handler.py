@@ -162,7 +162,7 @@ def process_update(update):
                         os.environ['MODEL'] = 'grok-2-1212'
                         response = f"Model switched to Grok."
                     elif 'deepseek' in model_name:
-                        os.environ['MODEL'] = 'deepseek-ai/deepseek-chat-32b'
+                        os.environ['MODEL'] = 'deepseek-coder'
                         response = f"Model switched to DeepSeek."
                     else:
                         response = f"Unknown model: {model_name}. Available models: grok, deepseek."
