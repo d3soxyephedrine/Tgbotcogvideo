@@ -59,6 +59,21 @@ def send_message(chat_id, text):
         logger.error(f"Error sending message: {str(e)}")
         return {"error": str(e)}
 
+def get_help_message():
+    """Get the help message with available commands"""
+    help_text = """
+🤖 *Uncensored AI Bot Commands* 🤖
+
+/start - Start the bot
+/help - Display this help message
+/model - Show current model 
+/model grok - Switch to Grok model
+/model deepseek - Switch to DeepSeek model
+
+Send any message to get an uncensored AI response!
+    """
+    return help_text
+
 def process_update(update):
     """Process an update from Telegram
     
@@ -118,6 +133,24 @@ def process_update(update):
             user.last_interaction = datetime.utcnow()
             db.session.commit()
             
+            # Check for /start or /help commands
+            if text.lower() == '/start' or text.lower() == '/help':
+                response = get_help_message()
+                
+                # Store command in database
+                message_record = Message(
+                    user_id=user.id,
+                    user_message=text,
+                    bot_response=response,
+                    model_used=os.environ.get('MODEL', MODEL)
+                )
+                db.session.add(message_record)
+                db.session.commit()
+                
+                # Send response
+                send_message(chat_id, response)
+                return
+                
             # Check for model switch commands
             if text.lower().startswith('/model'):
                 parts = text.split()
