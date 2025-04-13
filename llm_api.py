@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Get environment variables
 API_KEY = os.environ.get("API_KEY")
-MODEL = os.environ.get("MODEL", "deepseek-chat")
+MODEL = os.environ.get("MODEL", "grok-2-1212")
 
 # Define model providers
 class Provider(Enum):
