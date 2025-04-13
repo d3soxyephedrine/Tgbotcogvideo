@@ -1,5 +1,8 @@
 import os
 import logging
+import threading
+import time
+import requests
 from flask import Flask, request, jsonify
 from telegram_handler import process_update, send_message
 from llm_api import generate_response
@@ -17,10 +20,32 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN environment variable is not set!")
 
+# Replit URL (for keepalive pings)
+# We'll just use localhost since we're pinging ourselves
+KEEPALIVE_URL = "http://localhost:5000"
+
 @app.route('/')
 def home():
     """Health check endpoint that returns a simple message"""
-    return "Bot online."
+    return "I'm alive"
+
+# Keepalive function
+def keep_alive():
+    """Function to ping the app every 4 minutes to prevent Replit from sleeping"""
+    while True:
+        try:
+            logger.info("Pinging server to keep it alive...")
+            requests.get(KEEPALIVE_URL)
+            logger.info("Ping successful")
+        except Exception as e:
+            logger.error(f"Error pinging server: {str(e)}")
+        # Sleep for 4 minutes (240 seconds)
+        time.sleep(240)
+
+# Start keepalive thread
+keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
+keepalive_thread.start()
+logger.info("Started keepalive thread")
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
@@ -65,4 +90,6 @@ def set_webhook():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Run the Flask application
+    # Note: keepalive thread is already started in global scope
     app.run(host='0.0.0.0', port=5000, debug=True)
