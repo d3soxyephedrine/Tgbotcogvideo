@@ -137,6 +137,51 @@ def set_webhook():
     except Exception as e:
         logger.error(f"Error setting webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
+        
+@app.route('/test', methods=['POST'])
+def test_bot():
+    """Test endpoint to simulate a message to the bot without Telegram"""
+    try:
+        data = request.get_json()
+        if not data or 'message' not in data:
+            return jsonify({"error": "Request must include 'message' field"}), 400
+            
+        user_message = data['message']
+        
+        # Create a mock Telegram update
+        mock_update = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 100,
+                "from": {
+                    "id": 1234567890,  # Fake Telegram ID
+                    "is_bot": False,
+                    "first_name": "Test",
+                    "username": "testuser"
+                },
+                "chat": {
+                    "id": 1234567890,  # Same as from.id
+                    "first_name": "Test",
+                    "username": "testuser",
+                    "type": "private"
+                },
+                "date": int(time.time()),
+                "text": user_message
+            }
+        }
+        
+        # Process the update just like a real Telegram update
+        response = generate_response(user_message)
+        process_update(mock_update)
+        
+        return jsonify({
+            "status": "success",
+            "user_message": user_message,
+            "bot_response": response
+        })
+    except Exception as e:
+        logger.error(f"Error in test endpoint: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Run the Flask application
