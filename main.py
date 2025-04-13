@@ -6,6 +6,7 @@ import requests
 from flask import Flask, request, jsonify
 from telegram_handler import process_update, send_message
 from llm_api import generate_response
+from models import db, User, Message
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -14,6 +15,22 @@ logger = logging.getLogger(__name__)
 # Initialize Flask application
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key")
+
+# Configure the database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Initialize the database
+db.init_app(app)
+
+# Create all tables
+with app.app_context():
+    db.create_all()
+    logger.info("Database tables created")
 
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -28,6 +45,38 @@ KEEPALIVE_URL = "http://localhost:5000"
 def home():
     """Health check endpoint that returns a simple message"""
     return "I'm alive"
+
+@app.route('/stats')
+def stats():
+    """Endpoint to view basic statistics about the bot usage"""
+    try:
+        user_count = User.query.count()
+        message_count = Message.query.count()
+        recent_messages = Message.query.order_by(Message.created_at.desc()).limit(5).all()
+        
+        # Format recent messages for display
+        recent_msgs_formatted = []
+        for msg in recent_messages:
+            user = User.query.get(msg.user_id)
+            username = user.username or user.first_name or f"User {user.telegram_id}"
+            recent_msgs_formatted.append({
+                "id": msg.id,
+                "user": username,
+                "message": msg.user_message[:30] + "..." if len(msg.user_message) > 30 else msg.user_message,
+                "time": msg.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "model": msg.model_used
+            })
+        
+        return jsonify({
+            "stats": {
+                "total_users": user_count,
+                "total_messages": message_count
+            },
+            "recent_messages": recent_msgs_formatted
+        })
+    except Exception as e:
+        logger.error(f"Error generating stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Keepalive function
 def keep_alive():

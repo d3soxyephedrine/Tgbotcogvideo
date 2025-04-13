@@ -1,7 +1,9 @@
 import os
 import logging
 import requests
-from llm_api import generate_response
+from llm_api import generate_response, MODEL
+from models import db, User, Message
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -72,6 +74,13 @@ def process_update(update):
     chat_id = message.get("chat", {}).get("id")
     text = message.get("text", "")
     
+    # Get user information
+    user_info = message.get("from", {})
+    telegram_id = user_info.get("id")
+    username = user_info.get("username")
+    first_name = user_info.get("first_name")
+    last_name = user_info.get("last_name")
+    
     # If no chat_id or empty text, ignore
     if not chat_id or not text:
         logger.debug(f"Missing chat_id or text: {chat_id}, {text}")
@@ -89,8 +98,39 @@ def process_update(update):
             }
         )
         
-        # Generate response from LLM
-        llm_response = generate_response(text)
+        # Store user in database if not exists
+        from flask import current_app
+        with current_app.app_context():
+            # Get or create user
+            user = User.query.filter_by(telegram_id=telegram_id).first()
+            if not user:
+                user = User(
+                    telegram_id=telegram_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                db.session.add(user)
+                db.session.commit()
+                logger.info(f"New user created: {user}")
+            
+            # Update last interaction
+            user.last_interaction = datetime.utcnow()
+            db.session.commit()
+            
+            # Generate response from LLM
+            llm_response = generate_response(text)
+            
+            # Store message in database
+            message_record = Message(
+                user_id=user.id,
+                user_message=text,
+                bot_response=llm_response,
+                model_used=MODEL
+            )
+            db.session.add(message_record)
+            db.session.commit()
+            logger.info(f"Message stored in database: {message_record.id}")
         
         # Send response back to user
         send_message(chat_id, llm_response)
