@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 from llm_api import generate_response, MODEL
-from models import db, User, Message
+from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
 # Configure logging
@@ -77,6 +77,10 @@ def get_help_message():
 /model - Show current model 
 /model grok - Switch to Grok model
 /model deepseek - Switch to DeepSeek model
+/balance - Check your credit balance
+/buy - Purchase more credits
+
+💡 *Each AI message costs 1 credit*
 
 Send any message to get an uncensored AI response!
     """
@@ -123,6 +127,7 @@ def process_update(update):
         
         # Store user in database if database is available
         user_id = None
+        user = None
         if DB_AVAILABLE:
             try:
                 from flask import current_app
@@ -151,6 +156,14 @@ def process_update(update):
         else:
             logger.debug("Skipping user storage - database not available")
         
+        # Check credits for non-command messages
+        if not text.startswith('/'):
+            if DB_AVAILABLE and user:
+                if user.credits <= 0:
+                    response = "⚠️ You're out of credits!\n\nTo continue using the bot, please purchase more credits using the /buy command."
+                    send_message(chat_id, response)
+                    return
+        
         # Check for /start or /help commands
         if text.lower() == '/start' or text.lower() == '/help':
             response = get_help_message()
@@ -164,12 +177,80 @@ def process_update(update):
                             user_id=user_id,
                             user_message=text,
                             bot_response=response,
-                            model_used=os.environ.get('MODEL', MODEL)
+                            model_used=os.environ.get('MODEL', MODEL),
+                            credits_charged=0
                         )
                         db.session.add(message_record)
                         db.session.commit()
                 except Exception as db_error:
                     logger.error(f"Database error storing command: {str(db_error)}")
+            
+            # Send response
+            send_message(chat_id, response)
+            return
+        
+        # Check for /balance or /credits commands
+        if text.lower() == '/balance' or text.lower() == '/credits':
+            if DB_AVAILABLE and user:
+                credits = user.credits
+                response = f"💳 Your credit balance: {credits} credits\n\nEach AI message costs 1 credit.\nUse /buy to purchase more credits."
+            else:
+                response = "💳 Credit system requires database access."
+            
+            # Store command in database if available
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        message_record = Message(
+                            user_id=user_id,
+                            user_message=text,
+                            bot_response=response,
+                            model_used=os.environ.get('MODEL', MODEL),
+                            credits_charged=0
+                        )
+                        db.session.add(message_record)
+                        db.session.commit()
+                except Exception as db_error:
+                    logger.error(f"Database error storing balance command: {str(db_error)}")
+            
+            # Send response
+            send_message(chat_id, response)
+            return
+        
+        # Check for /buy command
+        if text.lower() == '/buy':
+            # Get domain from environment variables
+            domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'your-app.replit.app'
+            
+            response = f"""💰 *Credit Packages*
+
+• 10 credits = $1.00
+• 50 credits = $5.00
+• 100 credits = $10.00
+
+To purchase credits, visit:
+https://{domain}/buy-credits?telegram_id={telegram_id}
+
+Each AI message costs 1 credit.
+"""
+            
+            # Store command in database if available
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        message_record = Message(
+                            user_id=user_id,
+                            user_message=text,
+                            bot_response=response,
+                            model_used=os.environ.get('MODEL', MODEL),
+                            credits_charged=0
+                        )
+                        db.session.add(message_record)
+                        db.session.commit()
+                except Exception as db_error:
+                    logger.error(f"Database error storing buy command: {str(db_error)}")
             
             # Send response
             send_message(chat_id, response)
@@ -200,7 +281,8 @@ def process_update(update):
                                 user_id=user_id,
                                 user_message=text,
                                 bot_response=response,
-                                model_used=os.environ.get('MODEL', MODEL)
+                                model_used=os.environ.get('MODEL', MODEL),
+                                credits_charged=0
                             )
                             db.session.add(message_record)
                             db.session.commit()
@@ -224,7 +306,8 @@ def process_update(update):
                                 user_id=user_id,
                                 user_message=text,
                                 bot_response=response,
-                                model_used=current_model
+                                model_used=current_model,
+                                credits_charged=0
                             )
                             db.session.add(message_record)
                             db.session.commit()
@@ -239,24 +322,45 @@ def process_update(update):
         current_model = os.environ.get('MODEL', MODEL)
         llm_response = generate_response(text)
         
-        # Store message in database if available
+        # Store message and deduct credits if available
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
                 with current_app.app_context():
+                    # Create message record
                     message_record = Message(
                         user_id=user_id,
                         user_message=text,
                         bot_response=llm_response,
-                        model_used=current_model
+                        model_used=current_model,
+                        credits_charged=1
                     )
                     db.session.add(message_record)
+                    db.session.flush()
+                    
+                    # Deduct 1 credit from user
+                    user = User.query.get(user_id)
+                    if user:
+                        user.credits = max(0, user.credits - 1)
+                    
+                    # Create transaction record
+                    transaction = Transaction(
+                        user_id=user_id,
+                        credits_used=1,
+                        message_id=message_record.id,
+                        transaction_type='message',
+                        description=f"AI message response using {current_model}"
+                    )
+                    db.session.add(transaction)
+                    
+                    # Commit all changes
                     db.session.commit()
-                    logger.info(f"Message stored in database: {message_record.id}")
+                    logger.info(f"Message stored, credits deducted: {message_record.id}")
             except Exception as db_error:
-                logger.error(f"Database error storing message: {str(db_error)}")
+                logger.error(f"Database error storing message and deducting credits: {str(db_error)}")
+                db.session.rollback()
         else:
-            logger.debug("Skipping message storage - database not available")
+            logger.debug("Skipping message storage and credit deduction - database not available")
         
         # Send response back to user
         send_message(chat_id, llm_response)
