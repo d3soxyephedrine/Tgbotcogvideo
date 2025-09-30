@@ -21,12 +21,13 @@ def set_db_available(available):
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-def send_message(chat_id, text):
+def send_message(chat_id, text, parse_mode="Markdown"):
     """Send a message to a specific chat in Telegram
     
     Args:
         chat_id (int): The ID of the chat to send to
         text (str): The text message to send
+        parse_mode (str): Parse mode for formatting (default: "Markdown", use None for plain text)
     
     Returns:
         dict: The response from Telegram API
@@ -41,26 +42,32 @@ def send_message(chat_id, text):
         responses = []
         
         for chunk in chunks:
+            payload = {
+                "chat_id": chat_id,
+                "text": chunk
+            }
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+                
             response = requests.post(
                 f"{BASE_URL}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": chunk,
-                    "parse_mode": "Markdown"
-                }
+                json=payload
             )
             responses.append(response.json())
         return responses
     
     # Send a normal message
     try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+            
         response = requests.post(
             f"{BASE_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "Markdown"
-            }
+            json=payload
         )
         result = response.json()
         
@@ -258,8 +265,8 @@ Each AI message costs 1 credit.
                 except Exception as db_error:
                     logger.error(f"Database error storing buy command: {str(db_error)}")
             
-            # Send response
-            send_message(chat_id, response)
+            # Send response without Markdown (URL causes parsing issues)
+            send_message(chat_id, response, parse_mode=None)
             return
             
         # Check for model switch commands
