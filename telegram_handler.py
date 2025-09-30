@@ -90,7 +90,7 @@ def get_help_message():
 /model - Show current model 
 /model grok - Switch to Grok model
 /model deepseek - Switch to DeepSeek model
-/model chatgpt - Switch to ChatGPT (GPT-4) model
+/model chatgpt - Switch to GPT-5 Chat model
 /balance - Check your credit balance
 /buy - Purchase more credits
 
@@ -284,8 +284,8 @@ Each AI message costs 1 credit.
                     os.environ['MODEL'] = 'deepseek/deepseek-chat'
                     response = f"Model switched to DeepSeek."
                 elif 'gpt' in model_name or 'chatgpt' in model_name:
-                    os.environ['MODEL'] = 'openai/gpt-4'
-                    response = f"Model switched to ChatGPT (GPT-4)."
+                    os.environ['MODEL'] = 'openai/gpt-5-chat'
+                    response = f"Model switched to GPT-5 Chat."
                 else:
                     response = f"Unknown model: {model_name}. Available models: grok, deepseek, chatgpt."
                     
