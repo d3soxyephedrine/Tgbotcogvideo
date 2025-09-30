@@ -12,4 +12,5 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "python-telegram-bot>=22.0",
     "requests>=2.32.3",
+    "stripe>=12.5.1",
 ]
