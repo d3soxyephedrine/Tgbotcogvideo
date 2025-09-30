@@ -17,10 +17,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy extension
-- **Schema Design**: Two-model architecture
-  - `User` model: Stores Telegram user profiles with unique telegram_id constraint
-  - `Message` model: Stores conversation history with foreign key relationship to User
-- **Rationale**: Relational structure allows efficient querying of user history and provides referential integrity
+- **Schema Design**: Four-model architecture with pay-per-use credit system
+  - `User` model: Stores Telegram user profiles with unique telegram_id constraint and credits balance
+  - `Message` model: Stores conversation history with foreign key relationship to User and credits_charged tracking
+  - `Payment` model: Tracks credit purchases via Stripe with session IDs, amounts, and status
+  - `Transaction` model: Records all credit movements (purchases, usage, refunds) for audit trail
+- **Rationale**: Relational structure allows efficient querying of user history, credit tracking, and provides referential integrity
 - **Connection Management**: Production-ready configuration with:
   - Pool recycling (300s) and pre-ping enabled to handle connection drops
   - Pool size: 5 connections, max overflow: 10
@@ -41,14 +43,37 @@ Preferred communication style: Simple, everyday language.
 - **Rationale**: Abstraction layer allows switching between providers without code changes, enabling A/B testing and failover scenarios
 - **API Design**: Centralized `generate_response()` function routes to appropriate provider based on configuration
 
+### Pay-Per-Use Credit System
+- **Model**: Users purchase credits via Stripe and consume 1 credit per AI message
+- **Pricing**: $0.10 per credit (packages: 10 credits/$1, 50 credits/$5, 100 credits/$10)
+- **Purchase Flow**:
+  1. User sends /buy command in Telegram
+  2. Bot provides link to web-based purchase page with telegram_id
+  3. User selects credit package on responsive HTML page
+  4. JavaScript POSTs to /api/create-checkout creating pending Payment record
+  5. User redirected to Stripe-hosted checkout session
+  6. Upon payment completion, Stripe webhook updates Payment status
+  7. Credits automatically added to user account via Transaction record
+- **Usage Flow**:
+  1. User sends message to bot
+  2. System checks if user.credits > 0
+  3. If insufficient credits, bot prompts user to /buy more credits
+  4. If sufficient, LLM processes message and generates response
+  5. System deducts 1 credit from user balance
+  6. Transaction record created tracking credit usage
+- **Commands**: /balance or /credits shows current balance; /buy initiates purchase
+- **Rationale**: Monetization model prevents abuse while allowing flexible usage
+
 ### Message Processing Flow
 1. Telegram webhook receives update via POST request
 2. User lookup/creation in database (optional - skipped if database unavailable)
-3. Message routing to LLM provider based on configuration
-4. Response generation with system prompt injection
-5. Message and response persistence to database (optional - skipped if database unavailable)
-6. Response delivery to Telegram with chunking for messages >4000 characters
-7. Error handling ensures bot continues functioning even if database operations fail
+3. Credit balance check for non-command messages (blocks if credits = 0)
+4. Message routing to LLM provider based on configuration
+5. Response generation with system prompt injection
+6. Credit deduction and Transaction record creation (1 credit per message)
+7. Message and response persistence to database (optional - skipped if database unavailable)
+8. Response delivery to Telegram with chunking for messages >4000 characters
+9. Error handling ensures bot continues functioning even if database operations fail
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
