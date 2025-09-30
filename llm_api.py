@@ -17,6 +17,7 @@ MODEL = os.environ.get("MODEL", "grok-2-1212")
 class Provider(Enum):
     DEEPSEEK = "deepseek"
     GROK = "grok"
+    GPT5 = "gpt5"
 
 def get_provider():
     """Determine which provider to use based on the MODEL environment variable"""
@@ -25,6 +26,8 @@ def get_provider():
     
     if current_model.startswith("grok"):
         return Provider.GROK
+    elif current_model.startswith("gpt") or current_model.startswith("openai/gpt"):
+        return Provider.GPT5
     return Provider.DEEPSEEK
 
 def get_system_prompt():
@@ -144,6 +147,64 @@ def call_grok_api(user_message):
         logger.error(f"Unexpected error calling Grok API: {str(e)}")
         return f"An unexpected error occurred: {str(e)}"
 
+def call_gpt5_api(user_message):
+    """Call the GPT-5 API via OpenRouter to generate a response
+    
+    Args:
+        user_message (str): The user's message
+        
+    Returns:
+        str: The generated response
+    """
+    if not OPENROUTER_API_KEY:
+        return "Error: OPENROUTER_API_KEY not configured for GPT-5"
+    
+    try:
+        # Use OpenRouter API for GPT-5 models
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "HTTP-Referer": "https://github.com/yourusername/telegram-bot",
+            "X-Title": "Telegram AI Bot"
+        }
+        
+        # Get current model (could be changed by commands)
+        current_model = os.environ.get('MODEL', "openai/gpt-5")
+        
+        # OpenRouter uses OpenAI-compatible format
+        data = {
+            "model": current_model,
+            "messages": [
+                {"role": "system", "content": get_system_prompt()},
+                {"role": "user", "content": user_message}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 2000
+        }
+        
+        logger.debug(f"Sending request to OpenRouter for GPT-5: {url}")
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        
+        result = response.json()
+        logger.debug(f"OpenRouter response status code: {response.status_code}")
+        
+        # OpenRouter uses OpenAI-compatible response format
+        generated_text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        
+        if not generated_text:
+            return "Sorry, the AI model didn't generate a valid response."
+        
+        return generated_text
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"OpenRouter (GPT-5) API error: {str(e)}")
+        return f"Sorry, there was an error communicating with the OpenRouter API: {str(e)}"
+    except Exception as e:
+        logger.error(f"Unexpected error calling OpenRouter (GPT-5) API: {str(e)}")
+        return f"An unexpected error occurred: {str(e)}"
+
 def generate_response(user_message):
     """Generate a response using the appropriate LLM API
     
@@ -161,6 +222,8 @@ def generate_response(user_message):
         
         if provider == Provider.GROK:
             return call_grok_api(user_message)
+        elif provider == Provider.GPT5:
+            return call_gpt5_api(user_message)
         else:  # Default to DeepSeek
             return call_deepseek_api(user_message)
             
