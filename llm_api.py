@@ -170,7 +170,7 @@ def call_gpt5_api(user_message):
         }
         
         # Get current model (could be changed by commands)
-        current_model = os.environ.get('MODEL', "openai/gpt-5")
+        current_model = os.environ.get('MODEL', "openai/gpt-5-chat")
         
         # OpenRouter uses OpenAI-compatible format
         data = {
