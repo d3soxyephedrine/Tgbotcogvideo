@@ -21,7 +21,17 @@ Preferred communication style: Simple, everyday language.
   - `User` model: Stores Telegram user profiles with unique telegram_id constraint
   - `Message` model: Stores conversation history with foreign key relationship to User
 - **Rationale**: Relational structure allows efficient querying of user history and provides referential integrity
-- **Connection Management**: Pool recycling (300s) and pre-ping enabled to handle connection drops in cloud environments
+- **Connection Management**: Production-ready configuration with:
+  - Pool recycling (300s) and pre-ping enabled to handle connection drops
+  - Pool size: 5 connections, max overflow: 10
+  - Connection timeout: 10s, pool timeout: 30s
+  - Statement timeout: 30s for query protection
+- **Resilience Features**:
+  - Non-blocking initialization (runs in background thread)
+  - Automatic retry logic with exponential backoff (3 attempts)
+  - Graceful degradation: App continues without database if unavailable
+  - Database status tracking with global availability flag
+  - All database operations are optional and wrapped in error handling
 
 ### LLM Provider Architecture
 - **Multi-Provider Support**: Enum-based provider selection system
@@ -33,11 +43,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Message Processing Flow
 1. Telegram webhook receives update via POST request
-2. User lookup/creation in database with last_interaction timestamp update
+2. User lookup/creation in database (optional - skipped if database unavailable)
 3. Message routing to LLM provider based on configuration
 4. Response generation with system prompt injection
-5. Message and response persistence to database
+5. Message and response persistence to database (optional - skipped if database unavailable)
 6. Response delivery to Telegram with chunking for messages >4000 characters
+7. Error handling ensures bot continues functioning even if database operations fail
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
@@ -52,8 +63,24 @@ Preferred communication style: Simple, everyday language.
 
 ### Logging & Monitoring
 - **Logging Level**: DEBUG mode for comprehensive request/response tracking
-- **Stats Endpoint**: Dedicated route for monitoring (implementation in progress)
-- **Rationale**: Essential for debugging webhook failures and API issues in production
+- **Health Check Endpoint**: `/health` - Comprehensive monitoring endpoint returning:
+  - Application status (healthy/degraded)
+  - Environment validation status
+  - Database configuration and availability status
+  - Database initialization attempts
+  - Bot token configuration status
+  - Timestamp for monitoring
+- **Stats Endpoint**: `/stats` - Usage statistics endpoint (requires database)
+- **Environment Validation**: Startup validation checks for required and optional environment variables
+- **Rationale**: Essential for debugging webhook failures, API issues, and deployment monitoring
+
+### Deployment Features
+- **Cloud-Ready**: Optimized for Cloud Run and similar serverless platforms
+- **Non-Blocking Startup**: Database initialization doesn't block application startup
+- **Graceful Degradation**: Core bot functionality works even if database is unavailable
+- **Health Monitoring**: `/health` endpoint suitable for liveness/readiness probes
+- **Connection Resilience**: Automatic retry logic and connection pool management
+- **Error Recovery**: Comprehensive error handling prevents cascading failures
 
 ## External Dependencies
 
@@ -89,11 +116,21 @@ Preferred communication style: Simple, everyday language.
 - **requests**: HTTP client for external API calls
 - **logging**: Application-wide logging infrastructure
 
+### Payment Integration
+- **Stripe SDK**: Installed and configured for payment processing
+- **API Key Management**: `STRIPE_SECRET_KEY` stored securely in environment secrets
+- **Webhook Support**: Application can receive HTTPS webhooks from Stripe
+- **Database Persistence**: Payment state can be persisted in database
+- **Integration Type**: Uses Stripe-hosted checkout pages for secure payment processing
+
 ### Environment Configuration
 Required environment variables:
 - `BOT_TOKEN`: Telegram bot authentication token
+
+Optional environment variables:
 - `API_KEY`: Together.ai API key for DeepSeek
 - `XAI_API_KEY`: xAI API key for Grok
 - `MODEL`: LLM model selection (default: "grok-2-1212")
 - `DATABASE_URL`: Database connection string
 - `SESSION_SECRET`: Flask session encryption key (optional, has default)
+- `STRIPE_SECRET_KEY`: Stripe API key for payment processing (optional)

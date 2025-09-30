@@ -9,6 +9,14 @@ from datetime import datetime
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Flag to track database availability (will be set by main.py)
+DB_AVAILABLE = False
+
+def set_db_available(available):
+    """Set database availability flag from main.py"""
+    global DB_AVAILABLE
+    DB_AVAILABLE = available
+
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -113,106 +121,142 @@ def process_update(update):
             }
         )
         
-        # Store user in database if not exists
-        from flask import current_app
-        with current_app.app_context():
-            # Get or create user
-            user = User.query.filter_by(telegram_id=telegram_id).first()
-            if not user:
-                user = User(
-                    telegram_id=telegram_id,
-                    username=username,
-                    first_name=first_name,
-                    last_name=last_name
-                )
-                db.session.add(user)
-                db.session.commit()
-                logger.info(f"New user created: {user}")
+        # Store user in database if database is available
+        user_id = None
+        if DB_AVAILABLE:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    # Get or create user
+                    user = User.query.filter_by(telegram_id=telegram_id).first()
+                    if not user:
+                        user = User(
+                            telegram_id=telegram_id,
+                            username=username,
+                            first_name=first_name,
+                            last_name=last_name
+                        )
+                        db.session.add(user)
+                        db.session.commit()
+                        logger.info(f"New user created: {user}")
+                    else:
+                        # Update last interaction
+                        user.last_interaction = datetime.utcnow()
+                        db.session.commit()
+                    
+                    user_id = user.id
+            except Exception as db_error:
+                logger.error(f"Database error while storing user: {str(db_error)}")
+                logger.warning("Continuing without database storage")
+        else:
+            logger.debug("Skipping user storage - database not available")
+        
+        # Check for /start or /help commands
+        if text.lower() == '/start' or text.lower() == '/help':
+            response = get_help_message()
             
-            # Update last interaction
-            user.last_interaction = datetime.utcnow()
-            db.session.commit()
+            # Store command in database if available
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        message_record = Message(
+                            user_id=user_id,
+                            user_message=text,
+                            bot_response=response,
+                            model_used=os.environ.get('MODEL', MODEL)
+                        )
+                        db.session.add(message_record)
+                        db.session.commit()
+                except Exception as db_error:
+                    logger.error(f"Database error storing command: {str(db_error)}")
             
-            # Check for /start or /help commands
-            if text.lower() == '/start' or text.lower() == '/help':
-                response = get_help_message()
+            # Send response
+            send_message(chat_id, response)
+            return
+            
+        # Check for model switch commands
+        if text.lower().startswith('/model'):
+            parts = text.split()
+            if len(parts) > 1:
+                model_name = parts[1].lower()
                 
-                # Store command in database
-                message_record = Message(
-                    user_id=user.id,
-                    user_message=text,
-                    bot_response=response,
-                    model_used=os.environ.get('MODEL', MODEL)
-                )
-                db.session.add(message_record)
-                db.session.commit()
+                # Process model change request
+                if 'grok' in model_name:
+                    os.environ['MODEL'] = 'grok-2-1212'
+                    response = f"Model switched to Grok."
+                elif 'deepseek' in model_name:
+                    os.environ['MODEL'] = 'deepseek-coder'
+                    response = f"Model switched to DeepSeek."
+                else:
+                    response = f"Unknown model: {model_name}. Available models: grok, deepseek."
+                    
+                # Store command in database if available
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=text,
+                                bot_response=response,
+                                model_used=os.environ.get('MODEL', MODEL)
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            logger.info(f"Model switch command stored: {message_record.id}")
+                    except Exception as db_error:
+                        logger.error(f"Database error storing model switch: {str(db_error)}")
                 
                 # Send response
                 send_message(chat_id, response)
                 return
+            else:
+                current_model = os.environ.get('MODEL', MODEL)
+                response = f"Current model: {current_model}\nAvailable models: grok, deepseek\nTo switch, use /model <model_name>"
                 
-            # Check for model switch commands
-            if text.lower().startswith('/model'):
-                parts = text.split()
-                if len(parts) > 1:
-                    model_name = parts[1].lower()
-                    
-                    # Process model change request
-                    if 'grok' in model_name:
-                        os.environ['MODEL'] = 'grok-2-1212'
-                        response = f"Model switched to Grok."
-                    elif 'deepseek' in model_name:
-                        os.environ['MODEL'] = 'deepseek-coder'
-                        response = f"Model switched to DeepSeek."
-                    else:
-                        response = f"Unknown model: {model_name}. Available models: grok, deepseek."
-                        
-                    # Store command in database
+                # Store command in database if available
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=text,
+                                bot_response=response,
+                                model_used=current_model
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                    except Exception as db_error:
+                        logger.error(f"Database error storing model query: {str(db_error)}")
+                
+                # Send response
+                send_message(chat_id, response)
+                return
+        
+        # Generate response from LLM
+        current_model = os.environ.get('MODEL', MODEL)
+        llm_response = generate_response(text)
+        
+        # Store message in database if available
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
                     message_record = Message(
-                        user_id=user.id,
+                        user_id=user_id,
                         user_message=text,
-                        bot_response=response,
-                        model_used=os.environ.get('MODEL', MODEL)
-                    )
-                    db.session.add(message_record)
-                    db.session.commit()
-                    logger.info(f"Model switch command stored: {message_record.id}")
-                    
-                    # Send response
-                    send_message(chat_id, response)
-                    return
-                else:
-                    current_model = os.environ.get('MODEL', MODEL)
-                    response = f"Current model: {current_model}\nAvailable models: grok, deepseek\nTo switch, use /model <model_name>"
-                    
-                    # Store command in database
-                    message_record = Message(
-                        user_id=user.id,
-                        user_message=text,
-                        bot_response=response,
+                        bot_response=llm_response,
                         model_used=current_model
                     )
                     db.session.add(message_record)
                     db.session.commit()
-                    
-                    # Send response
-                    send_message(chat_id, response)
-                    return
-            
-            # Generate response from LLM
-            current_model = os.environ.get('MODEL', MODEL)
-            llm_response = generate_response(text)
-            
-            # Store message in database
-            message_record = Message(
-                user_id=user.id,
-                user_message=text,
-                bot_response=llm_response,
-                model_used=current_model
-            )
-            db.session.add(message_record)
-            db.session.commit()
-            logger.info(f"Message stored in database: {message_record.id}")
+                    logger.info(f"Message stored in database: {message_record.id}")
+            except Exception as db_error:
+                logger.error(f"Database error storing message: {str(db_error)}")
+        else:
+            logger.debug("Skipping message storage - database not available")
         
         # Send response back to user
         send_message(chat_id, llm_response)
