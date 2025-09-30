@@ -22,7 +22,7 @@ MAX_DB_INIT_ATTEMPTS = 3
 def validate_environment():
     """Validate required environment variables at startup"""
     required_vars = ["BOT_TOKEN"]
-    optional_vars = ["DATABASE_URL", "XAI_API_KEY", "API_KEY", "MODEL", "SESSION_SECRET"]
+    optional_vars = ["DATABASE_URL", "XAI_API_KEY", "OPENROUTER_API_KEY", "MODEL", "SESSION_SECRET"]
     
     missing_required = [var for var in required_vars if not os.environ.get(var)]
     missing_optional = [var for var in optional_vars if not os.environ.get(var)]
