@@ -52,7 +52,7 @@ def call_deepseek_api(user_message):
         }
         
         # Get current model (could be changed by commands)
-        current_model = os.environ.get('MODEL', "deepseek-ai/deepseek-chat-32b")
+        current_model = os.environ.get('MODEL', "deepseek-coder")
         
         # Together.ai uses a different request format
         system_prompt = get_system_prompt()

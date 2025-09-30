@@ -27,10 +27,20 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Initialize the database
 db.init_app(app)
 
-# Create all tables
-with app.app_context():
-    db.create_all()
-    logger.info("Database tables created")
+# Create all tables with error handling
+def init_database():
+    """Initialize database tables safely"""
+    try:
+        with app.app_context():
+            db.create_all()
+            logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Error creating database tables: {str(e)}")
+        logger.warning("App will continue but database operations may fail")
+
+# Call database initialization in a separate thread to avoid blocking startup
+import threading
+threading.Thread(target=init_database, daemon=True).start()
 
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
