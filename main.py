@@ -3,7 +3,6 @@ import logging
 import threading
 import time
 import requests
-import stripe
 import json
 import hmac
 import hashlib
@@ -152,16 +151,6 @@ else:
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN environment variable is not set!")
-
-# Initialize Stripe
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
-if STRIPE_SECRET_KEY:
-    stripe.api_key = STRIPE_SECRET_KEY
-    logger.info("Stripe API key configured")
-else:
-    logger.warning("STRIPE_SECRET_KEY not set - payment features will be disabled")
-
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 # Initialize NOWPayments
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY")
@@ -418,106 +407,6 @@ def test_models():
         })
     except Exception as e:
         logger.error(f"Error in test_models endpoint: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/create-checkout', methods=['POST'])
-def create_checkout():
-    """Create a Stripe checkout session for buying credits"""
-    if not STRIPE_SECRET_KEY:
-        logger.error("Stripe not configured - STRIPE_SECRET_KEY missing")
-        return jsonify({"error": "Payment system not configured"}), 503
-    
-    if not DB_AVAILABLE:
-        logger.error("Database not available for payment processing")
-        return jsonify({"error": "Database not available"}), 503
-    
-    try:
-        data = request.get_json()
-        if not data or 'credits' not in data:
-            return jsonify({"error": "Request must include 'credits' field"}), 400
-        
-        credits = int(data['credits'])
-        user_telegram_id = data.get('telegram_id')
-        
-        if credits <= 0:
-            return jsonify({"error": "Credits must be a positive number"}), 400
-        
-        if not user_telegram_id:
-            return jsonify({"error": "telegram_id is required"}), 400
-        
-        # Calculate amount in cents ($0.10 per credit)
-        amount_cents = credits * 10
-        
-        # Get the domain for success/cancel URLs
-        domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else None
-        
-        if not domain:
-            logger.error("No domain configured for Stripe redirect URLs")
-            return jsonify({"error": "Domain not configured"}), 500
-        
-        # Ensure domain has https://
-        if not domain.startswith('http'):
-            domain = f"https://{domain}"
-        
-        logger.info(f"Creating Stripe checkout session for {credits} credits (${amount_cents/100:.2f}) for user {user_telegram_id}")
-        
-        # Create Stripe checkout session
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'unit_amount': amount_cents,
-                    'product_data': {
-                        'name': f'{credits} Credits',
-                        'description': f'Purchase {credits} credits for AI chat bot'
-                    },
-                },
-                'quantity': 1,
-            }],
-            mode='payment',
-            success_url=f"{domain}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{domain}/payment-cancel",
-            metadata={
-                'user_telegram_id': str(user_telegram_id),
-                'credits': str(credits)
-            }
-        )
-        
-        # Create pending Payment record in database
-        try:
-            user = User.query.filter_by(telegram_id=user_telegram_id).first()
-            if not user:
-                logger.warning(f"User {user_telegram_id} not found, creating new user")
-                user = User(telegram_id=user_telegram_id)
-                db.session.add(user)
-                db.session.commit()
-            
-            payment = Payment(
-                user_id=user.id,
-                amount=amount_cents,
-                credits_purchased=credits,
-                stripe_session_id=session.id,
-                status='pending'
-            )
-            db.session.add(payment)
-            db.session.commit()
-            
-            logger.info(f"Created pending payment record {payment.id} for session {session.id}")
-        except Exception as db_error:
-            logger.error(f"Database error creating payment record: {str(db_error)}")
-            db.session.rollback()
-        
-        return jsonify({
-            "checkout_url": session.url,
-            "session_id": session.id
-        }), 200
-        
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error in buy_credits: {str(e)}")
-        return jsonify({"error": f"Payment error: {str(e)}"}), 500
-    except Exception as e:
-        logger.error(f"Error in buy_credits endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/crypto/currencies', methods=['GET'])
@@ -1135,22 +1024,13 @@ def buy_credits_page():
                 <p class="subtitle">Choose a package to power your AI conversations</p>
                 
                 <div class="payment-methods">
-                    <h2 style="text-align: center; margin-bottom: 20px; color: #333;">Choose Your Payment Method</h2>
-                    <div class="method-buttons">
-                        <button class="method-btn active" data-method="card" onclick="selectPaymentMethod('card')">
-                            💳 Credit/Debit Card
-                        </button>
-                        <button class="method-btn" data-method="crypto" onclick="selectPaymentMethod('crypto')">
-                            ₿ Cryptocurrency
-                        </button>
+                    <h2 style="text-align: center; margin-bottom: 20px; color: #333;">Pay with Cryptocurrency</h2>
+                    <div style="text-align: center;">
+                        <label for="cryptoCurrency" style="font-size: 16px; margin-right: 10px;">Select Cryptocurrency:</label>
+                        <select id="cryptoCurrency">
+                            <option value="">Loading...</option>
+                        </select>
                     </div>
-                </div>
-                
-                <div class="crypto-selector" id="cryptoSelector">
-                    <label for="cryptoCurrency" style="font-size: 16px; margin-right: 10px;">Select Cryptocurrency:</label>
-                    <select id="cryptoCurrency">
-                        <option value="">Loading...</option>
-                    </select>
                 </div>
                 
                 <div class="packages">
@@ -1195,7 +1075,7 @@ def buy_credits_page():
                 <div class="info">
                     <p>💡 <strong>What are credits?</strong></p>
                     <p>Each AI message costs 1 credit. Credits are used to access our uncensored AI models.</p>
-                    <p>🔒 Secure payment powered by Stripe</p>
+                    <p>🔒 Secure crypto payments powered by NOWPayments</p>
                 </div>
                 
                 <div class="loading" id="loading">
@@ -1204,7 +1084,6 @@ def buy_credits_page():
             </div>
             
             <script>
-                let selectedPaymentMethod = 'card';
                 let currentPaymentId = null;
                 let statusCheckInterval = null;
                 let availableCryptocurrencies = [];
@@ -1251,63 +1130,13 @@ def buy_credits_page():
                 
                 loadCryptocurrencies();
                 
-                function selectPaymentMethod(method) {{
-                    selectedPaymentMethod = method;
-                    
-                    document.querySelectorAll('.method-btn').forEach(btn => {{
-                        btn.classList.remove('active');
-                    }});
-                    document.querySelector(`[data-method="${{method}}"]`).classList.add('active');
-                    
-                    const cryptoSelector = document.getElementById('cryptoSelector');
-                    if (method === 'crypto') {{
-                        cryptoSelector.classList.add('show');
-                    }} else {{
-                        cryptoSelector.classList.remove('show');
-                    }}
-                }}
-                
                 function handlePurchase(credits) {{
-                    if (selectedPaymentMethod === 'card') {{
-                        purchaseCredits(credits);
-                    }} else if (selectedPaymentMethod === 'crypto') {{
-                        const selectedCrypto = document.getElementById('cryptoCurrency').value;
-                        if (!selectedCrypto) {{
-                            alert('Please select a cryptocurrency first');
-                            return;
-                        }}
-                        purchaseWithCrypto(credits, selectedCrypto);
+                    const selectedCrypto = document.getElementById('cryptoCurrency').value;
+                    if (!selectedCrypto) {{
+                        alert('Please select a cryptocurrency first');
+                        return;
                     }}
-                }}
-                
-                async function purchaseCredits(credits) {{
-                    const loadingDiv = document.getElementById('loading');
-                    loadingDiv.classList.add('active');
-                    
-                    try {{
-                        const response = await fetch('/api/create-checkout', {{
-                            method: 'POST',
-                            headers: {{
-                                'Content-Type': 'application/json',
-                            }},
-                            body: JSON.stringify({{
-                                telegram_id: '{telegram_id}',
-                                credits: credits
-                            }})
-                        }});
-                        
-                        const data = await response.json();
-                        
-                        if (data.checkout_url) {{
-                            window.location.href = data.checkout_url;
-                        }} else {{
-                            alert('Error creating checkout: ' + (data.error || 'Unknown error'));
-                            loadingDiv.classList.remove('active');
-                        }}
-                    }} catch (error) {{
-                        alert('Error: ' + error.message);
-                        loadingDiv.classList.remove('active');
-                    }}
+                    purchaseWithCrypto(credits, selectedCrypto);
                 }}
                 
                 async function purchaseWithCrypto(credits, payCurrency) {{
@@ -1401,262 +1230,6 @@ def buy_credits_page():
     """
     
     return render_template_string(html), 200
-
-@app.route('/payment-success')
-def payment_success():
-    """Handle successful payment redirect"""
-    session_id = request.args.get('session_id')
-    
-    if not session_id:
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Payment Error</title>
-                <style>
-                    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
-                    .error { color: #d32f2f; }
-                </style>
-            </head>
-            <body>
-                <h1 class="error">Error</h1>
-                <p>No session ID provided</p>
-            </body>
-            </html>
-        """), 400
-    
-    try:
-        if not STRIPE_SECRET_KEY:
-            raise Exception("Stripe not configured")
-        
-        # Retrieve session details from Stripe
-        session = stripe.checkout.Session.retrieve(session_id)
-        credits = session.metadata.get('credits', 'unknown')
-        
-        logger.info(f"Payment success page accessed for session {session_id}, credits: {credits}")
-        
-        html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Payment Successful</title>
-                <style>
-                    body {{ 
-                        font-family: Arial, sans-serif; 
-                        max-width: 600px; 
-                        margin: 50px auto; 
-                        padding: 20px; 
-                        text-align: center;
-                        background-color: #f5f5f5;
-                    }}
-                    .success {{ 
-                        color: #2e7d32; 
-                        background-color: white;
-                        padding: 30px;
-                        border-radius: 10px;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    }}
-                    .checkmark {{ font-size: 64px; color: #4caf50; }}
-                    .credits {{ font-size: 24px; font-weight: bold; color: #1976d2; margin: 20px 0; }}
-                    .instructions {{ margin-top: 30px; color: #555; }}
-                </style>
-            </head>
-            <body>
-                <div class="success">
-                    <div class="checkmark">✓</div>
-                    <h1>Payment Successful!</h1>
-                    <p class="credits">{credits} credits purchased</p>
-                    <div class="instructions">
-                        <p>Your credits have been added to your account.</p>
-                        <p>Please return to the Telegram bot to continue using your credits.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        """
-        
-        return render_template_string(html), 200
-        
-    except Exception as e:
-        logger.error(f"Error in payment_success: {str(e)}")
-        return render_template_string(f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Payment Error</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }}
-                    .error {{ color: #d32f2f; }}
-                </style>
-            </head>
-            <body>
-                <h1 class="error">Error</h1>
-                <p>Unable to retrieve payment information: {str(e)}</p>
-            </body>
-            </html>
-        """), 500
-
-@app.route('/payment-cancel')
-def payment_cancel():
-    """Handle cancelled payment redirect"""
-    logger.info("Payment cancelled by user")
-    
-    html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Payment Cancelled</title>
-            <style>
-                body { 
-                    font-family: Arial, sans-serif; 
-                    max-width: 600px; 
-                    margin: 50px auto; 
-                    padding: 20px; 
-                    text-align: center;
-                    background-color: #f5f5f5;
-                }
-                .cancelled { 
-                    color: #f57c00; 
-                    background-color: white;
-                    padding: 30px;
-                    border-radius: 10px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                .icon { font-size: 64px; }
-                .button {
-                    display: inline-block;
-                    margin-top: 20px;
-                    padding: 12px 24px;
-                    background-color: #1976d2;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                }
-                .button:hover { background-color: #1565c0; }
-            </style>
-        </head>
-        <body>
-            <div class="cancelled">
-                <div class="icon">⚠️</div>
-                <h1>Payment Cancelled</h1>
-                <p>Your payment was cancelled. No charges were made.</p>
-                <p>You can return to the Telegram bot and try again when you're ready.</p>
-            </div>
-        </body>
-        </html>
-    """
-    
-    return render_template_string(html), 200
-
-@app.route('/webhook/stripe', methods=['POST'])
-def stripe_webhook():
-    """Handle Stripe webhooks for async payment confirmation"""
-    if not STRIPE_SECRET_KEY:
-        logger.error("Stripe webhook received but Stripe not configured")
-        return jsonify({"error": "Stripe not configured"}), 503
-    
-    payload = request.data
-    sig_header = request.headers.get('Stripe-Signature')
-    
-    try:
-        # Verify webhook signature if webhook secret is configured
-        if STRIPE_WEBHOOK_SECRET:
-            try:
-                event = stripe.Webhook.construct_event(
-                    payload, sig_header, STRIPE_WEBHOOK_SECRET
-                )
-                logger.info("Webhook signature verified")
-            except stripe.error.SignatureVerificationError as e:
-                logger.error(f"Webhook signature verification failed: {str(e)}")
-                return jsonify({"error": "Invalid signature"}), 400
-        else:
-            # If no webhook secret, just parse the payload
-            event = stripe.Event.construct_from(request.json, stripe.api_key)
-            logger.warning("Processing webhook without signature verification (STRIPE_WEBHOOK_SECRET not set)")
-        
-        logger.info(f"Received Stripe webhook event: {event['type']}")
-        
-        # Handle checkout.session.completed event
-        if event['type'] == 'checkout.session.completed':
-            session = event['data']['object']
-            session_id = session['id']
-            user_telegram_id = session['metadata'].get('user_telegram_id')
-            credits = int(session['metadata'].get('credits', 0))
-            payment_intent_id = session.get('payment_intent')
-            
-            logger.info(f"Processing completed checkout session {session_id} for user {user_telegram_id}, credits: {credits}")
-            
-            if not DB_AVAILABLE:
-                logger.error("Database not available, cannot process payment completion")
-                return jsonify({"error": "Database unavailable"}), 503
-            
-            try:
-                # Find the payment record
-                payment = Payment.query.filter_by(stripe_session_id=session_id).first()
-                
-                if not payment:
-                    logger.error(f"Payment record not found for session {session_id}")
-                    return jsonify({"error": "Payment record not found"}), 404
-                
-                # Update payment status
-                payment.status = 'completed'
-                payment.completed_at = datetime.utcnow()
-                if payment_intent_id:
-                    payment.stripe_payment_intent_id = payment_intent_id
-                
-                # Add credits to user account
-                user = User.query.get(payment.user_id)
-                if user:
-                    user.credits += credits
-                    logger.info(f"Added {credits} credits to user {user.telegram_id}, new balance: {user.credits}")
-                    
-                    # Create transaction record
-                    transaction = Transaction(
-                        user_id=user.id,
-                        credits_used=-credits,
-                        transaction_type='purchase',
-                        description=f'Purchased {credits} credits via Stripe'
-                    )
-                    db.session.add(transaction)
-                else:
-                    logger.error(f"User not found for payment {payment.id}")
-                
-                db.session.commit()
-                logger.info(f"Payment {payment.id} completed successfully")
-                
-            except Exception as db_error:
-                logger.error(f"Database error processing webhook: {str(db_error)}")
-                db.session.rollback()
-                return jsonify({"error": "Database error"}), 500
-        
-        # Handle payment_intent.payment_failed event
-        elif event['type'] == 'payment_intent.payment_failed':
-            payment_intent = event['data']['object']
-            payment_intent_id = payment_intent['id']
-            
-            logger.warning(f"Payment failed for payment_intent {payment_intent_id}")
-            
-            if DB_AVAILABLE:
-                try:
-                    # Find payment by payment_intent_id
-                    payment = Payment.query.filter_by(stripe_payment_intent_id=payment_intent_id).first()
-                    
-                    if payment:
-                        payment.status = 'failed'
-                        db.session.commit()
-                        logger.info(f"Updated payment {payment.id} status to failed")
-                    else:
-                        logger.warning(f"No payment found for failed payment_intent {payment_intent_id}")
-                        
-                except Exception as db_error:
-                    logger.error(f"Database error handling failed payment: {str(db_error)}")
-                    db.session.rollback()
-        
-        return jsonify({"status": "success"}), 200
-        
-    except Exception as e:
-        logger.error(f"Error processing Stripe webhook: {str(e)}")
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/payment-history')
 def payment_history():
