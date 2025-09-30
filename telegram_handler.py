@@ -62,7 +62,13 @@ def send_message(chat_id, text):
                 "parse_mode": "Markdown"
             }
         )
-        return response.json()
+        result = response.json()
+        
+        # Log errors for debugging
+        if not result.get("ok"):
+            logger.error(f"Telegram API error: {result}")
+            
+        return result
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return {"error": str(e)}
@@ -223,7 +229,7 @@ def process_update(update):
             # Get domain from environment variables
             domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'your-app.replit.app'
             
-            response = f"""💰 *Credit Packages*
+            response = f"""💰 Credit Packages
 
 • 10 credits = $1.00
 • 50 credits = $5.00
