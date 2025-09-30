@@ -90,6 +90,7 @@ def get_help_message():
 /model - Show current model 
 /model grok - Switch to Grok model
 /model deepseek - Switch to DeepSeek model
+/model chatgpt - Switch to ChatGPT (GPT-4) model
 /balance - Check your credit balance
 /buy - Purchase more credits
 
@@ -282,8 +283,11 @@ Each AI message costs 1 credit.
                 elif 'deepseek' in model_name:
                     os.environ['MODEL'] = 'deepseek/deepseek-chat'
                     response = f"Model switched to DeepSeek."
+                elif 'gpt' in model_name or 'chatgpt' in model_name:
+                    os.environ['MODEL'] = 'openai/gpt-4'
+                    response = f"Model switched to ChatGPT (GPT-4)."
                 else:
-                    response = f"Unknown model: {model_name}. Available models: grok, deepseek."
+                    response = f"Unknown model: {model_name}. Available models: grok, deepseek, chatgpt."
                     
                 # Store command in database if available
                 if DB_AVAILABLE and user_id:
@@ -304,11 +308,11 @@ Each AI message costs 1 credit.
                         logger.error(f"Database error storing model switch: {str(db_error)}")
                 
                 # Send response
-                send_message(chat_id, response)
+                send_message(chat_id, response, parse_mode=None)
                 return
             else:
                 current_model = os.environ.get('MODEL', MODEL)
-                response = f"Current model: {current_model}\nAvailable models: grok, deepseek\nTo switch, use /model <model_name>"
+                response = f"Current model: {current_model}\nAvailable models: grok, deepseek, chatgpt\nTo switch, use /model <model_name>"
                 
                 # Store command in database if available
                 if DB_AVAILABLE and user_id:
@@ -328,7 +332,7 @@ Each AI message costs 1 credit.
                         logger.error(f"Database error storing model query: {str(db_error)}")
                 
                 # Send response
-                send_message(chat_id, response)
+                send_message(chat_id, response, parse_mode=None)
                 return
         
         # Generate response from LLM
