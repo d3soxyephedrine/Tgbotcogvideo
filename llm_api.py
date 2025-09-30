@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
 DEFAULT_MODEL = os.environ.get("MODEL", "deepseek/deepseek-chat")
+MODEL = DEFAULT_MODEL  # Export for backward compatibility
 
 class Provider(Enum):
     DEEPSEEK = "deepseek"
