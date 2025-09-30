@@ -4,11 +4,15 @@ import threading
 import time
 import requests
 import stripe
+import json
+import hmac
+import hashlib
 from flask import Flask, request, jsonify, render_template_string
 from telegram_handler import process_update, send_message
 from llm_api import generate_response
-from models import db, User, Message, Payment, Transaction
+from models import db, User, Message, Payment, Transaction, CryptoPayment
 from datetime import datetime
+from nowpayments_api import NOWPaymentsAPI
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -159,6 +163,21 @@ else:
 
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
+# Initialize NOWPayments
+NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY")
+if NOWPAYMENTS_API_KEY:
+    nowpayments = NOWPaymentsAPI(NOWPAYMENTS_API_KEY)
+    logger.info("NOWPayments API configured")
+else:
+    nowpayments = None
+    logger.warning("NOWPAYMENTS_API_KEY not set - crypto payment features will be disabled")
+
+NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET")
+if NOWPAYMENTS_IPN_SECRET:
+    logger.info("NOWPayments IPN secret configured")
+else:
+    logger.warning("NOWPAYMENTS_IPN_SECRET not set - IPN callbacks will not be verified")
+
 # Replit URL (for keepalive pings)
 # We'll just use localhost since we're pinging ourselves
 KEEPALIVE_URL = "http://localhost:5000"
@@ -250,6 +269,32 @@ def keep_alive():
 keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
 keepalive_thread.start()
 logger.info("Started keepalive thread")
+
+def verify_nowpayments_ipn(ipn_secret, callback_data, received_signature):
+    """
+    Verify NOWPayments IPN callback signature using HMAC-SHA512
+    
+    Args:
+        ipn_secret (str): IPN secret key from NOWPayments
+        callback_data (dict): JSON data from callback
+        received_signature (str): Signature from x-nowpayments-sig header
+    
+    Returns:
+        bool: True if signature is valid, False otherwise
+    """
+    try:
+        sorted_json = json.dumps(callback_data, separators=(',', ':'), sort_keys=True)
+        
+        signature = hmac.new(
+            ipn_secret.encode('utf-8'),
+            sorted_json.encode('utf-8'),
+            hashlib.sha512
+        ).hexdigest()
+        
+        return hmac.compare_digest(signature, received_signature)
+    except Exception as e:
+        logger.error(f"IPN signature verification error: {str(e)}")
+        return False
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
@@ -473,6 +518,252 @@ def create_checkout():
         return jsonify({"error": f"Payment error: {str(e)}"}), 500
     except Exception as e:
         logger.error(f"Error in buy_credits endpoint: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/crypto/currencies', methods=['GET'])
+def get_crypto_currencies():
+    """Get list of available cryptocurrencies"""
+    if not nowpayments:
+        return jsonify({"error": "Crypto payments not configured"}), 503
+    
+    try:
+        currencies = nowpayments.get_available_currencies()
+        return jsonify({"currencies": currencies}), 200
+    except Exception as e:
+        logger.error(f"Error fetching crypto currencies: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/crypto/create-payment', methods=['POST'])
+def create_crypto_payment():
+    """Create a crypto payment using NOWPayments"""
+    if not nowpayments:
+        return jsonify({"error": "Crypto payments not configured"}), 503
+    
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Database not available"}), 503
+    
+    try:
+        data = request.get_json()
+        if not data or 'credits' not in data or 'pay_currency' not in data:
+            return jsonify({"error": "Request must include 'credits' and 'pay_currency' fields"}), 400
+        
+        credits = int(data['credits'])
+        pay_currency = data['pay_currency']
+        user_telegram_id = data.get('telegram_id')
+        
+        if credits <= 0:
+            return jsonify({"error": "Credits must be a positive number"}), 400
+        
+        if not user_telegram_id:
+            return jsonify({"error": "telegram_id is required"}), 400
+        
+        # Calculate amount in USD ($0.10 per credit)
+        price_amount = credits * 0.10
+        
+        # Get or create user
+        user = User.query.filter_by(telegram_id=user_telegram_id).first()
+        if not user:
+            logger.warning(f"User {user_telegram_id} not found, creating new user")
+            user = User(telegram_id=user_telegram_id)
+            db.session.add(user)
+            db.session.commit()
+        
+        # Generate unique order ID
+        order_id = f"crypto_order_{user_telegram_id}_{int(datetime.utcnow().timestamp())}"
+        
+        # Get domain for IPN callback
+        domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else None
+        
+        if not domain:
+            logger.error("No domain configured for IPN callback")
+            return jsonify({"error": "Domain not configured"}), 500
+        
+        if not domain.startswith('http'):
+            domain = f"https://{domain}"
+        
+        logger.info(f"Creating crypto payment for {credits} credits (${price_amount:.2f}) in {pay_currency} for user {user_telegram_id}")
+        
+        # Create payment via NOWPayments
+        payment_data = {
+            'price_amount': price_amount,
+            'price_currency': 'usd',
+            'pay_currency': pay_currency.lower(),
+            'ipn_callback_url': f"{domain}/api/crypto/ipn",
+            'order_id': order_id,
+            'order_description': f'Purchase {credits} credits for AI chat bot'
+        }
+        
+        payment_response = nowpayments.create_payment(payment_data)
+        
+        # Create CryptoPayment record in database
+        crypto_payment = CryptoPayment(
+            user_id=user.id,
+            payment_id=payment_response['payment_id'],
+            order_id=order_id,
+            credits_purchased=credits,
+            price_amount=price_amount,
+            price_currency='USD',
+            pay_amount=payment_response.get('pay_amount'),
+            pay_currency=pay_currency.upper(),
+            pay_address=payment_response.get('pay_address'),
+            payment_status=payment_response.get('payment_status', 'waiting')
+        )
+        db.session.add(crypto_payment)
+        db.session.commit()
+        
+        logger.info(f"Created crypto payment record {crypto_payment.id} with payment_id {payment_response['payment_id']}")
+        
+        return jsonify({
+            "success": True,
+            "payment_id": payment_response['payment_id'],
+            "pay_address": payment_response['pay_address'],
+            "pay_amount": payment_response['pay_amount'],
+            "pay_currency": pay_currency.upper(),
+            "payment_status": payment_response.get('payment_status'),
+            "order_id": order_id
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error creating crypto payment: {str(e)}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/crypto/ipn', methods=['POST'])
+def crypto_ipn_callback():
+    """Handle IPN (Instant Payment Notification) callbacks from NOWPayments with signature verification"""
+    if not nowpayments:
+        return jsonify({"error": "Crypto payments not configured"}), 503
+    
+    if not DB_AVAILABLE:
+        logger.error("Database not available for IPN processing")
+        return 'OK', 200
+    
+    try:
+        received_signature = request.headers.get('x-nowpayments-sig')
+        
+        if not received_signature:
+            logger.error("IPN callback missing x-nowpayments-sig header")
+            return 'Missing signature', 401
+        
+        if not NOWPAYMENTS_IPN_SECRET:
+            logger.error("NOWPAYMENTS_IPN_SECRET not configured - cannot verify IPN")
+            return 'Configuration error', 500
+        
+        data = request.get_json()
+        logger.info(f"Received crypto IPN callback: {data}")
+        
+        if not verify_nowpayments_ipn(NOWPAYMENTS_IPN_SECRET, data, received_signature):
+            logger.error("IPN signature verification failed - rejecting callback")
+            return 'Invalid signature', 401
+        
+        logger.info("IPN signature verified successfully")
+        
+        payment_id = data.get('payment_id')
+        payment_status = data.get('payment_status')
+        order_id = data.get('order_id')
+        
+        if not payment_id:
+            logger.error("IPN callback missing payment_id")
+            return 'Error', 400
+        
+        crypto_payment = CryptoPayment.query.filter_by(payment_id=payment_id).first()
+        
+        if not crypto_payment:
+            logger.error(f"Crypto payment {payment_id} not found in database")
+            return 'OK', 200
+        
+        if order_id and crypto_payment.order_id != order_id:
+            logger.error(f"Order ID mismatch: expected {crypto_payment.order_id}, got {order_id}")
+            return 'Order ID mismatch', 400
+        
+        if 'price_amount' in data:
+            reported_price = float(data.get('price_amount'))
+            if abs(reported_price - crypto_payment.price_amount) > 0.01:
+                logger.error(f"Price amount mismatch: expected {crypto_payment.price_amount}, got {reported_price}")
+                return 'Price mismatch', 400
+        
+        old_status = crypto_payment.payment_status
+        crypto_payment.payment_status = payment_status
+        
+        logger.info(f"Crypto payment {payment_id} status updated from {old_status} to {payment_status}")
+        
+        if payment_status == 'finished' and old_status != 'finished':
+            user = User.query.get(crypto_payment.user_id)
+            if user:
+                user.credits += crypto_payment.credits_purchased
+                
+                transaction = Transaction(
+                    user_id=user.id,
+                    credits_used=-crypto_payment.credits_purchased,
+                    transaction_type='crypto_purchase',
+                    description=f'Purchased {crypto_payment.credits_purchased} credits via {crypto_payment.pay_currency}'
+                )
+                db.session.add(transaction)
+                
+                logger.info(f"Added {crypto_payment.credits_purchased} credits to user {user.telegram_id}. New balance: {user.credits}")
+                
+                try:
+                    confirmation_msg = f"✅ Payment confirmed! {crypto_payment.credits_purchased} credits have been added to your account.\n\nNew balance: {user.credits} credits"
+                    send_message(user.telegram_id, confirmation_msg)
+                except Exception as msg_error:
+                    logger.error(f"Error sending confirmation message: {str(msg_error)}")
+        
+        elif payment_status == 'failed':
+            logger.warning(f"Crypto payment {payment_id} failed")
+            try:
+                user = User.query.get(crypto_payment.user_id)
+                if user:
+                    send_message(user.telegram_id, "❌ Payment failed. Please try again or contact support.")
+            except Exception as msg_error:
+                logger.error(f"Error sending failure message: {str(msg_error)}")
+        
+        db.session.commit()
+        return 'OK', 200
+        
+    except Exception as e:
+        logger.error(f"Error processing crypto IPN callback: {str(e)}")
+        db.session.rollback()
+        return 'Error', 500
+
+@app.route('/api/crypto/payment-status/<payment_id>', methods=['GET'])
+def get_crypto_payment_status(payment_id):
+    """Check status of a crypto payment"""
+    if not nowpayments:
+        return jsonify({"error": "Crypto payments not configured"}), 503
+    
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Database not available"}), 503
+    
+    try:
+        # Get from database
+        crypto_payment = CryptoPayment.query.filter_by(payment_id=payment_id).first()
+        
+        if not crypto_payment:
+            return jsonify({"error": "Payment not found"}), 404
+        
+        # Also check with NOWPayments API for latest status
+        try:
+            api_status = nowpayments.get_payment_status(payment_id)
+            
+            # Update database if status changed
+            if api_status.get('payment_status') != crypto_payment.payment_status:
+                crypto_payment.payment_status = api_status.get('payment_status')
+                db.session.commit()
+        except Exception as api_error:
+            logger.error(f"Error fetching status from NOWPayments API: {str(api_error)}")
+        
+        return jsonify({
+            "success": True,
+            "payment_id": crypto_payment.payment_id,
+            "payment_status": crypto_payment.payment_status,
+            "pay_address": crypto_payment.pay_address,
+            "pay_amount": crypto_payment.pay_amount,
+            "pay_currency": crypto_payment.pay_currency,
+            "credits_purchased": crypto_payment.credits_purchased
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error checking crypto payment status: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/buy-credits', methods=['GET'])

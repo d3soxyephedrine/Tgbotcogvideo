@@ -19,6 +19,7 @@ class User(db.Model):
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
     transactions = db.relationship('Transaction', backref='user', lazy=True)
+    crypto_payments = db.relationship('CryptoPayment', backref='user', lazy=True)
 
     def __repr__(self):
         return f'<User {self.telegram_id}>'
@@ -63,3 +64,22 @@ class Transaction(db.Model):
     
     def __repr__(self):
         return f'<Transaction {self.id} for user {self.user_id}>'
+
+class CryptoPayment(db.Model):
+    """CryptoPayment model to track cryptocurrency payments via NOWPayments"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    payment_id = db.Column(db.String(255), unique=True, nullable=False)  # NOWPayments payment ID
+    order_id = db.Column(db.String(255), unique=True, nullable=False)  # Our internal order ID
+    credits_purchased = db.Column(db.Integer, nullable=False)
+    price_amount = db.Column(db.Float, nullable=False)  # Amount in fiat currency
+    price_currency = db.Column(db.String(10), nullable=False)  # USD, EUR, etc.
+    pay_amount = db.Column(db.Float, nullable=True)  # Amount in crypto
+    pay_currency = db.Column(db.String(20), nullable=True)  # BTC, ETH, etc.
+    pay_address = db.Column(db.String(255), nullable=True)  # Crypto address to send payment
+    payment_status = db.Column(db.String(50), nullable=False)  # waiting, confirming, confirmed, finished, failed, etc.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<CryptoPayment {self.payment_id} for user {self.user_id}>'
