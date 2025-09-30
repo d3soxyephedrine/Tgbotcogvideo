@@ -235,7 +235,7 @@ def process_update(update):
         # Check for /buy command
         if text.lower() == '/buy':
             # Get domain from environment variables
-            domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else 'your-app.replit.app'
+            domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
             
             response = f"""💰 Credit Packages
 

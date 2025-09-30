@@ -461,7 +461,7 @@ def create_crypto_payment():
         order_id = f"crypto_order_{user_telegram_id}_{int(datetime.utcnow().timestamp())}"
         
         # Get domain for IPN callback
-        domain = os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else None
+        domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
         
         if not domain:
             logger.error("No domain configured for IPN callback")
