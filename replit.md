@@ -17,10 +17,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy extension
-- **Schema Design**: Four-model architecture with pay-per-use credit system
+- **Schema Design**: Five-model architecture with pay-per-use credit system
   - `User` model: Stores Telegram user profiles with unique telegram_id constraint and credits balance
   - `Message` model: Stores conversation history with foreign key relationship to User and credits_charged tracking
-  - `Payment` model: Tracks credit purchases via Stripe with session IDs, amounts, and status
+  - `Payment` model: Legacy model for historical payment tracking
+  - `CryptoPayment` model: Tracks cryptocurrency credit purchases via NOWPayments with payment IDs, addresses, amounts, currency, and status
   - `Transaction` model: Records all credit movements (purchases, usage, refunds) for audit trail
 - **Rationale**: Relational structure allows efficient querying of user history, credit tracking, and provides referential integrity
 - **Connection Management**: Production-ready configuration with:
@@ -44,15 +45,15 @@ Preferred communication style: Simple, everyday language.
 - **API Design**: Centralized `generate_response()` function routes to appropriate provider based on configuration
 
 ### Pay-Per-Use Credit System
-- **Model**: Users purchase credits via Stripe and consume 1 credit per AI message
-- **Pricing**: $0.10 per credit (packages: 10 credits/$1, 50 credits/$5, 100 credits/$10)
+- **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume 1 credit per AI message
+- **Pricing**: $0.10 per credit (packages: 10 credits/$1, 50 credits/$5, 100 credits/$10) - payable in cryptocurrency
 - **Purchase Flow**:
   1. User sends /buy command in Telegram
   2. Bot provides link to web-based purchase page with telegram_id
   3. User selects credit package on responsive HTML page
-  4. JavaScript POSTs to /api/create-checkout creating pending Payment record
-  5. User redirected to Stripe-hosted checkout session
-  6. Upon payment completion, Stripe webhook updates Payment status
+  4. JavaScript POSTs to /api/crypto/create-payment creating CryptoPayment record
+  5. User receives crypto payment address and amount in their selected cryptocurrency
+  6. Upon payment detection, NOWPayments IPN callback updates CryptoPayment status
   7. Credits automatically added to user account via Transaction record
 - **Usage Flow**:
   1. User sends message to bot
@@ -142,11 +143,12 @@ Preferred communication style: Simple, everyday language.
 - **logging**: Application-wide logging infrastructure
 
 ### Payment Integration
-- **Stripe SDK**: Installed and configured for payment processing
-- **API Key Management**: `STRIPE_SECRET_KEY` stored securely in environment secrets
-- **Webhook Support**: Application can receive HTTPS webhooks from Stripe
-- **Database Persistence**: Payment state can be persisted in database
-- **Integration Type**: Uses Stripe-hosted checkout pages for secure payment processing
+- **NOWPayments API**: Cryptocurrency payment processing integration
+- **API Key Management**: `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` stored securely in environment secrets
+- **IPN Callback Support**: Application receives HTTPS callbacks from NOWPayments for payment verification
+- **Security**: HMAC-SHA512 signature verification ensures IPN callback authenticity and prevents tampering
+- **Database Persistence**: CryptoPayment records track payment status, addresses, amounts, and cryptocurrency types
+- **Multi-Currency Support**: Accepts various cryptocurrencies through NOWPayments gateway
 
 ### Environment Configuration
 Required environment variables:
@@ -158,4 +160,5 @@ Optional environment variables:
 - `MODEL`: LLM model selection (default: "grok-2-1212")
 - `DATABASE_URL`: Database connection string
 - `SESSION_SECRET`: Flask session encryption key (optional, has default)
-- `STRIPE_SECRET_KEY`: Stripe API key for payment processing (optional)
+- `NOWPAYMENTS_API_KEY`: NOWPayments API key for cryptocurrency payment processing (optional)
+- `NOWPAYMENTS_IPN_SECRET`: NOWPayments IPN secret for webhook signature verification (optional)
