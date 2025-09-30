@@ -27,7 +27,7 @@ def send_message(chat_id, text, parse_mode="Markdown"):
     Args:
         chat_id (int): The ID of the chat to send to
         text (str): The text message to send
-        parse_mode (str): Parse mode for formatting (default: "Markdown", use None for plain text)
+        parse_mode (str | None): Parse mode for formatting (default: "Markdown", use None for plain text)
     
     Returns:
         dict: The response from Telegram API

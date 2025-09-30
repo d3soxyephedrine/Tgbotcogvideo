@@ -416,7 +416,7 @@ def get_crypto_currencies():
         return jsonify({"error": "Crypto payments not configured"}), 503
     
     try:
-        currencies = nowpayments.get_available_currencies()
+        currencies = nowpayments.currencies()
         return jsonify({"currencies": currencies}), 200
     except Exception as e:
         logger.error(f"Error fetching crypto currencies: {str(e)}")
@@ -473,16 +473,14 @@ def create_crypto_payment():
         logger.info(f"Creating crypto payment for {credits} credits (${price_amount:.2f}) in {pay_currency} for user {user_telegram_id}")
         
         # Create payment via NOWPayments
-        payment_data = {
-            'price_amount': price_amount,
-            'price_currency': 'usd',
-            'pay_currency': pay_currency.lower(),
-            'ipn_callback_url': f"{domain}/api/crypto/ipn",
-            'order_id': order_id,
-            'order_description': f'Purchase {credits} credits for AI chat bot'
-        }
-        
-        payment_response = nowpayments.create_payment(payment_data)
+        payment_response = nowpayments.create_payment(
+            price_amount=price_amount,
+            price_currency='usd',
+            pay_currency=pay_currency.lower(),
+            ipn_callback_url=f"{domain}/api/crypto/ipn",
+            order_id=order_id,
+            order_description=f'Purchase {credits} credits for AI chat bot'
+        )
         
         # Create CryptoPayment record in database
         crypto_payment = CryptoPayment(
@@ -632,7 +630,7 @@ def get_crypto_payment_status(payment_id):
         
         # Also check with NOWPayments API for latest status
         try:
-            api_status = nowpayments.get_payment_status(payment_id)
+            api_status = nowpayments.payment_status(payment_id)
             
             # Update database if status changed
             if api_status.get('payment_status') != crypto_payment.payment_status:
