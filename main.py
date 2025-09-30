@@ -1003,6 +1003,117 @@ def buy_credits_page():
                     display: block;
                 }}
                 
+                .payment-methods {{
+                    margin-bottom: 40px;
+                }}
+                
+                .method-buttons {{
+                    display: flex;
+                    gap: 15px;
+                    justify-content: center;
+                    flex-wrap: wrap;
+                }}
+                
+                .method-btn {{
+                    background: white;
+                    border: 3px solid #e0e0e0;
+                    border-radius: 12px;
+                    padding: 15px 30px;
+                    font-size: 18px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    color: #333;
+                }}
+                
+                .method-btn:hover {{
+                    border-color: #667eea;
+                    transform: translateY(-2px);
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+                }}
+                
+                .method-btn.active {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border-color: #667eea;
+                }}
+                
+                .crypto-selector {{
+                    display: none;
+                    margin-top: 15px;
+                    text-align: center;
+                }}
+                
+                .crypto-selector.show {{
+                    display: block;
+                }}
+                
+                .crypto-selector select {{
+                    padding: 10px 20px;
+                    border: 2px solid #667eea;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    background: white;
+                    cursor: pointer;
+                    min-width: 200px;
+                }}
+                
+                #cryptoPaymentInfo {{
+                    display: none;
+                    background: #f8f9fa;
+                    padding: 30px;
+                    border-radius: 15px;
+                    margin-top: 30px;
+                    text-align: left;
+                }}
+                
+                #cryptoPaymentInfo.show {{
+                    display: block;
+                }}
+                
+                .qr-code-container {{
+                    text-align: center;
+                    margin: 20px 0;
+                }}
+                
+                .payment-address {{
+                    background: white;
+                    padding: 15px;
+                    border-radius: 8px;
+                    border: 2px solid #667eea;
+                    word-break: break-all;
+                    font-family: monospace;
+                    margin: 10px 0;
+                }}
+                
+                .copy-btn {{
+                    background: #667eea;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    margin-top: 10px;
+                }}
+                
+                .copy-btn:hover {{
+                    background: #5568d3;
+                }}
+                
+                .status-badge {{
+                    display: inline-block;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                    font-weight: bold;
+                    margin: 10px 0;
+                }}
+                
+                .status-waiting {{ background: #ffc107; color: #000; }}
+                .status-confirming {{ background: #2196F3; color: white; }}
+                .status-confirmed {{ background: #4CAF50; color: white; }}
+                .status-finished {{ background: #00c853; color: white; }}
+                .status-failed {{ background: #f44336; color: white; }}
+                
                 @media (max-width: 768px) {{
                     .container {{
                         padding: 20px;
@@ -1023,8 +1134,27 @@ def buy_credits_page():
                 <h1>💳 Purchase Credits</h1>
                 <p class="subtitle">Choose a package to power your AI conversations</p>
                 
+                <div class="payment-methods">
+                    <h2 style="text-align: center; margin-bottom: 20px; color: #333;">Choose Your Payment Method</h2>
+                    <div class="method-buttons">
+                        <button class="method-btn active" data-method="card" onclick="selectPaymentMethod('card')">
+                            💳 Credit/Debit Card
+                        </button>
+                        <button class="method-btn" data-method="crypto" onclick="selectPaymentMethod('crypto')">
+                            ₿ Cryptocurrency
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="crypto-selector" id="cryptoSelector">
+                    <label for="cryptoCurrency" style="font-size: 16px; margin-right: 10px;">Select Cryptocurrency:</label>
+                    <select id="cryptoCurrency">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                
                 <div class="packages">
-                    <div class="package" onclick="purchaseCredits(10)">
+                    <div class="package" onclick="handlePurchase(10)">
                         <div class="credits">10</div>
                         <div class="credits-label">Credits</div>
                         <div class="price">$1.00</div>
@@ -1032,7 +1162,7 @@ def buy_credits_page():
                         <button class="btn">Get Started</button>
                     </div>
                     
-                    <div class="package popular" onclick="purchaseCredits(50)">
+                    <div class="package popular" onclick="handlePurchase(50)">
                         <div class="badge">POPULAR</div>
                         <div class="credits">50</div>
                         <div class="credits-label">Credits</div>
@@ -1041,13 +1171,25 @@ def buy_credits_page():
                         <button class="btn">Best Value</button>
                     </div>
                     
-                    <div class="package" onclick="purchaseCredits(100)">
+                    <div class="package" onclick="handlePurchase(100)">
                         <div class="credits">100</div>
                         <div class="credits-label">Credits</div>
                         <div class="price">$10.00</div>
                         <div class="per-credit">$0.10 per credit</div>
                         <button class="btn">Power User</button>
                     </div>
+                </div>
+                
+                <div id="cryptoPaymentInfo">
+                    <h2>⏳ Awaiting Payment</h2>
+                    <p><strong>Credits:</strong> <span id="cryptoCredits"></span></p>
+                    <p><strong>Amount to Pay:</strong> <span id="cryptoAmount"></span> <span id="cryptoCurrency"></span></p>
+                    <p><strong>Payment Address:</strong></p>
+                    <div class="payment-address" id="cryptoAddress"></div>
+                    <button class="copy-btn" onclick="copyAddress()">📋 Copy Address</button>
+                    <p><strong>Status:</strong> <span class="status-badge" id="cryptoStatus"></span></p>
+                    <p style="margin-top: 20px; color: #666;">Send the exact amount to the address above. Your credits will be added automatically once the payment is confirmed.</p>
+                    <button onclick="checkPaymentStatus()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">🔄 Check Status</button>
                 </div>
                 
                 <div class="info">
@@ -1062,6 +1204,82 @@ def buy_credits_page():
             </div>
             
             <script>
+                let selectedPaymentMethod = 'card';
+                let currentPaymentId = null;
+                let statusCheckInterval = null;
+                let availableCryptocurrencies = [];
+                
+                async function loadCryptocurrencies() {{
+                    try {{
+                        const response = await fetch('/api/crypto/currencies');
+                        const data = await response.json();
+                        
+                        if (data.currencies && data.currencies.length > 0) {{
+                            availableCryptocurrencies = data.currencies;
+                            const select = document.getElementById('cryptoCurrency');
+                            select.innerHTML = '<option value="">Select a cryptocurrency...</option>';
+                            
+                            const popular = ['btc', 'eth', 'usdt', 'ltc', 'bnb'];
+                            popular.forEach(crypto => {{
+                                if (data.currencies.includes(crypto)) {{
+                                    const option = document.createElement('option');
+                                    option.value = crypto;
+                                    option.textContent = crypto.toUpperCase();
+                                    select.appendChild(option);
+                                }}
+                            }});
+                            
+                            const separator = document.createElement('option');
+                            separator.disabled = true;
+                            separator.textContent = '──────────';
+                            select.appendChild(separator);
+                            
+                            data.currencies.forEach(crypto => {{
+                                if (!popular.includes(crypto)) {{
+                                    const option = document.createElement('option');
+                                    option.value = crypto;
+                                    option.textContent = crypto.toUpperCase();
+                                    select.appendChild(option);
+                                }}
+                            }});
+                        }}
+                    }} catch (error) {{
+                        console.error('Error loading cryptocurrencies:', error);
+                        document.getElementById('cryptoCurrency').innerHTML = '<option value="">Error loading currencies</option>';
+                    }}
+                }}
+                
+                loadCryptocurrencies();
+                
+                function selectPaymentMethod(method) {{
+                    selectedPaymentMethod = method;
+                    
+                    document.querySelectorAll('.method-btn').forEach(btn => {{
+                        btn.classList.remove('active');
+                    }});
+                    document.querySelector(`[data-method="${{method}}"]`).classList.add('active');
+                    
+                    const cryptoSelector = document.getElementById('cryptoSelector');
+                    if (method === 'crypto') {{
+                        cryptoSelector.classList.add('show');
+                    }} else {{
+                        cryptoSelector.classList.remove('show');
+                    }}
+                }}
+                
+                function handlePurchase(credits) {{
+                    if (selectedPaymentMethod === 'card') {{
+                        purchaseCredits(credits);
+                    }} else if (selectedPaymentMethod === 'crypto') {{
+                        const selectedCrypto = document.getElementById('cryptoCurrency').value;
+                        if (!selectedCrypto) {{
+                            alert('Please select a cryptocurrency first');
+                            return;
+                        }}
+                        purchaseWithCrypto(credits, selectedCrypto);
+                    }}
+                }}
+                
                 async function purchaseCredits(credits) {{
                     const loadingDiv = document.getElementById('loading');
                     loadingDiv.classList.add('active');
@@ -1090,6 +1308,92 @@ def buy_credits_page():
                         alert('Error: ' + error.message);
                         loadingDiv.classList.remove('active');
                     }}
+                }}
+                
+                async function purchaseWithCrypto(credits, payCurrency) {{
+                    try {{
+                        const response = await fetch('/api/crypto/create-payment', {{
+                            method: 'POST',
+                            headers: {{
+                                'Content-Type': 'application/json'
+                            }},
+                            body: JSON.stringify({{
+                                credits: credits,
+                                pay_currency: payCurrency,
+                                telegram_id: '{telegram_id}'
+                            }})
+                        }});
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {{
+                            currentPaymentId = data.payment_id;
+                            
+                            document.getElementById('cryptoCredits').textContent = credits;
+                            document.getElementById('cryptoAmount').textContent = data.pay_amount;
+                            document.getElementById('cryptoCurrency').textContent = data.pay_currency;
+                            document.getElementById('cryptoAddress').textContent = data.pay_address;
+                            updatePaymentStatus(data.payment_status);
+                            
+                            document.getElementById('cryptoPaymentInfo').classList.add('show');
+                            
+                            if (statusCheckInterval) {{
+                                clearInterval(statusCheckInterval);
+                            }}
+                            statusCheckInterval = setInterval(checkPaymentStatus, 10000);
+                            
+                            document.getElementById('cryptoPaymentInfo').scrollIntoView({{ behavior: 'smooth' }});
+                        }} else {{
+                            alert('Error creating payment: ' + (data.error || 'Unknown error'));
+                        }}
+                    }} catch (error) {{
+                        console.error('Error:', error);
+                        alert('Error creating crypto payment. Please try again.');
+                    }}
+                }}
+                
+                async function checkPaymentStatus() {{
+                    if (!currentPaymentId) return;
+                    
+                    try {{
+                        const response = await fetch(`/api/crypto/payment-status/${{currentPaymentId}}`);
+                        const data = await response.json();
+                        
+                        if (data.success) {{
+                            updatePaymentStatus(data.payment_status);
+                            
+                            if (data.payment_status === 'finished') {{
+                                clearInterval(statusCheckInterval);
+                                alert('Payment confirmed! Your credits have been added.');
+                                setTimeout(() => {{
+                                    window.location.reload();
+                                }}, 2000);
+                            }} else if (data.payment_status === 'failed') {{
+                                clearInterval(statusCheckInterval);
+                                alert('Payment failed. Please try again.');
+                            }}
+                        }}
+                    }} catch (error) {{
+                        console.error('Error checking payment status:', error);
+                    }}
+                }}
+                
+                function updatePaymentStatus(status) {{
+                    const statusElement = document.getElementById('cryptoStatus');
+                    statusElement.textContent = status.toUpperCase();
+                    statusElement.className = 'status-badge status-' + status;
+                }}
+                
+                function copyAddress() {{
+                    const address = document.getElementById('cryptoAddress').textContent;
+                    navigator.clipboard.writeText(address).then(() => {{
+                        const btn = event.target;
+                        const originalText = btn.textContent;
+                        btn.textContent = '✓ Copied!';
+                        setTimeout(() => {{
+                            btn.textContent = originalText;
+                        }}, 2000);
+                    }});
                 }}
             </script>
         </body>
