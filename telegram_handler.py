@@ -83,20 +83,17 @@ def send_message(chat_id, text, parse_mode="Markdown"):
 def get_help_message():
     """Get the help message with available commands"""
     help_text = """
-🤖 *Uncensored AI Bot Commands* 🤖
+🤖 *GPT-5 Chat Bot* 🤖
 
 /start - Start the bot
 /help - Display this help message
-/model - Show current model 
-/model grok - Switch to Grok model
-/model deepseek - Switch to DeepSeek model
-/model chatgpt - Switch to ChatGPT (GPT-4) model
 /balance - Check your credit balance
 /buy - Purchase more credits
 
+💡 *Powered by GPT-5 Chat*
 💡 *Each AI message costs 1 credit*
 
-Send any message to get an uncensored AI response!
+Send any message to get an AI response!
     """
     return help_text
 
@@ -269,74 +266,9 @@ Each AI message costs 1 credit.
             # Send response without Markdown (URL causes parsing issues)
             send_message(chat_id, response, parse_mode=None)
             return
-            
-        # Check for model switch commands
-        if text.lower().startswith('/model'):
-            parts = text.split()
-            if len(parts) > 1:
-                model_name = parts[1].lower()
-                
-                # Process model change request
-                if 'grok' in model_name:
-                    os.environ['MODEL'] = 'grok-2-1212'
-                    response = f"Model switched to Grok."
-                elif 'deepseek' in model_name:
-                    os.environ['MODEL'] = 'deepseek/deepseek-chat'
-                    response = f"Model switched to DeepSeek."
-                elif 'gpt' in model_name or 'chatgpt' in model_name:
-                    os.environ['MODEL'] = 'openai/gpt-4'
-                    response = f"Model switched to ChatGPT (GPT-4)."
-                else:
-                    response = f"Unknown model: {model_name}. Available models: grok, deepseek, chatgpt."
-                    
-                # Store command in database if available
-                if DB_AVAILABLE and user_id:
-                    try:
-                        from flask import current_app
-                        with current_app.app_context():
-                            message_record = Message(
-                                user_id=user_id,
-                                user_message=text,
-                                bot_response=response,
-                                model_used=os.environ.get('MODEL', MODEL),
-                                credits_charged=0
-                            )
-                            db.session.add(message_record)
-                            db.session.commit()
-                            logger.info(f"Model switch command stored: {message_record.id}")
-                    except Exception as db_error:
-                        logger.error(f"Database error storing model switch: {str(db_error)}")
-                
-                # Send response
-                send_message(chat_id, response, parse_mode=None)
-                return
-            else:
-                current_model = os.environ.get('MODEL', MODEL)
-                response = f"Current model: {current_model}\nAvailable models: grok, deepseek, chatgpt\nTo switch, use /model <model_name>"
-                
-                # Store command in database if available
-                if DB_AVAILABLE and user_id:
-                    try:
-                        from flask import current_app
-                        with current_app.app_context():
-                            message_record = Message(
-                                user_id=user_id,
-                                user_message=text,
-                                bot_response=response,
-                                model_used=current_model,
-                                credits_charged=0
-                            )
-                            db.session.add(message_record)
-                            db.session.commit()
-                    except Exception as db_error:
-                        logger.error(f"Database error storing model query: {str(db_error)}")
-                
-                # Send response
-                send_message(chat_id, response, parse_mode=None)
-                return
         
-        # Generate response from LLM
-        current_model = os.environ.get('MODEL', MODEL)
+        # Generate response from LLM using GPT-5
+        current_model = 'openai/gpt-5'
         llm_response = generate_response(text)
         
         # Store message and deduct credits if available
