@@ -8,6 +8,7 @@ dependencies = [
     "flask>=3.1.0",
     "flask-sqlalchemy>=3.1.1",
     "gunicorn>=23.0.0",
+    "nowpayments-api>=1.0.2",
     "openai>=1.73.0",
     "psycopg2-binary>=2.9.10",
     "python-telegram-bot>=22.0",

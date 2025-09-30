@@ -388,6 +388,18 @@ wheels = [
 ]
 
 [[package]]
+name = "nowpayments-api"
+version = "1.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/a7/754575b181882eb4edd049772204ec34928c1b6079126153f03f0cef9d2b/nowpayments_api-1.0.2.tar.gz", hash = "sha256:4a64b8b3f49bbfbef1fd949bf376175927d952f71038abdc067bd66dde63c000", size = 9024 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/c2/7075fafe5f02ec63781375240383ef8dbb83ed01b2b99cbbf5ab5a316a52/nowpayments_api-1.0.2-py3-none-any.whl", hash = "sha256:a90106ae1668a87f3317face662b73de208c4ee0d4c0c5771a0e8c1405114769", size = 9346 },
+]
+
+[[package]]
 name = "openai"
 version = "1.73.0"
 source = { registry = "https://pypi.org/simple" }
@@ -559,6 +571,7 @@ dependencies = [
     { name = "flask" },
     { name = "flask-sqlalchemy" },
     { name = "gunicorn" },
+    { name = "nowpayments-api" },
     { name = "openai" },
     { name = "psycopg2-binary" },
     { name = "python-telegram-bot" },
@@ -572,6 +585,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.1.0" },
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "gunicorn", specifier = ">=23.0.0" },
+    { name = "nowpayments-api", specifier = ">=1.0.2" },
     { name = "openai", specifier = ">=1.73.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "python-telegram-bot", specifier = ">=22.0" },
