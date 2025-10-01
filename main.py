@@ -439,7 +439,12 @@ def get_crypto_currencies():
         return jsonify({"error": "Crypto payments not configured"}), 503
     
     try:
-        currencies = nowpayments.currencies()
+        currencies_response = nowpayments.currencies()
+        # Extract the currencies array from the response
+        if isinstance(currencies_response, dict) and 'currencies' in currencies_response:
+            currencies = currencies_response['currencies']
+        else:
+            currencies = currencies_response
         return jsonify({"currencies": currencies}), 200
     except Exception as e:
         logger.error(f"Error fetching crypto currencies: {str(e)}")
