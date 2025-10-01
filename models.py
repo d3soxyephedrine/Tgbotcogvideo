@@ -78,6 +78,8 @@ class CryptoPayment(db.Model):
     pay_currency = db.Column(db.String(20), nullable=True)  # BTC, ETH, etc.
     pay_address = db.Column(db.String(255), nullable=True)  # Crypto address to send payment
     payment_status = db.Column(db.String(50), nullable=False)  # waiting, confirming, confirmed, finished, failed, etc.
+    credits_added = db.Column(db.Boolean, default=False, nullable=False)  # Idempotency flag: tracks if credits were already added
+    processed_at = db.Column(db.DateTime, nullable=True)  # Timestamp when credits were added
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

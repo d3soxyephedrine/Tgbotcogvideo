@@ -260,28 +260,33 @@ keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
 keepalive_thread.start()
 logger.info("Started keepalive thread")
 
-def verify_nowpayments_ipn(ipn_secret, callback_data, received_signature):
+def verify_nowpayments_ipn(ipn_secret, raw_body_bytes, received_signature):
     """
     Verify NOWPayments IPN callback signature using HMAC-SHA512
     
     Args:
         ipn_secret (str): IPN secret key from NOWPayments
-        callback_data (dict): JSON data from callback
+        raw_body_bytes (bytes): Raw request body as bytes (not re-serialized JSON)
         received_signature (str): Signature from x-nowpayments-sig header
     
     Returns:
         bool: True if signature is valid, False otherwise
     """
     try:
-        sorted_json = json.dumps(callback_data, separators=(',', ':'), sort_keys=True)
-        
+        # Calculate HMAC-SHA512 signature on the raw request body bytes
+        # CRITICAL: Must use raw body exactly as received, not re-serialized JSON
         signature = hmac.new(
             ipn_secret.encode('utf-8'),
-            sorted_json.encode('utf-8'),
+            raw_body_bytes,
             hashlib.sha512
         ).hexdigest()
         
-        return hmac.compare_digest(signature, received_signature)
+        # Normalize both signatures (strip whitespace, lowercase) before comparison
+        computed_sig = signature.strip().lower()
+        received_sig = received_signature.strip().lower()
+        
+        # Use constant-time comparison to prevent timing attacks
+        return hmac.compare_digest(computed_sig, received_sig)
     except Exception as e:
         logger.error(f"IPN signature verification error: {str(e)}")
         return False
@@ -578,7 +583,8 @@ def crypto_ipn_callback():
     
     if not DB_AVAILABLE:
         logger.error("Database not available for IPN processing")
-        return 'OK', 200
+        # Return 503 to trigger NOWPayments retry mechanism
+        return 'Database unavailable', 503
     
     try:
         received_signature = request.headers.get('x-nowpayments-sig')
@@ -591,14 +597,19 @@ def crypto_ipn_callback():
             logger.error("NOWPAYMENTS_IPN_SECRET not configured - cannot verify IPN")
             return 'Configuration error', 500
         
-        data = request.get_json()
-        logger.info(f"Received crypto IPN callback: {data}")
+        # Get raw request body as bytes for signature verification
+        # CRITICAL: Use cache=True to preserve body for JSON parsing
+        raw_body_bytes = request.get_data(cache=True)
         
-        if not verify_nowpayments_ipn(NOWPAYMENTS_IPN_SECRET, data, received_signature):
+        if not verify_nowpayments_ipn(NOWPAYMENTS_IPN_SECRET, raw_body_bytes, received_signature):
             logger.error("IPN signature verification failed - rejecting callback")
             return 'Invalid signature', 401
         
         logger.info("IPN signature verified successfully")
+        
+        # Parse JSON from the same bytes after verification
+        data = json.loads(raw_body_bytes.decode('utf-8'))
+        logger.info(f"Received crypto IPN callback: {data}")
         
         payment_id = data.get('payment_id')
         payment_status = data.get('payment_status')
@@ -608,32 +619,60 @@ def crypto_ipn_callback():
             logger.error("IPN callback missing payment_id")
             return 'Error', 400
         
-        crypto_payment = CryptoPayment.query.filter_by(payment_id=payment_id).first()
+        # Lock the payment record for atomic update (prevents race conditions)
+        crypto_payment = CryptoPayment.query.filter_by(payment_id=payment_id).with_for_update().first()
         
         if not crypto_payment:
-            logger.error(f"Crypto payment {payment_id} not found in database")
-            return 'OK', 200
+            logger.error(f"Crypto payment {payment_id} not found in database - requesting retry")
+            # Return 503 to trigger NOWPayments retry (payment might be created soon)
+            return 'Payment not found', 503
         
         if order_id and crypto_payment.order_id != order_id:
             logger.error(f"Order ID mismatch: expected {crypto_payment.order_id}, got {order_id}")
             return 'Order ID mismatch', 400
         
+        # Validate price amount matches expected (in USD/fiat)
         if 'price_amount' in data:
             reported_price = float(data.get('price_amount'))
             if abs(reported_price - crypto_payment.price_amount) > 0.01:
-                logger.error(f"Price amount mismatch: expected {crypto_payment.price_amount}, got {reported_price}")
+                logger.error(f"Price amount mismatch: expected ${crypto_payment.price_amount}, got ${reported_price}")
                 return 'Price mismatch', 400
+        
+        # Validate pay currency matches
+        if 'pay_currency' in data:
+            reported_currency = data.get('pay_currency', '').upper()
+            if crypto_payment.pay_currency and reported_currency != crypto_payment.pay_currency:
+                logger.error(f"Pay currency mismatch: expected {crypto_payment.pay_currency}, got {reported_currency}")
+                return 'Currency mismatch', 400
         
         old_status = crypto_payment.payment_status
         crypto_payment.payment_status = payment_status
         
         logger.info(f"Crypto payment {payment_id} status updated from {old_status} to {payment_status}")
         
-        if payment_status == 'finished' and old_status != 'finished':
+        # Handle partial/underpaid status explicitly
+        if payment_status in ['partially_paid', 'underpaid']:
+            logger.warning(f"Payment {payment_id} is {payment_status}, not crediting")
+            db.session.commit()
+            return 'OK', 200
+        
+        # Add credits only when payment is finished AND credits haven't been added yet (atomic idempotency)
+        if payment_status == 'finished' and not crypto_payment.credits_added:
             user = User.query.get(crypto_payment.user_id)
             if user:
+                # Validate actually paid amount (if provided)
+                # Use outcome_amount (fiat) for comparison with price_amount
+                if 'outcome_amount' in data:
+                    actually_paid_fiat = float(data.get('outcome_amount'))
+                    if actually_paid_fiat < (crypto_payment.price_amount - 0.01):
+                        logger.error(f"Underpayment detected: expected ${crypto_payment.price_amount}, received ${actually_paid_fiat}")
+                        db.session.commit()
+                        return 'Underpayment', 400
+                
+                # Add credits to user account
                 user.credits += crypto_payment.credits_purchased
                 
+                # Create transaction record
                 transaction = Transaction(
                     user_id=user.id,
                     credits_used=-crypto_payment.credits_purchased,
@@ -642,22 +681,40 @@ def crypto_ipn_callback():
                 )
                 db.session.add(transaction)
                 
+                # Mark as processed to prevent duplicate credits (idempotency)
+                crypto_payment.credits_added = True
+                crypto_payment.processed_at = datetime.utcnow()
+                
                 logger.info(f"Added {crypto_payment.credits_purchased} credits to user {user.telegram_id}. New balance: {user.credits}")
                 
+                # Commit before sending notification
+                db.session.commit()
+                
+                # Send confirmation message after successful commit
                 try:
                     confirmation_msg = f"✅ Payment confirmed! {crypto_payment.credits_purchased} credits have been added to your account.\n\nNew balance: {user.credits} credits"
                     send_message(user.telegram_id, confirmation_msg)
                 except Exception as msg_error:
                     logger.error(f"Error sending confirmation message: {str(msg_error)}")
+                
+                return 'OK', 200
+        elif payment_status == 'finished' and crypto_payment.credits_added:
+            # Idempotency: Credits already added, just log and return success
+            logger.info(f"Payment {payment_id} already processed at {crypto_payment.processed_at}. Skipping duplicate credit addition.")
+            # Still commit to persist any status changes
+            db.session.commit()
+            return 'OK', 200
         
         elif payment_status == 'failed':
             logger.warning(f"Crypto payment {payment_id} failed")
+            db.session.commit()
             try:
                 user = User.query.get(crypto_payment.user_id)
                 if user:
                     send_message(user.telegram_id, "❌ Payment failed. Please try again or contact support.")
             except Exception as msg_error:
                 logger.error(f"Error sending failure message: {str(msg_error)}")
+            return 'OK', 200
         
         db.session.commit()
         return 'OK', 200
@@ -665,7 +722,8 @@ def crypto_ipn_callback():
     except Exception as e:
         logger.error(f"Error processing crypto IPN callback: {str(e)}")
         db.session.rollback()
-        return 'Error', 500
+        # Return 503 to trigger NOWPayments retry mechanism
+        return 'Server error - retry requested', 503
 
 @app.route('/api/crypto/payment-status/<payment_id>', methods=['GET'])
 def get_crypto_payment_status(payment_id):
