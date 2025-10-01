@@ -311,18 +311,41 @@ def set_webhook():
         return jsonify({"error": "Bot token not configured"}), 500
         
     try:
+        # Get domain from environment or request parameter
         url = request.args.get('url')
         if not url:
-            return jsonify({"error": "URL parameter is required"}), 400
+            # Try to auto-detect domain from Replit environment
+            domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
+            if domain:
+                if not domain.startswith('http'):
+                    url = f"https://{domain}"
+                else:
+                    url = domain
+            else:
+                return jsonify({"error": "URL parameter is required or REPLIT_DOMAINS must be set"}), 400
             
         webhook_url = f"{url}/{BOT_TOKEN}"
         telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
         
-        # For demonstration - in production should use requests
-        return jsonify({
-            "info": "Please make this request to set your webhook:", 
-            "url": telegram_url
-        })
+        # Make the actual request to Telegram
+        response = requests.get(telegram_url)
+        response_data = response.json()
+        
+        if response_data.get('ok'):
+            logger.info(f"Webhook set successfully to: {webhook_url}")
+            return jsonify({
+                "success": True,
+                "message": "Webhook set successfully",
+                "webhook_url": webhook_url,
+                "telegram_response": response_data
+            })
+        else:
+            logger.error(f"Failed to set webhook: {response_data}")
+            return jsonify({
+                "success": False,
+                "error": "Failed to set webhook",
+                "telegram_response": response_data
+            }), 400
     except Exception as e:
         logger.error(f"Error setting webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
