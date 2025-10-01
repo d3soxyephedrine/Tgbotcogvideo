@@ -30,10 +30,10 @@ Preferred communication style: Simple, everyday language.
   - Connection timeout: 10s, pool timeout: 30s
   - Statement timeout: 30s for query protection
 - **Resilience Features**:
-  - Non-blocking initialization (runs in background thread)
+  - Synchronous initialization during app startup ensures DB_AVAILABLE flag is set before handling requests
   - Automatic retry logic with exponential backoff (3 attempts)
   - Graceful degradation: App continues without database if unavailable
-  - Database status tracking with global availability flag
+  - Database status tracking with global availability flag compatible with gunicorn workers
   - All database operations are optional and wrapped in error handling
 
 ### LLM Provider Architecture
@@ -46,7 +46,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume 1 credit per AI message
-- **Pricing**: $0.10 per credit (packages: 10 credits/$1, 50 credits/$5, 100 credits/$10) - payable in cryptocurrency
+- **New User Bonus**: All new users automatically receive 50 free credits upon first interaction
+- **Pricing**: $0.10 per credit (packages: 200 credits/$20, 500 credits/$50, 1000 credits/$100) - payable in cryptocurrency
+- **Minimum Amounts**: Credit packages sized to meet cryptocurrency minimum payment requirements (typically $19-20 USD)
 - **Purchase Flow**:
   1. User sends /buy command in Telegram
   2. Bot provides link to web-based purchase page with telegram_id
@@ -143,12 +145,18 @@ Preferred communication style: Simple, everyday language.
 - **logging**: Application-wide logging infrastructure
 
 ### Payment Integration
-- **NOWPayments API**: Cryptocurrency payment processing integration
+- **NOWPayments API**: Cryptocurrency payment processing integration using custom wrapper (nowpayments_wrapper.py)
+- **Custom Implementation**: 
+  - Direct JSON-based API calls with proper Content-Type headers
+  - Enhanced error handling with detailed API error messages
+  - Minimum payment amount validation before creating payments
+  - Methods: create_payment(), currencies(), payment_status(), minimum_payment_amount()
 - **API Key Management**: `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` stored securely in environment secrets
 - **IPN Callback Support**: Application receives HTTPS callbacks from NOWPayments for payment verification
 - **Security**: HMAC-SHA512 signature verification ensures IPN callback authenticity and prevents tampering
 - **Database Persistence**: CryptoPayment records track payment status, addresses, amounts, and cryptocurrency types
 - **Multi-Currency Support**: Accepts various cryptocurrencies through NOWPayments gateway
+- **Payment Validation**: Checks minimum amounts for selected cryptocurrency before creating payment to prevent API errors
 
 ### Environment Configuration
 Required environment variables:

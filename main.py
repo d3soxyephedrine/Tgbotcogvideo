@@ -12,6 +12,7 @@ from llm_api import generate_response
 from models import db, User, Message, Payment, Transaction, CryptoPayment
 from datetime import datetime
 from nowpayments_api import NOWPaymentsAPI
+from nowpayments_wrapper import NOWPaymentsWrapper
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -141,9 +142,9 @@ def init_database():
                 logger.error("Database initialization failed after all retries")
                 logger.warning("App will continue without database - some features will be disabled")
 
-# Initialize database in background thread (non-blocking)
+# Initialize database synchronously (blocking) to ensure DB_AVAILABLE is set before handling requests
 if DATABASE_URL:
-    threading.Thread(target=init_database, daemon=True).start()
+    init_database()
 else:
     logger.info("Database initialization skipped - running without database")
 
@@ -152,11 +153,11 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN environment variable is not set!")
 
-# Initialize NOWPayments
+# Initialize NOWPayments with custom wrapper
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY")
 if NOWPAYMENTS_API_KEY:
-    nowpayments = NOWPaymentsAPI(NOWPAYMENTS_API_KEY)
-    logger.info("NOWPayments API configured")
+    nowpayments = NOWPaymentsWrapper(NOWPAYMENTS_API_KEY)
+    logger.info("NOWPayments API configured (using custom wrapper)")
 else:
     nowpayments = None
     logger.warning("NOWPAYMENTS_API_KEY not set - crypto payment features will be disabled")
@@ -450,6 +451,20 @@ def get_crypto_currencies():
         logger.error(f"Error fetching crypto currencies: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/crypto/minimum-amount', methods=['GET'])
+def get_minimum_payment_amount():
+    """Get minimum payment amount for a cryptocurrency"""
+    if not nowpayments:
+        return jsonify({"error": "Crypto payments not configured"}), 503
+    
+    try:
+        currency = request.args.get('currency', 'btc')
+        min_amount_data = nowpayments.minimum_payment_amount(currency_from='usd', currency_to=currency.lower())
+        return jsonify(min_amount_data), 200
+    except Exception as e:
+        logger.error(f"Error fetching minimum payment amount: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/crypto/create-payment', methods=['POST'])
 def create_crypto_payment():
     """Create a crypto payment using NOWPayments"""
@@ -476,6 +491,18 @@ def create_crypto_payment():
         
         # Calculate amount in USD ($0.10 per credit)
         price_amount = credits * 0.10
+        
+        # Check minimum payment amount
+        try:
+            min_amount_data = nowpayments.minimum_payment_amount(currency_from='usd', currency_to=pay_currency.lower())
+            min_fiat_amount = float(min_amount_data.get('fiat_equivalent', 0))
+            if price_amount < min_fiat_amount:
+                min_credits = int(min_fiat_amount / 0.10) + 1
+                return jsonify({
+                    "error": f"Amount too low. Minimum payment for {pay_currency.upper()} is ${min_fiat_amount:.2f} ({min_credits} credits)"
+                }), 400
+        except Exception as e:
+            logger.warning(f"Could not check minimum amount: {str(e)}")
         
         # Get or create user
         user = User.query.filter_by(telegram_id=user_telegram_id).first()
@@ -1060,27 +1087,27 @@ def buy_credits_page():
                 </div>
                 
                 <div class="packages">
-                    <div class="package" onclick="handlePurchase(10)">
-                        <div class="credits">10</div>
+                    <div class="package" onclick="handlePurchase(200)">
+                        <div class="credits">200</div>
                         <div class="credits-label">Credits</div>
-                        <div class="price">$1.00</div>
+                        <div class="price">$20.00</div>
                         <div class="per-credit">$0.10 per credit</div>
                         <button class="btn">Get Started</button>
                     </div>
                     
-                    <div class="package popular" onclick="handlePurchase(50)">
+                    <div class="package popular" onclick="handlePurchase(500)">
                         <div class="badge">POPULAR</div>
-                        <div class="credits">50</div>
+                        <div class="credits">500</div>
                         <div class="credits-label">Credits</div>
-                        <div class="price">$5.00</div>
+                        <div class="price">$50.00</div>
                         <div class="per-credit">$0.10 per credit</div>
                         <button class="btn">Best Value</button>
                     </div>
                     
-                    <div class="package" onclick="handlePurchase(100)">
-                        <div class="credits">100</div>
+                    <div class="package" onclick="handlePurchase(1000)">
+                        <div class="credits">1000</div>
                         <div class="credits-label">Credits</div>
-                        <div class="price">$10.00</div>
+                        <div class="price">$100.00</div>
                         <div class="per-credit">$0.10 per credit</div>
                         <button class="btn">Power User</button>
                     </div>
