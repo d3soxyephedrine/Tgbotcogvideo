@@ -1,11 +1,11 @@
-modules = ["python-3.11", "postgresql-16", "python3"]
+modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["sh", "-c", "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 
 [workflows]
 runButton = "Project"
@@ -37,34 +37,3 @@ waitForPort = 5000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 33493
-externalPort = 3000
-
-[[ports]]
-localPort = 33705
-externalPort = 3003
-
-[[ports]]
-localPort = 36893
-externalPort = 3001
-
-[[ports]]
-localPort = 42533
-externalPort = 5000
-
-[[ports]]
-localPort = 43627
-externalPort = 4200
-
-[[ports]]
-localPort = 44275
-externalPort = 3002
-
-[[ports]]
-localPort = 46467
-externalPort = 5173
-
-[agent]
-integrations = ["flask_stripe:1.0.0"]
