@@ -438,6 +438,192 @@ def test_models():
         logger.error(f"Error in test_models endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/buy', methods=['GET'])
+def buy_credits_page():
+    """Buy credits page - displays credit packages and payment options"""
+    telegram_id = request.args.get('telegram_id', '')
+    
+    if not telegram_id:
+        return "Error: telegram_id parameter is required", 400
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Buy Credits</title>
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                   min-height: 100vh; padding: 20px; }}
+            .container {{ max-width: 600px; margin: 0 auto; background: white; 
+                         border-radius: 20px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+            h1 {{ color: #333; margin-bottom: 10px; text-align: center; }}
+            .subtitle {{ color: #666; text-align: center; margin-bottom: 30px; font-size: 14px; }}
+            .packages {{ display: grid; gap: 15px; margin-bottom: 25px; }}
+            .package {{ border: 2px solid #e0e0e0; border-radius: 12px; padding: 20px; 
+                       cursor: pointer; transition: all 0.3s; position: relative; }}
+            .package:hover {{ border-color: #667eea; transform: translateY(-2px); 
+                            box-shadow: 0 5px 15px rgba(102,126,234,0.2); }}
+            .package.selected {{ border-color: #667eea; background: #f8f9ff; }}
+            .package-title {{ font-size: 20px; font-weight: bold; color: #333; margin-bottom: 5px; }}
+            .package-price {{ font-size: 28px; font-weight: bold; color: #667eea; margin-bottom: 5px; }}
+            .package-desc {{ color: #666; font-size: 14px; }}
+            .form-group {{ margin-bottom: 20px; }}
+            label {{ display: block; margin-bottom: 8px; font-weight: 600; color: #333; }}
+            select {{ width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; 
+                     font-size: 16px; transition: border-color 0.3s; }}
+            select:focus {{ outline: none; border-color: #667eea; }}
+            button {{ width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                     color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; 
+                     cursor: pointer; transition: transform 0.2s; }}
+            button:hover {{ transform: translateY(-2px); }}
+            button:disabled {{ opacity: 0.6; cursor: not-allowed; }}
+            .result {{ margin-top: 20px; padding: 15px; border-radius: 8px; display: none; }}
+            .result.success {{ background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }}
+            .result.error {{ background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }}
+            .payment-info {{ margin-top: 15px; }}
+            .payment-info div {{ margin-bottom: 10px; padding: 10px; background: #f8f9fa; 
+                                border-radius: 5px; word-break: break-all; }}
+            .payment-info strong {{ display: block; margin-bottom: 5px; color: #667eea; }}
+            .loading {{ text-align: center; padding: 15px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>💎 Buy Credits</h1>
+            <p class="subtitle">Select a package and pay with cryptocurrency</p>
+            
+            <div class="packages" id="packages">
+                <div class="package" data-credits="200" data-price="20">
+                    <div class="package-title">Starter Pack</div>
+                    <div class="package-price">$20</div>
+                    <div class="package-desc">200 credits • $0.10 per credit</div>
+                </div>
+                <div class="package" data-credits="500" data-price="50">
+                    <div class="package-title">Popular Pack</div>
+                    <div class="package-price">$50</div>
+                    <div class="package-desc">500 credits • $0.10 per credit</div>
+                </div>
+                <div class="package" data-credits="1000" data-price="100">
+                    <div class="package-title">Value Pack</div>
+                    <div class="package-price">$100</div>
+                    <div class="package-desc">1000 credits • $0.10 per credit</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="currency">Payment Currency</label>
+                <select id="currency">
+                    <option value="">Loading currencies...</option>
+                </select>
+            </div>
+            
+            <button id="createPayment" onclick="createPayment()" disabled>Create Payment</button>
+            
+            <div id="result" class="result"></div>
+        </div>
+        
+        <script>
+            const telegramId = '{telegram_id}';
+            let selectedPackage = null;
+            
+            // Package selection
+            document.querySelectorAll('.package').forEach(pkg => {{
+                pkg.addEventListener('click', () => {{
+                    document.querySelectorAll('.package').forEach(p => p.classList.remove('selected'));
+                    pkg.classList.add('selected');
+                    selectedPackage = {{
+                        credits: parseInt(pkg.dataset.credits),
+                        price: parseFloat(pkg.dataset.price)
+                    }};
+                    updateButtonState();
+                }});
+            }});
+            
+            // Load currencies
+            fetch('/api/crypto/currencies')
+                .then(r => r.json())
+                .then(data => {{
+                    const select = document.getElementById('currency');
+                    const currencies = data.currencies || [];
+                    select.innerHTML = '<option value="">-- Select Currency --</option>' + 
+                        currencies.map(c => `<option value="${{c}}">${{c.toUpperCase()}}</option>`).join('');
+                    updateButtonState();
+                }})
+                .catch(err => {{
+                    document.getElementById('currency').innerHTML = '<option value="">Error loading currencies</option>';
+                }});
+            
+            function updateButtonState() {{
+                const btn = document.getElementById('createPayment');
+                const currency = document.getElementById('currency').value;
+                btn.disabled = !selectedPackage || !currency;
+            }}
+            
+            document.getElementById('currency').addEventListener('change', updateButtonState);
+            
+            async function createPayment() {{
+                const resultDiv = document.getElementById('result');
+                const button = document.getElementById('createPayment');
+                const currency = document.getElementById('currency').value;
+                
+                if (!selectedPackage || !currency) {{
+                    return;
+                }}
+                
+                button.disabled = true;
+                resultDiv.className = 'result';
+                resultDiv.innerHTML = '<div class="loading">Creating payment...</div>';
+                resultDiv.style.display = 'block';
+                
+                try {{
+                    const response = await fetch('/api/crypto/create-payment', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            telegram_id: telegramId,
+                            credits: selectedPackage.credits,
+                            pay_currency: currency
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {{
+                        resultDiv.className = 'result success';
+                        resultDiv.innerHTML = `
+                            <h3>✅ Payment Created Successfully!</h3>
+                            <div class="payment-info">
+                                <div><strong>Payment ID:</strong> ${{data.payment_id}}</div>
+                                <div><strong>Send ${{data.pay_amount}} ${{data.pay_currency}}</strong> to this address:</div>
+                                <div style="font-family: monospace; font-size: 14px;"><strong>Address:</strong> ${{data.pay_address}}</div>
+                                <div><strong>Status:</strong> ${{data.payment_status}}</div>
+                                <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
+                                    ⏳ Credits will be added automatically when payment is confirmed
+                                </div>
+                            </div>
+                        `;
+                    }} else {{
+                        resultDiv.className = 'result error';
+                        resultDiv.innerHTML = `<strong>❌ Error:</strong> ${{data.error || 'Payment creation failed'}}`;
+                        button.disabled = false;
+                    }}
+                }} catch (err) {{
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `<strong>❌ Error:</strong> ${{err.message}}`;
+                    button.disabled = false;
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+    
+    return render_template_string(html)
+
 @app.route('/api/crypto/currencies', methods=['GET'])
 def get_crypto_currencies():
     """Get list of available cryptocurrencies"""
@@ -493,6 +679,12 @@ def create_crypto_payment():
         
         if not user_telegram_id:
             return jsonify({"error": "telegram_id is required"}), 400
+        
+        # Convert telegram_id to integer (Telegram IDs are always numeric)
+        try:
+            user_telegram_id = int(user_telegram_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "telegram_id must be a valid number"}), 400
         
         # Calculate amount in USD ($0.10 per credit)
         price_amount = credits * 0.10
@@ -765,582 +957,6 @@ def get_crypto_payment_status(payment_id):
     except Exception as e:
         logger.error(f"Error checking crypto payment status: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
-@app.route('/buy-credits', methods=['GET'])
-def buy_credits_page():
-    """Display credit purchase page with package options"""
-    telegram_id = request.args.get('telegram_id')
-    
-    if not telegram_id:
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Error - Purchase Credits</title>
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        min-height: 100vh;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        margin: 0;
-                        padding: 20px;
-                    }
-                    .container {
-                        background: white;
-                        border-radius: 20px;
-                        padding: 40px;
-                        max-width: 500px;
-                        width: 100%;
-                        text-align: center;
-                        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-                    }
-                    .error-icon {
-                        font-size: 64px;
-                        color: #d32f2f;
-                        margin-bottom: 20px;
-                    }
-                    h1 {
-                        color: #d32f2f;
-                        margin: 0 0 10px 0;
-                    }
-                    p {
-                        color: #666;
-                        line-height: 1.6;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="error-icon">⚠️</div>
-                    <h1>Missing User ID</h1>
-                    <p>Please access this page from the Telegram bot using the /buy command.</p>
-                </div>
-            </body>
-            </html>
-        """), 400
-    
-    html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Purchase Credits - AI Bot</title>
-            <style>
-                * {{
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }}
-                
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 20px;
-                }}
-                
-                .container {{
-                    background: white;
-                    border-radius: 20px;
-                    padding: 40px;
-                    max-width: 800px;
-                    width: 100%;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-                }}
-                
-                h1 {{
-                    color: #333;
-                    text-align: center;
-                    margin-bottom: 10px;
-                    font-size: 32px;
-                }}
-                
-                .subtitle {{
-                    text-align: center;
-                    color: #666;
-                    margin-bottom: 40px;
-                    font-size: 16px;
-                }}
-                
-                .packages {{
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                    gap: 20px;
-                    margin-top: 30px;
-                }}
-                
-                .package {{
-                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                    border-radius: 15px;
-                    padding: 30px;
-                    text-align: center;
-                    transition: transform 0.3s, box-shadow 0.3s;
-                    cursor: pointer;
-                    border: 3px solid transparent;
-                }}
-                
-                .package:hover {{
-                    transform: translateY(-5px);
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-                    border-color: #667eea;
-                }}
-                
-                .package.popular {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                }}
-                
-                .package.popular .credits {{
-                    color: white;
-                }}
-                
-                .package.popular .price {{
-                    color: #f0f0f0;
-                }}
-                
-                .badge {{
-                    background: #fbbf24;
-                    color: #78350f;
-                    padding: 4px 12px;
-                    border-radius: 12px;
-                    font-size: 12px;
-                    font-weight: bold;
-                    display: inline-block;
-                    margin-bottom: 10px;
-                }}
-                
-                .credits {{
-                    font-size: 48px;
-                    font-weight: bold;
-                    color: #667eea;
-                    margin: 10px 0;
-                }}
-                
-                .credits-label {{
-                    font-size: 14px;
-                    color: #666;
-                    margin-bottom: 15px;
-                }}
-                
-                .package.popular .credits-label {{
-                    color: #f0f0f0;
-                }}
-                
-                .price {{
-                    font-size: 28px;
-                    font-weight: bold;
-                    color: #333;
-                    margin: 15px 0;
-                }}
-                
-                .per-credit {{
-                    font-size: 12px;
-                    color: #999;
-                    margin-bottom: 20px;
-                }}
-                
-                .package.popular .per-credit {{
-                    color: #e0e0e0;
-                }}
-                
-                .btn {{
-                    background: #667eea;
-                    color: white;
-                    border: none;
-                    padding: 12px 24px;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    width: 100%;
-                    transition: background 0.3s;
-                }}
-                
-                .btn:hover {{
-                    background: #5568d3;
-                }}
-                
-                .package.popular .btn {{
-                    background: white;
-                    color: #667eea;
-                }}
-                
-                .package.popular .btn:hover {{
-                    background: #f0f0f0;
-                }}
-                
-                .info {{
-                    background: #f0f9ff;
-                    border-left: 4px solid #3b82f6;
-                    padding: 15px;
-                    margin-top: 30px;
-                    border-radius: 5px;
-                }}
-                
-                .info p {{
-                    color: #1e40af;
-                    margin: 5px 0;
-                    font-size: 14px;
-                }}
-                
-                .loading {{
-                    display: none;
-                    text-align: center;
-                    margin-top: 20px;
-                    color: #667eea;
-                }}
-                
-                .loading.active {{
-                    display: block;
-                }}
-                
-                .payment-methods {{
-                    margin-bottom: 40px;
-                }}
-                
-                .method-buttons {{
-                    display: flex;
-                    gap: 15px;
-                    justify-content: center;
-                    flex-wrap: wrap;
-                }}
-                
-                .method-btn {{
-                    background: white;
-                    border: 3px solid #e0e0e0;
-                    border-radius: 12px;
-                    padding: 15px 30px;
-                    font-size: 18px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.3s;
-                    color: #333;
-                }}
-                
-                .method-btn:hover {{
-                    border-color: #667eea;
-                    transform: translateY(-2px);
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-                }}
-                
-                .method-btn.active {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    border-color: #667eea;
-                }}
-                
-                .crypto-selector {{
-                    display: none;
-                    margin-top: 15px;
-                    text-align: center;
-                }}
-                
-                .crypto-selector.show {{
-                    display: block;
-                }}
-                
-                .crypto-selector select {{
-                    padding: 10px 20px;
-                    border: 2px solid #667eea;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    background: white;
-                    cursor: pointer;
-                    min-width: 200px;
-                }}
-                
-                #cryptoPaymentInfo {{
-                    display: none;
-                    background: #f8f9fa;
-                    padding: 30px;
-                    border-radius: 15px;
-                    margin-top: 30px;
-                    text-align: left;
-                }}
-                
-                #cryptoPaymentInfo.show {{
-                    display: block;
-                }}
-                
-                .qr-code-container {{
-                    text-align: center;
-                    margin: 20px 0;
-                }}
-                
-                .payment-address {{
-                    background: white;
-                    padding: 15px;
-                    border-radius: 8px;
-                    border: 2px solid #667eea;
-                    word-break: break-all;
-                    font-family: monospace;
-                    margin: 10px 0;
-                }}
-                
-                .copy-btn {{
-                    background: #667eea;
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    margin-top: 10px;
-                }}
-                
-                .copy-btn:hover {{
-                    background: #5568d3;
-                }}
-                
-                .status-badge {{
-                    display: inline-block;
-                    padding: 5px 15px;
-                    border-radius: 20px;
-                    font-weight: bold;
-                    margin: 10px 0;
-                }}
-                
-                .status-waiting {{ background: #ffc107; color: #000; }}
-                .status-confirming {{ background: #2196F3; color: white; }}
-                .status-confirmed {{ background: #4CAF50; color: white; }}
-                .status-finished {{ background: #00c853; color: white; }}
-                .status-failed {{ background: #f44336; color: white; }}
-                
-                @media (max-width: 768px) {{
-                    .container {{
-                        padding: 20px;
-                    }}
-                    
-                    h1 {{
-                        font-size: 24px;
-                    }}
-                    
-                    .packages {{
-                        grid-template-columns: 1fr;
-                    }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>💳 Purchase Credits</h1>
-                <p class="subtitle">Choose a package to power your AI conversations</p>
-                
-                <div class="payment-methods">
-                    <h2 style="text-align: center; margin-bottom: 20px; color: #333;">Pay with Cryptocurrency</h2>
-                    <div style="text-align: center;">
-                        <label for="cryptoCurrency" style="font-size: 16px; margin-right: 10px;">Select Cryptocurrency:</label>
-                        <select id="cryptoCurrency">
-                            <option value="">Loading...</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="packages">
-                    <div class="package" onclick="handlePurchase(200)">
-                        <div class="credits">200</div>
-                        <div class="credits-label">Credits</div>
-                        <div class="price">$20.00</div>
-                        <div class="per-credit">$0.10 per credit</div>
-                        <button class="btn">Get Started</button>
-                    </div>
-                    
-                    <div class="package popular" onclick="handlePurchase(500)">
-                        <div class="badge">POPULAR</div>
-                        <div class="credits">500</div>
-                        <div class="credits-label">Credits</div>
-                        <div class="price">$50.00</div>
-                        <div class="per-credit">$0.10 per credit</div>
-                        <button class="btn">Best Value</button>
-                    </div>
-                    
-                    <div class="package" onclick="handlePurchase(1000)">
-                        <div class="credits">1000</div>
-                        <div class="credits-label">Credits</div>
-                        <div class="price">$100.00</div>
-                        <div class="per-credit">$0.10 per credit</div>
-                        <button class="btn">Power User</button>
-                    </div>
-                </div>
-                
-                <div id="cryptoPaymentInfo">
-                    <h2>⏳ Awaiting Payment</h2>
-                    <p><strong>Credits:</strong> <span id="cryptoCredits"></span></p>
-                    <p><strong>Amount to Pay:</strong> <span id="cryptoAmount"></span> <span id="cryptoCurrency"></span></p>
-                    <p><strong>Payment Address:</strong></p>
-                    <div class="payment-address" id="cryptoAddress"></div>
-                    <button class="copy-btn" onclick="copyAddress()">📋 Copy Address</button>
-                    <p><strong>Status:</strong> <span class="status-badge" id="cryptoStatus"></span></p>
-                    <p style="margin-top: 20px; color: #666;">Send the exact amount to the address above. Your credits will be added automatically once the payment is confirmed.</p>
-                    <button onclick="checkPaymentStatus()" style="margin-top: 20px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">🔄 Check Status</button>
-                </div>
-                
-                <div class="info">
-                    <p>💡 <strong>What are credits?</strong></p>
-                    <p>Each AI message costs 1 credit. Credits are used to access our uncensored AI models.</p>
-                    <p>🔒 Secure crypto payments powered by NOWPayments</p>
-                </div>
-                
-                <div class="loading" id="loading">
-                    <p>🔄 Creating secure checkout session...</p>
-                </div>
-            </div>
-            
-            <script>
-                let currentPaymentId = null;
-                let statusCheckInterval = null;
-                let availableCryptocurrencies = [];
-                
-                async function loadCryptocurrencies() {{
-                    try {{
-                        const response = await fetch('/api/crypto/currencies');
-                        const data = await response.json();
-                        
-                        if (data.currencies && data.currencies.length > 0) {{
-                            availableCryptocurrencies = data.currencies;
-                            const select = document.getElementById('cryptoCurrency');
-                            select.innerHTML = '<option value="">Select a cryptocurrency...</option>';
-                            
-                            const popular = ['btc', 'eth', 'usdt', 'ltc', 'bnb'];
-                            popular.forEach(crypto => {{
-                                if (data.currencies.includes(crypto)) {{
-                                    const option = document.createElement('option');
-                                    option.value = crypto;
-                                    option.textContent = crypto.toUpperCase();
-                                    select.appendChild(option);
-                                }}
-                            }});
-                            
-                            const separator = document.createElement('option');
-                            separator.disabled = true;
-                            separator.textContent = '──────────';
-                            select.appendChild(separator);
-                            
-                            data.currencies.forEach(crypto => {{
-                                if (!popular.includes(crypto)) {{
-                                    const option = document.createElement('option');
-                                    option.value = crypto;
-                                    option.textContent = crypto.toUpperCase();
-                                    select.appendChild(option);
-                                }}
-                            }});
-                        }}
-                    }} catch (error) {{
-                        console.error('Error loading cryptocurrencies:', error);
-                        document.getElementById('cryptoCurrency').innerHTML = '<option value="">Error loading currencies</option>';
-                    }}
-                }}
-                
-                loadCryptocurrencies();
-                
-                function handlePurchase(credits) {{
-                    const selectedCrypto = document.getElementById('cryptoCurrency').value;
-                    if (!selectedCrypto) {{
-                        alert('Please select a cryptocurrency first');
-                        return;
-                    }}
-                    purchaseWithCrypto(credits, selectedCrypto);
-                }}
-                
-                async function purchaseWithCrypto(credits, payCurrency) {{
-                    try {{
-                        const response = await fetch('/api/crypto/create-payment', {{
-                            method: 'POST',
-                            headers: {{
-                                'Content-Type': 'application/json'
-                            }},
-                            body: JSON.stringify({{
-                                credits: credits,
-                                pay_currency: payCurrency,
-                                telegram_id: '{telegram_id}'
-                            }})
-                        }});
-                        
-                        const data = await response.json();
-                        
-                        if (data.success) {{
-                            currentPaymentId = data.payment_id;
-                            
-                            document.getElementById('cryptoCredits').textContent = credits;
-                            document.getElementById('cryptoAmount').textContent = data.pay_amount;
-                            document.getElementById('cryptoCurrency').textContent = data.pay_currency;
-                            document.getElementById('cryptoAddress').textContent = data.pay_address;
-                            updatePaymentStatus(data.payment_status);
-                            
-                            document.getElementById('cryptoPaymentInfo').classList.add('show');
-                            
-                            if (statusCheckInterval) {{
-                                clearInterval(statusCheckInterval);
-                            }}
-                            statusCheckInterval = setInterval(checkPaymentStatus, 10000);
-                            
-                            document.getElementById('cryptoPaymentInfo').scrollIntoView({{ behavior: 'smooth' }});
-                        }} else {{
-                            alert('Error creating payment: ' + (data.error || 'Unknown error'));
-                        }}
-                    }} catch (error) {{
-                        console.error('Error:', error);
-                        alert('Error creating crypto payment. Please try again.');
-                    }}
-                }}
-                
-                async function checkPaymentStatus() {{
-                    if (!currentPaymentId) return;
-                    
-                    try {{
-                        const response = await fetch(`/api/crypto/payment-status/${{currentPaymentId}}`);
-                        const data = await response.json();
-                        
-                        if (data.success) {{
-                            updatePaymentStatus(data.payment_status);
-                            
-                            if (data.payment_status === 'finished') {{
-                                clearInterval(statusCheckInterval);
-                                alert('Payment confirmed! Your credits have been added.');
-                                setTimeout(() => {{
-                                    window.location.reload();
-                                }}, 2000);
-                            }} else if (data.payment_status === 'failed') {{
-                                clearInterval(statusCheckInterval);
-                                alert('Payment failed. Please try again.');
-                            }}
-                        }}
-                    }} catch (error) {{
-                        console.error('Error checking payment status:', error);
-                    }}
-                }}
-                
-                function updatePaymentStatus(status) {{
-                    const statusElement = document.getElementById('cryptoStatus');
-                    statusElement.textContent = status.toUpperCase();
-                    statusElement.className = 'status-badge status-' + status;
-                }}
-                
-                function copyAddress() {{
-                    const address = document.getElementById('cryptoAddress').textContent;
-                    navigator.clipboard.writeText(address).then(() => {{
-                        const btn = event.target;
-                        const originalText = btn.textContent;
-                        btn.textContent = '✓ Copied!';
-                        setTimeout(() => {{
-                            btn.textContent = originalText;
-                        }}, 2000);
-                    }});
-                }}
-            </script>
-        </body>
-        </html>
-    """
-    
-    return render_template_string(html), 200
 
 @app.route('/payment-history')
 def payment_history():
