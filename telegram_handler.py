@@ -153,7 +153,8 @@ def process_update(update):
                             telegram_id=telegram_id,
                             username=username,
                             first_name=first_name,
-                            last_name=last_name
+                            last_name=last_name,
+                            credits=50
                         )
                         db.session.add(user)
                         db.session.commit()

@@ -476,7 +476,7 @@ def create_crypto_payment():
         user = User.query.filter_by(telegram_id=user_telegram_id).first()
         if not user:
             logger.warning(f"User {user_telegram_id} not found, creating new user")
-            user = User(telegram_id=user_telegram_id)
+            user = User(telegram_id=user_telegram_id, credits=50)
             db.session.add(user)
             db.session.commit()
         
