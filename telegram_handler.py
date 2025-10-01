@@ -240,12 +240,12 @@ def process_update(update):
             
             response = f"""💰 Credit Packages
 
-• 10 credits = $1.00
-• 50 credits = $5.00
-• 100 credits = $10.00
+• 200 credits = $20.00
+• 500 credits = $50.00
+• 1000 credits = $100.00
 
 To purchase credits, visit:
-https://{domain}/buy-credits?telegram_id={telegram_id}
+https://{domain}/buy?telegram_id={telegram_id}
 
 Each AI message costs 1 credit.
 """
