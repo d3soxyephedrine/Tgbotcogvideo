@@ -502,15 +502,15 @@ def buy_credits_page():
                     <div class="package-price">$20</div>
                     <div class="package-desc">200 credits • $0.10 per credit</div>
                 </div>
-                <div class="package" data-credits="500" data-price="50">
+                <div class="package" data-credits="500" data-price="40">
                     <div class="package-title">Popular Pack</div>
-                    <div class="package-price">$50</div>
-                    <div class="package-desc">500 credits • $0.10 per credit</div>
+                    <div class="package-price">$40</div>
+                    <div class="package-desc">500 credits • $0.08 per credit</div>
                 </div>
-                <div class="package" data-credits="1000" data-price="100">
+                <div class="package" data-credits="1000" data-price="60">
                     <div class="package-title">Value Pack</div>
-                    <div class="package-price">$100</div>
-                    <div class="package-desc">1000 credits • $0.10 per credit</div>
+                    <div class="package-price">$60</div>
+                    <div class="package-desc">1000 credits • $0.06 per credit</div>
                 </div>
             </div>
             
@@ -686,17 +686,28 @@ def create_crypto_payment():
         except (ValueError, TypeError):
             return jsonify({"error": "telegram_id must be a valid number"}), 400
         
-        # Calculate amount in USD ($0.10 per credit)
-        price_amount = credits * 0.10
+        # Calculate amount in USD based on credit package
+        CREDIT_PACKAGES = {
+            200: 20.0,
+            500: 40.0,
+            1000: 60.0
+        }
+        
+        if credits not in CREDIT_PACKAGES:
+            return jsonify({"error": f"Invalid credit amount. Valid options: {list(CREDIT_PACKAGES.keys())}"}), 400
+        
+        price_amount = CREDIT_PACKAGES[credits]
         
         # Check minimum payment amount
         try:
             min_amount_data = nowpayments.minimum_payment_amount(currency_from='usd', currency_to=pay_currency.lower())
             min_fiat_amount = float(min_amount_data.get('fiat_equivalent', 0))
             if price_amount < min_fiat_amount:
-                min_credits = int(min_fiat_amount / 0.10) + 1
+                # Find the smallest package that meets minimum
+                suitable_packages = [c for c, p in CREDIT_PACKAGES.items() if p >= min_fiat_amount]
+                min_package = min(suitable_packages) if suitable_packages else 200
                 return jsonify({
-                    "error": f"Amount too low. Minimum payment for {pay_currency.upper()} is ${min_fiat_amount:.2f} ({min_credits} credits)"
+                    "error": f"Amount too low. Minimum payment for {pay_currency.upper()} is ${min_fiat_amount:.2f}. Please select {min_package} credits package or higher."
                 }), 400
         except Exception as e:
             logger.warning(f"Could not check minimum amount: {str(e)}")
