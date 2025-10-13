@@ -201,13 +201,6 @@ def create_request_data(provider: Provider, user_message: str, model: str, conve
     
     # Always include system prompt (NEVER trim this)
     system_prompt = get_system_prompt()
-    
-    # Clean system prompt for OpenAI (remove special tokens that cause 400 errors)
-    if provider == Provider.OPENAI:
-        # Remove <|end|>, <|start|>, <|message|> tokens that OpenAI doesn't support
-        system_prompt = system_prompt.replace("<|end|>", "").replace("<|start|>", "").replace("<|message|>", "").strip()
-        logger.debug("Cleaned system prompt for OpenAI (removed special tokens)")
-    
     system_tokens = estimate_tokens(system_prompt)
     
     # Sanity check: if system prompt alone exceeds budget, we have a configuration problem
