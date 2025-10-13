@@ -334,12 +334,117 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
     return f"Error: All {max_retries} attempts failed"
 
 
-def generate_response(user_message: str, conversation_history: list = None) -> str:
+def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
+    """Make streaming API call to OpenRouter with progressive updates
+    
+    Args:
+        user_message: The user's message
+        conversation_history: Optional conversation history
+        update_callback: Optional function(text) called with accumulated response for progressive updates
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Complete response text
+    """
+    
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not configured")
+    
+    model = os.environ.get('MODEL', DEFAULT_MODEL)
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/yourusername/llm-api",
+        "X-Title": "LLM API Client"
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            data = create_request_data(user_message, model, conversation_history)
+            data["stream"] = True  # Enable streaming
+            
+            logger.info(f"Streaming API call attempt {attempt + 1} to OpenRouter")
+            
+            response = requests.post(
+                OPENROUTER_ENDPOINT,
+                headers=headers,
+                json=data,
+                timeout=120,
+                stream=True
+            )
+            
+            response.raise_for_status()
+            
+            accumulated_text = ""
+            last_update_time = time.time()
+            update_interval = 1.0  # Update every 1 second to avoid rate limits
+            
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                    
+                line = line.decode('utf-8')
+                
+                if line.startswith('data: '):
+                    data_str = line[6:]
+                    
+                    if data_str == '[DONE]':
+                        break
+                    
+                    try:
+                        chunk_data = json.loads(data_str)
+                        choices = chunk_data.get('choices', [])
+                        
+                        if choices:
+                            delta = choices[0].get('delta', {})
+                            content = delta.get('content', '')
+                            
+                            if content:
+                                accumulated_text += content
+                                
+                                # Progressive update with rate limiting
+                                current_time = time.time()
+                                if update_callback and (current_time - last_update_time) >= update_interval:
+                                    update_callback(accumulated_text)
+                                    last_update_time = current_time
+                                    
+                    except json.JSONDecodeError:
+                        continue
+            
+            # Final update with complete text
+            if update_callback and accumulated_text:
+                update_callback(accumulated_text)
+            
+            if accumulated_text:
+                return accumulated_text
+            else:
+                return "Error: Empty response from API"
+                
+        except requests.exceptions.Timeout:
+            logger.warning(f"Streaming timeout on attempt {attempt + 1}")
+        except requests.exceptions.ConnectionError:
+            logger.warning(f"Streaming connection error on attempt {attempt + 1}")
+        except Exception as e:
+            logger.error(f"Streaming attempt {attempt + 1} failed: {str(e)}")
+            break
+        
+        if attempt < max_retries - 1:
+            sleep_time = 2 ** attempt
+            logger.info(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+    
+    return f"Error: All {max_retries} streaming attempts failed"
+
+
+def generate_response(user_message: str, conversation_history: list = None, use_streaming: bool = True, update_callback=None) -> str:
     """Main response generation function with enhanced error handling
     
     Args:
         user_message: The current user message
         conversation_history: Optional list of previous messages in format [{"role": "user/assistant", "content": "..."}]
+        use_streaming: Whether to use streaming API (default: True for better performance)
+        update_callback: Optional callback for progressive updates when streaming
     """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
@@ -348,7 +453,10 @@ def generate_response(user_message: str, conversation_history: list = None) -> s
         model = os.environ.get('MODEL', DEFAULT_MODEL)
         logger.info(f"Generating response using OpenRouter with model {model}")
         
-        return call_openai_api(user_message, conversation_history)
+        if use_streaming:
+            return call_openai_api_streaming(user_message, conversation_history, update_callback)
+        else:
+            return call_openai_api(user_message, conversation_history)
             
     except ValueError as e:
         logger.error(f"Configuration error: {str(e)}")

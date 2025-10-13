@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+import threading
 from llm_api import generate_response
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
@@ -80,6 +81,51 @@ def send_message(chat_id, text, parse_mode="Markdown"):
         return result
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
+        return {"error": str(e)}
+
+
+def edit_message(chat_id, message_id, text, parse_mode=None):
+    """Edit an existing message in Telegram
+    
+    Args:
+        chat_id (int): The ID of the chat
+        message_id (int): The ID of the message to edit
+        text (str): The new text
+        parse_mode (str | None): Parse mode for formatting
+    
+    Returns:
+        dict: The response from Telegram API
+    """
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not configured")
+        return {"error": "Bot token not configured"}
+    
+    try:
+        # Telegram limits message edits to 4096 characters
+        if len(text) > 4000:
+            text = text[:4000] + "..."
+        
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+            
+        response = requests.post(
+            f"{BASE_URL}/editMessageText",
+            json=payload
+        )
+        result = response.json()
+        
+        # Log errors for debugging (except "message not modified" which is expected)
+        if not result.get("ok") and "message is not modified" not in result.get("description", "").lower():
+            logger.debug(f"Telegram edit error: {result}")
+            
+        return result
+    except Exception as e:
+        logger.debug(f"Error editing message: {str(e)}")
         return {"error": str(e)}
 
 def get_help_message():
@@ -354,52 +400,85 @@ Each AI message costs 1 credit.
                 logger.error(f"Error fetching conversation history: {str(db_error)}")
                 conversation_history = []
         
-        # Generate response from LLM with conversation context
+        # Generate response from LLM with conversation context using streaming
         current_model = os.environ.get('MODEL', DEFAULT_MODEL)
-        llm_response = generate_response(text, conversation_history)
         
-        # Store message and deduct credits if available
+        # Send initial message that will be updated with streaming response
+        initial_msg = send_message(chat_id, "⏳ Generating response...", parse_mode=None)
+        streaming_message_id = None
+        
+        if initial_msg and initial_msg.get("ok"):
+            streaming_message_id = initial_msg.get("result", {}).get("message_id")
+        
+        # Create callback for progressive updates
+        def update_telegram_message(accumulated_text):
+            if streaming_message_id:
+                # Add visual indicator that response is still generating
+                display_text = accumulated_text + " ▌"
+                edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
+        
+        # Generate response with streaming and progressive updates
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message)
+        
+        # Final update with complete response (remove typing indicator)
+        if streaming_message_id:
+            edit_message(chat_id, streaming_message_id, llm_response, parse_mode=None)
+        else:
+            # Fallback if initial message failed
+            send_message(chat_id, llm_response)
+        
+        # CRITICAL: Deduct credits SYNCHRONOUSLY (must happen before response is sent)
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
                 with current_app.app_context():
-                    # Create message record
-                    message_record = Message(
-                        user_id=user_id,
-                        user_message=text,
-                        bot_response=llm_response,
-                        model_used=current_model,
-                        credits_charged=1
-                    )
-                    db.session.add(message_record)
-                    db.session.flush()
-                    
-                    # Deduct 1 credit from user
+                    # Deduct 1 credit from user immediately
                     user = User.query.get(user_id)
                     if user:
                         user.credits = max(0, user.credits - 1)
-                    
-                    # Create transaction record
-                    transaction = Transaction(
-                        user_id=user_id,
-                        credits_used=1,
-                        message_id=message_record.id,
-                        transaction_type='message',
-                        description=f"AI message response using {current_model}"
-                    )
-                    db.session.add(transaction)
-                    
-                    # Commit all changes
                     db.session.commit()
-                    logger.info(f"Message stored, credits deducted: {message_record.id}")
+                    logger.info(f"Credits deducted synchronously for user {user_id}")
             except Exception as db_error:
-                logger.error(f"Database error storing message and deducting credits: {str(db_error)}")
+                logger.error(f"Database error deducting credits: {str(db_error)}")
                 db.session.rollback()
-        else:
-            logger.debug("Skipping message storage and credit deduction - database not available")
         
-        # Send response back to user
-        send_message(chat_id, llm_response)
+        # Store message and transaction in BACKGROUND THREAD (non-blocking)
+        def store_message_async():
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        # Create message record
+                        message_record = Message(
+                            user_id=user_id,
+                            user_message=text,
+                            bot_response=llm_response,
+                            model_used=current_model,
+                            credits_charged=1
+                        )
+                        db.session.add(message_record)
+                        db.session.flush()
+                        
+                        # Create transaction record
+                        transaction = Transaction(
+                            user_id=user_id,
+                            credits_used=1,
+                            message_id=message_record.id,
+                            transaction_type='message',
+                            description=f"AI message response using {current_model}"
+                        )
+                        db.session.add(transaction)
+                        
+                        # Commit all changes
+                        db.session.commit()
+                        logger.debug(f"Message stored asynchronously: {message_record.id}")
+                except Exception as db_error:
+                    logger.error(f"Async database error storing message: {str(db_error)}")
+                    db.session.rollback()
+        
+        # Start background thread for message storage (non-blocking)
+        storage_thread = threading.Thread(target=store_message_async, daemon=True)
+        storage_thread.start()
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
