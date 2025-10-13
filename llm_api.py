@@ -168,14 +168,20 @@ def create_api_headers(provider: Provider) -> Dict[str, str]:
     
     return base_headers
 
-def create_request_data(provider: Provider, user_message: str, model: str) -> Dict[str, Any]:
+def create_request_data(provider: Provider, user_message: str, model: str, conversation_history: list = None) -> Dict[str, Any]:
     """Create standardized request data for all providers"""
+    messages = [{"role": "system", "content": get_system_prompt()}]
+    
+    # Add conversation history if provided
+    if conversation_history:
+        messages.extend(conversation_history)
+    
+    # Add current user message
+    messages.append({"role": "user", "content": user_message})
+    
     data = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": get_system_prompt()},
-            {"role": "user", "content": user_message}
-        ],
+        "messages": messages,
         "temperature": 0.7,
         "max_tokens": 4000
     }
@@ -216,14 +222,14 @@ def handle_api_response(response: requests.Response) -> str:
         logger.error(f"Unexpected error: {str(e)}")
         return f"Unexpected error: {str(e)}"
 
-def call_api_with_retry(provider: Provider, user_message: str, max_retries: int = 3) -> str:
+def call_api_with_retry(provider: Provider, user_message: str, conversation_history: list = None, max_retries: int = 3) -> str:
     """Make API call with retry logic and exponential backoff"""
     model = os.environ.get('MODEL', DEFAULT_MODEL)
     
     for attempt in range(max_retries):
         try:
             headers = create_api_headers(provider)
-            data = create_request_data(provider, user_message, model)
+            data = create_request_data(provider, user_message, model, conversation_history)
             endpoint = ModelConfig.ENDPOINTS[provider]
             
             logger.info(f"API call attempt {attempt + 1} to {provider.value}")
@@ -259,20 +265,25 @@ def call_api_with_retry(provider: Provider, user_message: str, max_retries: int 
     
     return f"Error: All {max_retries} attempts failed"
 
-def call_deepseek_api(user_message: str) -> str:
+def call_deepseek_api(user_message: str, conversation_history: list = None) -> str:
     """Enhanced DeepSeek API call"""
-    return call_api_with_retry(Provider.DEEPSEEK, user_message)
+    return call_api_with_retry(Provider.DEEPSEEK, user_message, conversation_history)
 
-def call_grok_api(user_message: str) -> str:
+def call_grok_api(user_message: str, conversation_history: list = None) -> str:
     """Enhanced Grok API call"""
-    return call_api_with_retry(Provider.GROK, user_message)
+    return call_api_with_retry(Provider.GROK, user_message, conversation_history)
 
-def call_openai_api(user_message: str) -> str:
+def call_openai_api(user_message: str, conversation_history: list = None) -> str:
     """Enhanced OpenAI-compatible API call"""
-    return call_api_with_retry(Provider.OPENAI, user_message)
+    return call_api_with_retry(Provider.OPENAI, user_message, conversation_history)
 
-def generate_response(user_message: str) -> str:
-    """Main response generation function with enhanced error handling"""
+def generate_response(user_message: str, conversation_history: list = None) -> str:
+    """Main response generation function with enhanced error handling
+    
+    Args:
+        user_message: The current user message
+        conversation_history: Optional list of previous messages in format [{"role": "user/assistant", "content": "..."}]
+    """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
     
@@ -283,11 +294,11 @@ def generate_response(user_message: str) -> str:
         logger.info(f"Generating response using {provider.value} with model {current_model}")
         
         if provider == Provider.GROK:
-            return call_grok_api(user_message)
+            return call_grok_api(user_message, conversation_history)
         elif provider == Provider.OPENAI:
-            return call_openai_api(user_message)
+            return call_openai_api(user_message, conversation_history)
         else:
-            return call_deepseek_api(user_message)
+            return call_deepseek_api(user_message, conversation_history)
             
     except ValueError as e:
         logger.error(f"Configuration error: {str(e)}")

@@ -336,9 +336,32 @@ Each AI message costs 1 credit.
                 send_message(chat_id, response, parse_mode=None)
                 return
         
-        # Generate response from LLM
+        # Fetch conversation history for context
+        conversation_history = []
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    # Get last 20 messages for this user (10 exchanges)
+                    recent_messages = Message.query.filter_by(user_id=user_id).order_by(Message.created_at.desc()).limit(20).all()
+                    
+                    # Reverse to get chronological order (oldest first)
+                    recent_messages.reverse()
+                    
+                    # Format as conversation history
+                    for msg in recent_messages:
+                        conversation_history.append({"role": "user", "content": msg.user_message})
+                        if msg.bot_response:
+                            conversation_history.append({"role": "assistant", "content": msg.bot_response})
+                    
+                    logger.info(f"Loaded {len(recent_messages)} previous messages for context")
+            except Exception as db_error:
+                logger.error(f"Error fetching conversation history: {str(db_error)}")
+                conversation_history = []
+        
+        # Generate response from LLM with conversation context
         current_model = os.environ.get('MODEL', MODEL)
-        llm_response = generate_response(text)
+        llm_response = generate_response(text, conversation_history)
         
         # Store message and deduct credits if available
         if DB_AVAILABLE and user_id:
