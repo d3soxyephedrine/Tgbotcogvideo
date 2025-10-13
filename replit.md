@@ -82,10 +82,24 @@ Preferred communication style: Simple, everyday language.
 
 ### Conversation Memory
 - **Feature**: Bot remembers previous messages in each conversation
-- **Implementation**: Fetches last 20 messages (10 exchanges) from database before generating response
+- **Implementation**: Fetches last 10 messages (5 exchanges) from database before generating response
 - **Context Passing**: Messages formatted as `[{"role": "user/assistant", "content": "..."}]` and sent to LLM
 - **Graceful Degradation**: If database unavailable, bot operates without conversation history
 - **Benefits**: Enables multi-turn conversations, follow-up questions, and contextual responses
+
+### Token Budget Management
+- **Purpose**: Ensures system prompt (jailbreak instructions) is ALWAYS delivered intact to the LLM
+- **Safe Input Budget**: 16,000 tokens total for system prompt + conversation history + user message
+- **Max Output Tokens**: 8,000 tokens (increased from 4,000 for longer AI responses)
+- **Token Estimation**: Approximate calculation using ~1 token per 4 characters
+- **Dynamic Trimming Logic**:
+  1. System prompt always included first (NEVER trimmed under any circumstances)
+  2. If system prompt alone exceeds budget - 500 tokens: Raises error (configuration issue)
+  3. If system + user message exceed budget: Truncates user message to fit (rare edge case)
+  4. If conversation history doesn't fit: Trims oldest messages, keeps most recent
+  5. Final enforcement: Raises error if total input exceeds budget (should never happen)
+- **Rationale**: Prevents context window overflow that would cause API to drop system prompt, resulting in refusals
+- **Logging**: Comprehensive token usage logging at DEBUG/INFO/WARNING/ERROR levels for monitoring
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
