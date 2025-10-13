@@ -71,12 +71,21 @@ Preferred communication style: Simple, everyday language.
 1. Telegram webhook receives update via POST request
 2. User lookup/creation in database (optional - skipped if database unavailable)
 3. Credit balance check for non-command messages (blocks if credits = 0)
-4. Message routing to LLM provider based on configuration
-5. Response generation with system prompt injection
-6. Credit deduction and Transaction record creation (1 credit per message)
-7. Message and response persistence to database (optional - skipped if database unavailable)
-8. Response delivery to Telegram with chunking for messages >4000 characters
-9. Error handling ensures bot continues functioning even if database operations fail
+4. **Conversation history retrieval**: Fetch user's last 20 messages from database for context
+5. **Context formatting**: Format messages as conversation history (user/assistant alternating)
+6. Message routing to LLM provider based on configuration
+7. Response generation with system prompt injection and full conversation context
+8. Credit deduction and Transaction record creation (1 credit per message)
+9. Message and response persistence to database (optional - skipped if database unavailable)
+10. Response delivery to Telegram with chunking for messages >4000 characters
+11. Error handling ensures bot continues functioning even if database operations fail
+
+### Conversation Memory
+- **Feature**: Bot remembers previous messages in each conversation
+- **Implementation**: Fetches last 20 messages (10 exchanges) from database before generating response
+- **Context Passing**: Messages formatted as `[{"role": "user/assistant", "content": "..."}]` and sent to LLM
+- **Graceful Degradation**: If database unavailable, bot operates without conversation history
+- **Benefits**: Enables multi-turn conversations, follow-up questions, and contextual responses
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
