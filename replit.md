@@ -46,9 +46,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume 1 credit per AI message
-- **New User Bonus**: All new users automatically receive 50 free credits upon first interaction
-- **Pricing**: $0.10 per credit (packages: 200 credits/$20, 500 credits/$50, 1000 credits/$100) - payable in cryptocurrency
-- **Minimum Amounts**: Credit packages sized to meet cryptocurrency minimum payment requirements (typically $19-20 USD)
+- **New User Bonus**: All new users automatically receive 100 free credits upon first interaction
+- **Pricing**: $0.05 per credit (packages: 200 credits/$10, 500 credits/$25, 1000 credits/$50) - payable in cryptocurrency
+- **Minimum Amounts**: Credit packages sized to meet cryptocurrency minimum payment requirements (typically $9-10 USD for the smallest package)
 - **Purchase Flow**:
   1. User sends /buy command in Telegram
   2. Bot provides link to web-based purchase page with telegram_id
