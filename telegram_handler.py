@@ -24,13 +24,13 @@ def set_db_available(available):
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-def send_message(chat_id, text, parse_mode="Markdown"):
+def send_message(chat_id, text, parse_mode=None):
     """Send a message to a specific chat in Telegram
     
     Args:
         chat_id (int): The ID of the chat to send to
         text (str): The text message to send
-        parse_mode (str | None): Parse mode for formatting (default: "Markdown", use None for plain text)
+        parse_mode (str | None): Parse mode for formatting (default: None for plain text, use "Markdown" for formatting)
     
     Returns:
         dict: The response from Telegram API
