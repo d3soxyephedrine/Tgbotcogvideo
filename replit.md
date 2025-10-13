@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Flask-based Telegram bot application that integrates with Large Language Model (LLM) APIs to generate conversational responses. The bot receives messages from Telegram users, processes them through either DeepSeek or Grok LLM providers, and sends the generated responses back to users. The application includes user tracking, message history storage, and a keepalive mechanism to maintain uptime.
+This is a Flask-based Telegram bot application that integrates with ChatGPT-4o via OpenRouter to generate conversational responses. The bot receives messages from Telegram users, processes them through the OpenAI GPT-4o model, and sends the generated responses back to users. The application includes user tracking, message history storage, and a keepalive mechanism to maintain uptime.
 
 ## User Preferences
 
@@ -37,12 +37,12 @@ Preferred communication style: Simple, everyday language.
   - All database operations are optional and wrapped in error handling
 
 ### LLM Provider Architecture
-- **Multi-Provider Support**: Enum-based provider selection system
-  - DeepSeek via Together.ai API
-  - Grok via xAI API
-- **Runtime Selection**: Provider determined by MODEL environment variable prefix
-- **Rationale**: Abstraction layer allows switching between providers without code changes, enabling A/B testing and failover scenarios
-- **API Design**: Centralized `generate_response()` function routes to appropriate provider based on configuration
+- **Single Provider**: ChatGPT-4o via OpenRouter API
+- **Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
+- **Authentication**: OPENROUTER_API_KEY environment variable
+- **Model Configuration**: Configurable via MODEL environment variable (default: "openai/gpt-4o")
+- **Rationale**: Simplified architecture focused on single, reliable provider for consistent performance
+- **API Design**: Centralized `generate_response()` function with retry logic and exponential backoff
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume 1 credit per AI message
@@ -109,7 +109,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & Security
 - **Bot Authentication**: Telegram BOT_TOKEN for API authentication
-- **LLM Authentication**: Separate API keys (API_KEY for DeepSeek, XAI_API_KEY for Grok)
+- **LLM Authentication**: OPENROUTER_API_KEY for ChatGPT-4o access via OpenRouter
 - **Session Management**: Flask secret key for session security
 - **Consideration**: No user-level authentication implemented; relies on Telegram's user identification
 
@@ -142,19 +142,14 @@ Preferred communication style: Simple, everyday language.
 - **Integration**: Webhook-based architecture where Telegram POSTs updates to Flask app
 - **Message Handling**: Supports chunking for responses exceeding 4096 character limit, Markdown formatting
 
-### LLM Providers
+### LLM Provider
 
-**Together.ai (DeepSeek)**
-- **Endpoint**: `https://api.together.xyz/inference`
-- **Authentication**: API_KEY environment variable
-- **Purpose**: Primary LLM provider for DeepSeek models
-- **Configuration**: Model selection via MODEL environment variable
-
-**xAI (Grok)**
-- **Endpoint**: Not fully visible in provided code
-- **Authentication**: XAI_API_KEY environment variable
-- **Purpose**: Alternative LLM provider for Grok models (grok-2-1212 default)
-- **Selection**: Activated when MODEL starts with "grok"
+**OpenRouter (ChatGPT-4o)**
+- **Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
+- **Authentication**: OPENROUTER_API_KEY environment variable
+- **Model**: openai/gpt-4o (configurable via MODEL environment variable)
+- **Purpose**: Primary and only LLM provider for generating responses
+- **Features**: Token budget management, retry logic with exponential backoff, comprehensive request logging
 
 ### Database
 - **Type**: SQL database (provider-agnostic via SQLAlchemy)
@@ -185,11 +180,10 @@ Preferred communication style: Simple, everyday language.
 ### Environment Configuration
 Required environment variables:
 - `BOT_TOKEN`: Telegram bot authentication token
+- `OPENROUTER_API_KEY`: OpenRouter API key for ChatGPT-4o access
 
 Optional environment variables:
-- `API_KEY`: Together.ai API key for DeepSeek
-- `XAI_API_KEY`: xAI API key for Grok
-- `MODEL`: LLM model selection (default: "grok-2-1212")
+- `MODEL`: LLM model selection (default: "openai/gpt-4o")
 - `DATABASE_URL`: Database connection string
 - `SESSION_SECRET`: Flask session encryption key (optional, has default)
 - `NOWPAYMENTS_API_KEY`: NOWPayments API key for cryptocurrency payment processing (optional)
