@@ -404,42 +404,6 @@ def test_bot():
         logger.error(f"Error in test endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/test_models', methods=['POST'])
-def test_models():
-    """Test endpoint to try both Grok and DeepSeek models on the same prompt"""
-    try:
-        data = request.get_json()
-        if not data or 'message' not in data:
-            return jsonify({"error": "Request must include 'message' field"}), 400
-            
-        user_message = data['message']
-        
-        # Back up the current model
-        current_model = os.environ.get('MODEL')
-        
-        # Test with Grok model
-        os.environ['MODEL'] = 'grok-2-1212'
-        from llm_api import call_grok_api
-        grok_response = call_grok_api(user_message)
-        
-        # Test with DeepSeek model
-        os.environ['MODEL'] = 'deepseek-ai/deepseek-chat-32b'
-        from llm_api import call_deepseek_api
-        deepseek_response = call_deepseek_api(user_message)
-        
-        # Restore the original model
-        if current_model:
-            os.environ['MODEL'] = current_model
-        
-        return jsonify({
-            "status": "success",
-            "user_message": user_message,
-            "grok_response": grok_response,
-            "deepseek_response": deepseek_response
-        })
-    except Exception as e:
-        logger.error(f"Error in test_models endpoint: {str(e)}")
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/buy', methods=['GET'])
 def buy_credits_page():

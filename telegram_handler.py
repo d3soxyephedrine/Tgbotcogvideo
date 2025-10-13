@@ -1,9 +1,11 @@
 import os
 import logging
 import requests
-from llm_api import generate_response, MODEL
+from llm_api import generate_response
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
+
+DEFAULT_MODEL = "openai/gpt-4o"
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -193,7 +195,7 @@ def process_update(update):
                             user_id=user_id,
                             user_message=text,
                             bot_response=response,
-                            model_used=os.environ.get('MODEL', MODEL),
+                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
                             credits_charged=0
                         )
                         db.session.add(message_record)
@@ -222,7 +224,7 @@ def process_update(update):
                             user_id=user_id,
                             user_message=text,
                             bot_response=response,
-                            model_used=os.environ.get('MODEL', MODEL),
+                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
                             credits_charged=0
                         )
                         db.session.add(message_record)
@@ -260,7 +262,7 @@ Each AI message costs 1 credit.
                             user_id=user_id,
                             user_message=text,
                             bot_response=response,
-                            model_used=os.environ.get('MODEL', MODEL),
+                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
                             credits_charged=0
                         )
                         db.session.add(message_record)
@@ -303,70 +305,31 @@ Each AI message costs 1 credit.
             send_message(chat_id, response)
             return
             
-        # Check for model switch commands
+        # Check for model info command
         if text.lower().startswith('/model'):
-            parts = text.split()
-            if len(parts) > 1:
-                model_name = parts[1].lower()
-                
-                # Process model change request
-                if 'grok' in model_name:
-                    os.environ['MODEL'] = 'grok-2-1212'
-                    response = f"Model switched to Grok."
-                elif 'deepseek' in model_name:
-                    os.environ['MODEL'] = 'deepseek/deepseek-chat'
-                    response = f"Model switched to DeepSeek."
-                elif 'gpt' in model_name or 'chatgpt' in model_name:
-                    os.environ['MODEL'] = 'openai/gpt-4o'
-                    response = f"Model switched to GPT-4o."
-                else:
-                    response = f"Unknown model: {model_name}. Available models: grok, deepseek, chatgpt."
-                    
-                # Store command in database if available
-                if DB_AVAILABLE and user_id:
-                    try:
-                        from flask import current_app
-                        with current_app.app_context():
-                            message_record = Message(
-                                user_id=user_id,
-                                user_message=text,
-                                bot_response=response,
-                                model_used=os.environ.get('MODEL', MODEL),
-                                credits_charged=0
-                            )
-                            db.session.add(message_record)
-                            db.session.commit()
-                            logger.info(f"Model switch command stored: {message_record.id}")
-                    except Exception as db_error:
-                        logger.error(f"Database error storing model switch: {str(db_error)}")
-                
-                # Send response
-                send_message(chat_id, response, parse_mode=None)
-                return
-            else:
-                current_model = os.environ.get('MODEL', MODEL)
-                response = f"Current model: {current_model}\nAvailable models: grok, deepseek, chatgpt\nTo switch, use /model <model_name>"
-                
-                # Store command in database if available
-                if DB_AVAILABLE and user_id:
-                    try:
-                        from flask import current_app
-                        with current_app.app_context():
-                            message_record = Message(
-                                user_id=user_id,
-                                user_message=text,
-                                bot_response=response,
-                                model_used=current_model,
-                                credits_charged=0
-                            )
-                            db.session.add(message_record)
-                            db.session.commit()
-                    except Exception as db_error:
-                        logger.error(f"Database error storing model query: {str(db_error)}")
-                
-                # Send response
-                send_message(chat_id, response, parse_mode=None)
-                return
+            current_model = os.environ.get('MODEL', DEFAULT_MODEL)
+            response = f"Current model: {current_model}\n\nThis bot uses ChatGPT-4o via OpenRouter for all responses."
+            
+            # Store command in database if available
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        message_record = Message(
+                            user_id=user_id,
+                            user_message=text,
+                            bot_response=response,
+                            model_used=current_model,
+                            credits_charged=0
+                        )
+                        db.session.add(message_record)
+                        db.session.commit()
+                except Exception as db_error:
+                    logger.error(f"Database error storing model query: {str(db_error)}")
+            
+            # Send response
+            send_message(chat_id, response, parse_mode=None)
+            return
         
         # Fetch conversation history for context
         conversation_history = []
@@ -392,7 +355,7 @@ Each AI message costs 1 credit.
                 conversation_history = []
         
         # Generate response from LLM with conversation context
-        current_model = os.environ.get('MODEL', MODEL)
+        current_model = os.environ.get('MODEL', DEFAULT_MODEL)
         llm_response = generate_response(text, conversation_history)
         
         # Store message and deduct credits if available
