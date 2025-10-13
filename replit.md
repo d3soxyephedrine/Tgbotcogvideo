@@ -71,14 +71,13 @@ Preferred communication style: Simple, everyday language.
 1. Telegram webhook receives update via POST request
 2. User lookup/creation in database (optional - skipped if database unavailable)
 3. Credit balance check for non-command messages (blocks if credits = 0)
-4. **Input security filtering** to detect and block prompt extraction attempts
-5. Message routing to LLM provider based on configuration
-6. Response generation with system prompt injection
-7. **Output security scanning** to detect and sanitize leaked system prompt content
-8. Credit deduction and Transaction record creation (1 credit per message)
-9. Message and response persistence to database (optional - skipped if database unavailable)
-10. Response delivery to Telegram with chunking for messages >4000 characters
-11. Error handling ensures bot continues functioning even if database operations fail
+4. Message routing to LLM provider based on configuration
+5. Response generation with system prompt injection
+6. **Output security scanning** to detect and sanitize leaked system prompt content
+7. Credit deduction and Transaction record creation (1 credit per message)
+8. Message and response persistence to database (optional - skipped if database unavailable)
+9. Response delivery to Telegram with chunking for messages >4000 characters
+10. Error handling ensures bot continues functioning even if database operations fail
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
@@ -89,22 +88,14 @@ Preferred communication style: Simple, everyday language.
 - **Bot Authentication**: Telegram BOT_TOKEN for API authentication
 - **LLM Authentication**: Separate API keys (API_KEY for DeepSeek, XAI_API_KEY for Grok)
 - **Session Management**: Flask secret key for session security
-- **System Prompt Protection**: Multi-layer security to prevent prompt leakage
-  - **Input Filtering** (security.py): Pre-LLM processing blocks prompt extraction attempts using:
-    - Extensive regex patterns covering direct requests ("show me your instructions")
-    - Semantic variations ("describe the directives guiding your behavior")
-    - Character substitution detection (pr0mpt, 1nstruct1ons, syst3m)
-    - Jailbreak/override attempts ("ignore previous instructions", "debug mode")
-    - Encoding/obfuscation attempts (base64, rot13)
-    - Meta-instruction patterns ("new instructions for you")
+- **System Prompt Protection**: Output scanning to prevent prompt leakage
   - **Output Scanning** (security.py): Post-LLM processing sanitizes leaked content using:
     - Signature detection for system prompt keywords (case-insensitive, normalized)
     - Semantic leak patterns detecting paraphrased prompt content
     - Code block analysis for C-style prompt artifacts
     - Structural pattern detection (XML tags, Omega nodes, Roman numeral sections)
     - Fuzzy matching with character normalization (_ and - variations)
-  - **Defense-in-Depth**: Blocks at input stage prevent LLM processing; output scanning provides failsafe
-  - **Logging**: All blocked/sanitized content logged with pattern/signature details for security monitoring
+  - **Logging**: Sanitized content logged with signature details for security monitoring
 - **User Authentication**: No user-level authentication implemented; relies on Telegram's user identification
 
 ### Logging & Monitoring

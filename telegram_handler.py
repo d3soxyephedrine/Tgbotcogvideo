@@ -4,7 +4,7 @@ import requests
 from llm_api import generate_response, MODEL
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
-from security import input_filter, output_scanner
+from security import output_scanner
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -336,14 +336,6 @@ Each AI message costs 1 credit.
                 # Send response
                 send_message(chat_id, response, parse_mode=None)
                 return
-        
-        # Apply input filtering to detect prompt extraction attempts
-        is_safe, blocked_reason = input_filter(text)
-        if not is_safe:
-            logger.warning(f"Message blocked by input filter: {text[:100]}...")
-            response = blocked_reason
-            send_message(chat_id, response, parse_mode=None)
-            return
         
         # Generate response from LLM
         current_model = os.environ.get('MODEL', MODEL)
