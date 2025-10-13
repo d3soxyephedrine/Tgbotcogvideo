@@ -325,6 +325,26 @@ def call_api_with_retry(provider: Provider, user_message: str, conversation_hist
             endpoint = ModelConfig.ENDPOINTS[provider]
             
             logger.info(f"API call attempt {attempt + 1} to {provider.value}")
+            
+            # Log full request details for debugging
+            logger.debug(f"=== API REQUEST DEBUG ===")
+            logger.debug(f"Endpoint: {endpoint}")
+            logger.debug(f"Headers: {json.dumps({k: v for k, v in headers.items() if 'Authorization' not in k})}")
+            logger.debug(f"Model: {data.get('model')}")
+            logger.debug(f"Temperature: {data.get('temperature')}")
+            logger.debug(f"Max tokens: {data.get('max_tokens')}")
+            logger.debug(f"Messages count: {len(data.get('messages', []))}")
+            
+            # Show first message (system prompt) preview
+            messages = data.get('messages', [])
+            if messages:
+                first_msg = messages[0]
+                content_preview = first_msg.get('content', '')[:200] + '...' if len(first_msg.get('content', '')) > 200 else first_msg.get('content', '')
+                logger.debug(f"First message (system): role={first_msg.get('role')}, content_length={len(first_msg.get('content', ''))}")
+                logger.debug(f"System prompt preview: {content_preview}")
+            
+            logger.debug(f"=== END REQUEST DEBUG ===")
+            
             response = requests.post(
                 endpoint, 
                 headers=headers, 
