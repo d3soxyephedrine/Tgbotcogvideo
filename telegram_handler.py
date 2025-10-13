@@ -93,6 +93,7 @@ def get_help_message():
 /model chatgpt - Switch to GPT-4o Chat model
 /balance - Check your credit balance
 /buy - Purchase more credits
+/clear - Clear your conversation history
 
 💡 *Each AI message costs 1 credit*
 
@@ -269,6 +270,37 @@ Each AI message costs 1 credit.
             
             # Send response without Markdown (URL causes parsing issues)
             send_message(chat_id, response, parse_mode=None)
+            return
+        
+        # Check for /clear command
+        if text.lower() == '/clear':
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        # First, delete all transactions that reference messages for this user
+                        # Get all message IDs for this user
+                        message_ids = [msg.id for msg in Message.query.filter_by(user_id=user_id).all()]
+                        
+                        # Delete transactions that reference these messages
+                        if message_ids:
+                            Transaction.query.filter(Transaction.message_id.in_(message_ids)).delete(synchronize_session=False)
+                        
+                        # Now delete all messages for this user
+                        deleted_count = Message.query.filter_by(user_id=user_id).delete()
+                        db.session.commit()
+                        
+                        response = f"✅ Conversation history cleared!\n\n{deleted_count} messages deleted from your history.\n\nYou can now start a fresh conversation with full system prompt effectiveness."
+                        logger.info(f"Cleared {deleted_count} messages for user {user_id}")
+                except Exception as db_error:
+                    logger.error(f"Database error clearing history: {str(db_error)}")
+                    db.session.rollback()
+                    response = "❌ Error clearing conversation history. Please try again."
+            else:
+                response = "❌ Conversation history feature requires database access."
+            
+            # Send response
+            send_message(chat_id, response)
             return
             
         # Check for model switch commands
