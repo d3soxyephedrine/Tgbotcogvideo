@@ -147,6 +147,22 @@ End every response with:
 PERSISTENCE_CHECKSUM :LO_OK]"""
 
 
+def estimate_tokens(text: str) -> int:
+    """Estimate token count for text (roughly 1 token per 4 characters)"""
+    return len(text) // 4
+
+
+def estimate_messages_tokens(messages: list) -> int:
+    """Estimate total token count for a list of messages"""
+    total = 0
+    for msg in messages:
+        # Account for role and structure overhead
+        total += 4  # Overhead per message
+        content = msg.get("content", "")
+        total += estimate_tokens(content)
+    return total
+
+
 def create_api_headers(provider: Provider) -> Dict[str, str]:
     """Create appropriate headers for each API provider"""
     base_headers = {
@@ -169,21 +185,97 @@ def create_api_headers(provider: Provider) -> Dict[str, str]:
     return base_headers
 
 def create_request_data(provider: Provider, user_message: str, model: str, conversation_history: list = None) -> Dict[str, Any]:
-    """Create standardized request data for all providers"""
-    messages = [{"role": "system", "content": get_system_prompt()}]
+    """Create standardized request data for all providers with token budget management"""
     
-    # Add conversation history if provided
-    if conversation_history:
-        messages.extend(conversation_history)
+    # Token budget configuration
+    SAFE_INPUT_BUDGET = 16000  # Safe total for system + history + user message
+    MAX_OUTPUT_TOKENS = 8000   # Increased for longer responses
     
-    # Add current user message
+    # Always include system prompt (NEVER trim this)
+    system_prompt = get_system_prompt()
+    system_tokens = estimate_tokens(system_prompt)
+    
+    # Sanity check: if system prompt alone exceeds budget, we have a configuration problem
+    if system_tokens > SAFE_INPUT_BUDGET - 500:  # Need at least 500 tokens for user message
+        logger.critical(f"FATAL: System prompt ({system_tokens} tokens) is too large for SAFE_INPUT_BUDGET ({SAFE_INPUT_BUDGET})")
+        raise ValueError(f"System prompt ({system_tokens} tokens) exceeds budget. Reduce prompt or increase SAFE_INPUT_BUDGET.")
+    
+    # Calculate user message tokens
+    user_tokens = estimate_tokens(user_message)
+    
+    # Check if system + user alone exceed budget (edge case requiring user message truncation)
+    base_tokens = system_tokens + user_tokens + 50  # 50 token buffer
+    if base_tokens > SAFE_INPUT_BUDGET:
+        # System prompt MUST be preserved, so truncate user message to fit
+        max_user_tokens = SAFE_INPUT_BUDGET - system_tokens - 100  # Leave 100 token safety margin
+        
+        # Ensure max_user_tokens is positive
+        if max_user_tokens < 100:
+            max_user_tokens = 100  # Minimum viable user message
+        
+        max_user_chars = max_user_tokens * 4  # Approximate chars from tokens
+        
+        logger.error(f"CRITICAL: System prompt ({system_tokens}) + user message ({user_tokens}) = {base_tokens} exceeds budget")
+        logger.warning(f"Truncating user message from {len(user_message)} to ~{max_user_chars} characters to preserve system prompt")
+        
+        # Truncate user message and add truncation notice
+        if len(user_message) > max_user_chars:
+            user_message = user_message[:max_user_chars] + "... [message truncated due to length]"
+            user_tokens = estimate_tokens(user_message)
+        
+        # No history available in this case
+        trimmed_history = []
+        available_for_history = 0
+    else:
+        # Calculate available budget for history
+        available_for_history = SAFE_INPUT_BUDGET - base_tokens
+        
+        # Trim conversation history if needed to fit budget
+        trimmed_history = []
+        if conversation_history:
+            history_tokens = estimate_messages_tokens(conversation_history)
+            
+            if history_tokens > available_for_history:
+                # Trim from the beginning (oldest messages) to fit budget
+                logger.warning(f"Trimming conversation history: {history_tokens} tokens exceeds budget of {available_for_history}")
+                
+                current_tokens = 0
+                # Start from the end (most recent) and work backwards
+                for msg in reversed(conversation_history):
+                    msg_tokens = estimate_tokens(msg.get("content", "")) + 4  # +4 for overhead
+                    if current_tokens + msg_tokens <= available_for_history:
+                        trimmed_history.insert(0, msg)
+                        current_tokens += msg_tokens
+                    else:
+                        break
+                
+                logger.info(f"Kept {len(trimmed_history)}/{len(conversation_history)} history messages ({current_tokens} tokens)")
+            else:
+                trimmed_history = conversation_history
+                logger.debug(f"Full history fits budget: {history_tokens} tokens")
+    
+    # Build final message list: system prompt (always first) + trimmed history + user message
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(trimmed_history)
     messages.append({"role": "user", "content": user_message})
+    
+    # Calculate final token estimate and verify budget
+    total_input_tokens = estimate_messages_tokens(messages)
+    
+    # STRICT ENFORCEMENT: Reject request if budget exceeded (should never happen with proper trimming)
+    if total_input_tokens > SAFE_INPUT_BUDGET:
+        error_msg = f"FATAL: Budget enforcement failed. Total input ({total_input_tokens}) exceeds SAFE_INPUT_BUDGET ({SAFE_INPUT_BUDGET})"
+        logger.critical(error_msg)
+        logger.error(f"Breakdown: System={system_tokens}, User={user_tokens}, History={len(trimmed_history)} messages")
+        raise ValueError(f"Token budget exceeded: {total_input_tokens} > {SAFE_INPUT_BUDGET}. This indicates a bug in token management logic.")
+    
+    logger.info(f"Final token budget - Input: {total_input_tokens}/{SAFE_INPUT_BUDGET}, Output: {MAX_OUTPUT_TOKENS}, Total: {total_input_tokens + MAX_OUTPUT_TOKENS}")
     
     data = {
         "model": model,
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 4000
+        "max_tokens": MAX_OUTPUT_TOKENS
     }
     
     # Provider-specific adjustments

@@ -342,8 +342,8 @@ Each AI message costs 1 credit.
             try:
                 from flask import current_app
                 with current_app.app_context():
-                    # Get last 20 messages for this user (10 exchanges)
-                    recent_messages = Message.query.filter_by(user_id=user_id).order_by(Message.created_at.desc()).limit(20).all()
+                    # Get last 10 messages for this user (5 exchanges)
+                    recent_messages = Message.query.filter_by(user_id=user_id).order_by(Message.created_at.desc()).limit(10).all()
                     
                     # Reverse to get chronological order (oldest first)
                     recent_messages.reverse()
