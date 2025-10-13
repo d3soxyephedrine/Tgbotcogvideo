@@ -505,20 +505,20 @@ def buy_credits_page():
             <p class="subtitle">Select a package and pay with cryptocurrency</p>
             
             <div class="packages" id="packages">
-                <div class="package" data-credits="200" data-price="20">
+                <div class="package" data-credits="200" data-price="10">
                     <div class="package-title">Starter Pack</div>
-                    <div class="package-price">$20</div>
-                    <div class="package-desc">200 credits • $0.10 per credit</div>
+                    <div class="package-price">$10</div>
+                    <div class="package-desc">200 credits • $0.05 per credit</div>
                 </div>
-                <div class="package" data-credits="500" data-price="40">
+                <div class="package" data-credits="500" data-price="25">
                     <div class="package-title">Popular Pack</div>
-                    <div class="package-price">$40</div>
-                    <div class="package-desc">500 credits • $0.08 per credit</div>
+                    <div class="package-price">$25</div>
+                    <div class="package-desc">500 credits • $0.05 per credit</div>
                 </div>
-                <div class="package" data-credits="1000" data-price="60">
+                <div class="package" data-credits="1000" data-price="50">
                     <div class="package-title">Value Pack</div>
-                    <div class="package-price">$60</div>
-                    <div class="package-desc">1000 credits • $0.06 per credit</div>
+                    <div class="package-price">$50</div>
+                    <div class="package-desc">1000 credits • $0.05 per credit</div>
                 </div>
             </div>
             
