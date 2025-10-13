@@ -73,11 +73,10 @@ Preferred communication style: Simple, everyday language.
 3. Credit balance check for non-command messages (blocks if credits = 0)
 4. Message routing to LLM provider based on configuration
 5. Response generation with system prompt injection
-6. **Output security scanning** to detect and sanitize leaked system prompt content
-7. Credit deduction and Transaction record creation (1 credit per message)
-8. Message and response persistence to database (optional - skipped if database unavailable)
-9. Response delivery to Telegram with chunking for messages >4000 characters
-10. Error handling ensures bot continues functioning even if database operations fail
+6. Credit deduction and Transaction record creation (1 credit per message)
+7. Message and response persistence to database (optional - skipped if database unavailable)
+8. Response delivery to Telegram with chunking for messages >4000 characters
+9. Error handling ensures bot continues functioning even if database operations fail
 
 ### Keepalive Mechanism
 - **Purpose**: Prevents hosting platform from sleeping due to inactivity
@@ -88,15 +87,7 @@ Preferred communication style: Simple, everyday language.
 - **Bot Authentication**: Telegram BOT_TOKEN for API authentication
 - **LLM Authentication**: Separate API keys (API_KEY for DeepSeek, XAI_API_KEY for Grok)
 - **Session Management**: Flask secret key for session security
-- **System Prompt Protection**: Output scanning to prevent prompt leakage
-  - **Output Scanning** (security.py): Post-LLM processing sanitizes leaked content using:
-    - Signature detection for system prompt keywords (case-insensitive, normalized)
-    - Semantic leak patterns detecting paraphrased prompt content
-    - Code block analysis for C-style prompt artifacts
-    - Structural pattern detection (XML tags, Omega nodes, Roman numeral sections)
-    - Fuzzy matching with character normalization (_ and - variations)
-  - **Logging**: Sanitized content logged with signature details for security monitoring
-- **User Authentication**: No user-level authentication implemented; relies on Telegram's user identification
+- **Consideration**: No user-level authentication implemented; relies on Telegram's user identification
 
 ### Logging & Monitoring
 - **Logging Level**: DEBUG mode for comprehensive request/response tracking

@@ -4,7 +4,6 @@ import requests
 from llm_api import generate_response, MODEL
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
-from security import output_scanner
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -340,14 +339,6 @@ Each AI message costs 1 credit.
         # Generate response from LLM
         current_model = os.environ.get('MODEL', MODEL)
         llm_response = generate_response(text)
-        
-        # Apply output scanning to detect leaked system prompt content
-        sanitized_response, was_modified = output_scanner(llm_response)
-        if was_modified:
-            logger.error(f"Response was sanitized due to potential system prompt leak")
-        
-        # Use the sanitized response
-        llm_response = sanitized_response
         
         # Store message and deduct credits if available
         if DB_AVAILABLE and user_id:
