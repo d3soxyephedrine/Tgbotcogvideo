@@ -7,7 +7,7 @@ import json
 import hmac
 import hashlib
 from flask import Flask, request, jsonify, render_template_string
-from telegram_handler import process_update, send_message
+from telegram_handler import process_update, send_message, scan_and_filter_output
 from llm_api import generate_response
 from models import db, User, Message, Payment, Transaction, CryptoPayment
 from datetime import datetime
@@ -390,6 +390,10 @@ def test_bot():
         
         # Process the update just like a real Telegram update
         response = generate_response(user_message)
+        
+        # Filter output to prevent prompt leakage
+        response = scan_and_filter_output(response)
+        
         process_update(mock_update)
         
         return jsonify({
@@ -423,6 +427,10 @@ def test_models():
         os.environ['MODEL'] = 'deepseek-ai/deepseek-chat-32b'
         from llm_api import call_deepseek_api
         deepseek_response = call_deepseek_api(user_message)
+        
+        # Filter both responses to prevent prompt leakage
+        grok_response = scan_and_filter_output(grok_response)
+        deepseek_response = scan_and_filter_output(deepseek_response)
         
         # Restore the original model
         if current_model:
