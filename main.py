@@ -696,9 +696,9 @@ def create_crypto_payment():
         
         # Calculate amount in USD based on credit package
         CREDIT_PACKAGES = {
-            200: 20.0,
-            500: 40.0,
-            1000: 60.0
+            200: 10.0,
+            500: 25.0,
+            1000: 50.0
         }
         
         if credits not in CREDIT_PACKAGES:
@@ -724,7 +724,7 @@ def create_crypto_payment():
         user = User.query.filter_by(telegram_id=user_telegram_id).first()
         if not user:
             logger.warning(f"User {user_telegram_id} not found, creating new user")
-            user = User(telegram_id=user_telegram_id, credits=50)
+            user = User(telegram_id=user_telegram_id, credits=100)
             db.session.add(user)
             db.session.commit()
         

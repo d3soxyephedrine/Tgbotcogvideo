@@ -13,7 +13,7 @@ class User(db.Model):
     last_name = db.Column(db.String(255), nullable=True)
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_interaction = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    credits = db.Column(db.Integer, default=50, nullable=False)
+    credits = db.Column(db.Integer, default=100, nullable=False)
     
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)

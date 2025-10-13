@@ -167,7 +167,7 @@ def process_update(update):
                             username=username,
                             first_name=first_name,
                             last_name=last_name,
-                            credits=50
+                            credits=100
                         )
                         db.session.add(user)
                         db.session.commit()
