@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 # Environment configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")  # Direct OpenAI API key
 DEFAULT_MODEL = os.environ.get("MODEL", "deepseek/deepseek-chat")
 MODEL = DEFAULT_MODEL  # Export for backward compatibility
 
@@ -30,7 +29,7 @@ class ModelConfig:
     ENDPOINTS = {
         Provider.DEEPSEEK: "https://openrouter.ai/api/v1/chat/completions",
         Provider.GROK: "https://api.x.ai/v1/chat/completions",
-        Provider.OPENAI: "https://api.openai.com/v1/chat/completions"  # Direct OpenAI API
+        Provider.OPENAI: "https://openrouter.ai/api/v1/chat/completions"
     }
     
     MODEL_ALIASES = {
@@ -170,8 +169,7 @@ def create_api_headers(provider: Provider) -> Dict[str, str]:
         "Content-Type": "application/json",
     }
     
-    if provider == Provider.DEEPSEEK:
-        # DeepSeek uses OpenRouter
+    if provider in [Provider.DEEPSEEK, Provider.OPENAI]:
         if not OPENROUTER_API_KEY:
             raise ValueError("OPENROUTER_API_KEY not configured")
         base_headers.update({
@@ -179,13 +177,7 @@ def create_api_headers(provider: Provider) -> Dict[str, str]:
             "HTTP-Referer": "https://github.com/yourusername/llm-api",
             "X-Title": "LLM API Client"
         })
-    elif provider == Provider.OPENAI:
-        # OpenAI uses direct API
-        if not OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY not configured")
-        base_headers["Authorization"] = f"Bearer {OPENAI_API_KEY}"
     elif provider == Provider.GROK:
-        # Grok uses xAI API
         if not XAI_API_KEY:
             raise ValueError("XAI_API_KEY not configured")
         base_headers["Authorization"] = f"Bearer {XAI_API_KEY}"

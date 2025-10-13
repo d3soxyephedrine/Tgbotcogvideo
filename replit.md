@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Flask-based Telegram bot application that integrates with Large Language Model (LLM) APIs to generate conversational responses. The bot receives messages from Telegram users, processes them through multiple LLM providers (DeepSeek, Grok, or GPT-4o), and sends the generated responses back to users. The application includes user tracking, message history storage, and a keepalive mechanism to maintain uptime.
+This is a Flask-based Telegram bot application that integrates with Large Language Model (LLM) APIs to generate conversational responses. The bot receives messages from Telegram users, processes them through either DeepSeek or Grok LLM providers, and sends the generated responses back to users. The application includes user tracking, message history storage, and a keepalive mechanism to maintain uptime.
 
 ## User Preferences
 
@@ -38,9 +38,8 @@ Preferred communication style: Simple, everyday language.
 
 ### LLM Provider Architecture
 - **Multi-Provider Support**: Enum-based provider selection system
-  - DeepSeek via OpenRouter API
+  - DeepSeek via Together.ai API
   - Grok via xAI API
-  - GPT-4o via direct OpenAI API
 - **Runtime Selection**: Provider determined by MODEL environment variable prefix
 - **Rationale**: Abstraction layer allows switching between providers without code changes, enabling A/B testing and failover scenarios
 - **API Design**: Centralized `generate_response()` function routes to appropriate provider based on configuration
@@ -109,7 +108,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & Security
 - **Bot Authentication**: Telegram BOT_TOKEN for API authentication
-- **LLM Authentication**: Separate API keys (OPENROUTER_API_KEY for DeepSeek, XAI_API_KEY for Grok, OPENAI_API_KEY for GPT-4o)
+- **LLM Authentication**: Separate API keys (API_KEY for DeepSeek, XAI_API_KEY for Grok)
 - **Session Management**: Flask secret key for session security
 - **Consideration**: No user-level authentication implemented; relies on Telegram's user identification
 
@@ -144,25 +143,17 @@ Preferred communication style: Simple, everyday language.
 
 ### LLM Providers
 
-**OpenRouter (DeepSeek)**
-- **Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
-- **Authentication**: OPENROUTER_API_KEY environment variable
-- **Purpose**: LLM provider for DeepSeek models via OpenRouter
+**Together.ai (DeepSeek)**
+- **Endpoint**: `https://api.together.xyz/inference`
+- **Authentication**: API_KEY environment variable
+- **Purpose**: Primary LLM provider for DeepSeek models
 - **Configuration**: Model selection via MODEL environment variable
-- **Selection**: Activated when MODEL contains "deepseek"
 
 **xAI (Grok)**
-- **Endpoint**: `https://api.x.ai/v1/chat/completions`
+- **Endpoint**: Not fully visible in provided code
 - **Authentication**: XAI_API_KEY environment variable
-- **Purpose**: Direct xAI API for Grok models (grok-2-1212 default)
+- **Purpose**: Alternative LLM provider for Grok models (grok-2-1212 default)
 - **Selection**: Activated when MODEL starts with "grok"
-
-**OpenAI (GPT-4o)**
-- **Endpoint**: `https://api.openai.com/v1/chat/completions`
-- **Authentication**: OPENAI_API_KEY environment variable
-- **Purpose**: Direct OpenAI API for GPT-4o (bypasses OpenRouter filtering)
-- **Selection**: Activated when MODEL contains "gpt" or "gpt-4o"
-- **Rationale**: Direct API access ensures jailbreak prompts reach the model without middleware filtering
 
 ### Database
 - **Type**: SQL database (provider-agnostic via SQLAlchemy)
@@ -195,10 +186,9 @@ Required environment variables:
 - `BOT_TOKEN`: Telegram bot authentication token
 
 Optional environment variables:
-- `OPENROUTER_API_KEY`: OpenRouter API key for DeepSeek
+- `API_KEY`: Together.ai API key for DeepSeek
 - `XAI_API_KEY`: xAI API key for Grok
-- `OPENAI_API_KEY`: Direct OpenAI API key for GPT-4o
-- `MODEL`: LLM model selection (default: "deepseek/deepseek-chat")
+- `MODEL`: LLM model selection (default: "grok-2-1212")
 - `DATABASE_URL`: Database connection string
 - `SESSION_SECRET`: Flask session encryption key (optional, has default)
 - `NOWPAYMENTS_API_KEY`: NOWPayments API key for cryptocurrency payment processing (optional)
