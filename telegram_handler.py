@@ -253,9 +253,9 @@ def process_update(update):
             
             response = f"""💰 Credit Packages
 
-• 200 credits = $20.00
-• 500 credits = $40.00
-• 1000 credits = $60.00
+• 200 credits = $10.00
+• 500 credits = $25.00
+• 1000 credits = $50.00
 
 To purchase credits, visit:
 https://{domain}/buy?telegram_id={telegram_id}
