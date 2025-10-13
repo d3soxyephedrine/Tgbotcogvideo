@@ -86,6 +86,7 @@ Preferred communication style: Simple, everyday language.
 - **Context Passing**: Messages formatted as `[{"role": "user/assistant", "content": "..."}]` and sent to LLM
 - **Graceful Degradation**: If database unavailable, bot operates without conversation history
 - **Benefits**: Enables multi-turn conversations, follow-up questions, and contextual responses
+- **Manual Clear**: `/clear` command deletes all conversation history for fresh start (preserves credits)
 
 ### Token Budget Management
 - **Purpose**: Ensures system prompt (jailbreak instructions) is ALWAYS delivered intact to the LLM
