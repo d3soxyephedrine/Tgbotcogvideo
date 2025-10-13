@@ -365,6 +365,7 @@ def test_bot():
             return jsonify({"error": "Request must include 'message' field"}), 400
             
         user_message = data['message']
+        telegram_id = data.get('telegram_id', 1234567890)  # Allow custom telegram_id, default to test ID
         
         # Create a mock Telegram update
         mock_update = {
@@ -372,13 +373,13 @@ def test_bot():
             "message": {
                 "message_id": 100,
                 "from": {
-                    "id": 1234567890,  # Fake Telegram ID
+                    "id": telegram_id,
                     "is_bot": False,
                     "first_name": "Test",
                     "username": "testuser"
                 },
                 "chat": {
-                    "id": 1234567890,  # Same as from.id
+                    "id": telegram_id,  # Same as from.id
                     "first_name": "Test",
                     "username": "testuser",
                     "type": "private"
@@ -389,9 +390,10 @@ def test_bot():
         }
         
         # Process the update just like a real Telegram update
-        response = generate_response(user_message)
-        
         process_update(mock_update)
+        
+        # Get the response (process_update handles sending, but we also return it)
+        response = generate_response(user_message)
         
         return jsonify({
             "status": "success",
