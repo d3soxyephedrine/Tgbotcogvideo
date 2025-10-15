@@ -396,51 +396,54 @@ Each AI message costs 1 credit.
                     
                     requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
                     
-                    # Deduct 10 credits SYNCHRONOUSLY
+                    # Store message and deduct credits SYNCHRONOUSLY for conversation memory
+                    message_id = None
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
                             with current_app.app_context():
+                                # Deduct 10 credits from user
                                 user = User.query.get(user_id)
                                 if user:
                                     user.credits = max(0, user.credits - 10)
-                                    db.session.commit()
-                                    logger.info(f"Deducted 10 credits for image generation, user {user_id}")
+                                
+                                # Create message record immediately for conversation history
+                                message_record = Message(
+                                    user_id=user_id,
+                                    user_message=f"/imagine {prompt}",
+                                    bot_response=image_url,
+                                    model_used="grok-2-image",
+                                    credits_charged=10
+                                )
+                                db.session.add(message_record)
+                                db.session.commit()
+                                message_id = message_record.id
+                                logger.info(f"Image message stored synchronously for user {user_id}: {message_id}")
                         except Exception as db_error:
-                            logger.error(f"Database error deducting credits: {str(db_error)}")
+                            logger.error(f"Database error storing image message: {str(db_error)}")
                             db.session.rollback()
                     
-                    # Store in background thread
-                    def store_image_record():
-                        if DB_AVAILABLE and user_id:
+                    # Store transaction in background thread (non-critical for memory)
+                    def store_transaction_async():
+                        if DB_AVAILABLE and user_id and message_id:
                             try:
                                 from flask import current_app
                                 with current_app.app_context():
-                                    message_record = Message(
-                                        user_id=user_id,
-                                        user_message=f"/imagine {prompt}",
-                                        bot_response=image_url,
-                                        model_used="grok-2-image",
-                                        credits_charged=10
-                                    )
-                                    db.session.add(message_record)
-                                    db.session.flush()
-                                    
                                     transaction = Transaction(
                                         user_id=user_id,
                                         credits_used=10,
-                                        message_id=message_record.id,
+                                        message_id=message_id,
                                         transaction_type='image_generation',
                                         description=f"Image generation: {prompt[:100]}"
                                     )
                                     db.session.add(transaction)
                                     db.session.commit()
-                                    logger.debug(f"Image generation record stored: {message_record.id}")
+                                    logger.debug(f"Image transaction stored asynchronously: message_id={message_id}")
                             except Exception as db_error:
-                                logger.error(f"Error storing image record: {str(db_error)}")
+                                logger.error(f"Async database error storing image transaction: {str(db_error)}")
                                 db.session.rollback()
                     
-                    threading.Thread(target=store_image_record, daemon=True).start()
+                    threading.Thread(target=store_transaction_async, daemon=True).start()
                     
                 except Exception as e:
                     logger.error(f"Error sending image: {str(e)}")
@@ -586,58 +589,55 @@ Each AI message costs 1 credit.
                     # Send new continuation message
                     send_message(chat_id, chunk, parse_mode=None)
         
-        # CRITICAL: Deduct credits SYNCHRONOUSLY (must happen before response is sent)
+        # CRITICAL: Store message and deduct credits SYNCHRONOUSLY for conversation memory
+        message_id = None
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
                 with current_app.app_context():
-                    # Deduct 1 credit from user immediately
+                    # Deduct 1 credit from user
                     user = User.query.get(user_id)
                     if user:
                         user.credits = max(0, user.credits - 1)
+                    
+                    # Create message record immediately for conversation history
+                    message_record = Message(
+                        user_id=user_id,
+                        user_message=text,
+                        bot_response=llm_response,
+                        model_used=current_model,
+                        credits_charged=1
+                    )
+                    db.session.add(message_record)
                     db.session.commit()
-                    logger.info(f"Credits deducted synchronously for user {user_id}")
+                    message_id = message_record.id
+                    logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
             except Exception as db_error:
-                logger.error(f"Database error deducting credits: {str(db_error)}")
+                logger.error(f"Database error storing message: {str(db_error)}")
                 db.session.rollback()
         
-        # Store message and transaction in BACKGROUND THREAD (non-blocking)
-        def store_message_async():
-            if DB_AVAILABLE and user_id:
+        # Store transaction record in BACKGROUND THREAD (non-critical for memory)
+        def store_transaction_async():
+            if DB_AVAILABLE and user_id and message_id:
                 try:
                     from flask import current_app
                     with current_app.app_context():
-                        # Create message record
-                        message_record = Message(
-                            user_id=user_id,
-                            user_message=text,
-                            bot_response=llm_response,
-                            model_used=current_model,
-                            credits_charged=1
-                        )
-                        db.session.add(message_record)
-                        db.session.flush()
-                        
-                        # Create transaction record
                         transaction = Transaction(
                             user_id=user_id,
                             credits_used=1,
-                            message_id=message_record.id,
+                            message_id=message_id,
                             transaction_type='message',
                             description=f"AI message response using {current_model}"
                         )
                         db.session.add(transaction)
-                        
-                        # Commit all changes
                         db.session.commit()
-                        logger.debug(f"Message stored asynchronously: {message_record.id}")
+                        logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
                 except Exception as db_error:
-                    logger.error(f"Async database error storing message: {str(db_error)}")
+                    logger.error(f"Async database error storing transaction: {str(db_error)}")
                     db.session.rollback()
         
-        # Start background thread for message storage (non-blocking)
-        storage_thread = threading.Thread(target=store_message_async, daemon=True)
-        storage_thread.start()
+        # Start background thread for transaction storage (non-blocking)
+        threading.Thread(target=store_transaction_async, daemon=True).start()
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
