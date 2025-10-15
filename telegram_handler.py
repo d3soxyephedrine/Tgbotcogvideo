@@ -522,37 +522,38 @@ Each AI message costs 1 credit.
             
             # Check if we need to send a continuation message
             if len(accumulated_text) > CHUNK_SIZE:
-                # Calculate how many full chunks we have
+                # Calculate how many chunks we need
                 num_chunks = (len(accumulated_text) - 1) // CHUNK_SIZE + 1
-                current_chunk_index = len(continuation_messages)
                 
-                # Send continuation messages for all complete chunks we haven't sent yet
-                for chunk_idx in range(current_chunk_index, num_chunks - 1):
+                # Process each chunk
+                for chunk_idx in range(num_chunks):
                     chunk_start = chunk_idx * CHUNK_SIZE
-                    chunk_end = (chunk_idx + 1) * CHUNK_SIZE
+                    chunk_end = min((chunk_idx + 1) * CHUNK_SIZE, len(accumulated_text))
                     chunk_text = accumulated_text[chunk_start:chunk_end]
                     
-                    # Finalize previous message (remove cursor if it's the first message)
-                    if chunk_idx == 0:
-                        edit_message(chat_id, streaming_message_id, chunk_text, parse_mode=None)
+                    # Determine if this is the last chunk (needs cursor)
+                    is_last_chunk = (chunk_idx == num_chunks - 1)
+                    display_text = chunk_text + " ▌" if is_last_chunk else chunk_text
                     
-                    # Send new continuation message
-                    cont_msg = send_message(chat_id, chunk_text, parse_mode=None)
-                    if cont_msg and cont_msg.get("ok"):
-                        cont_id = cont_msg.get("result", {}).get("message_id")
-                        continuation_messages.append(cont_id)
-                
-                # Update the last chunk with cursor
-                last_chunk_start = (num_chunks - 1) * CHUNK_SIZE
-                last_chunk_text = accumulated_text[last_chunk_start:] + " ▌"
-                
-                if num_chunks == 1:
-                    # Still on first message
-                    edit_message(chat_id, streaming_message_id, last_chunk_text, parse_mode=None)
-                else:
-                    # Update the last continuation message
-                    if continuation_messages:
-                        edit_message(chat_id, continuation_messages[-1], last_chunk_text, parse_mode=None)
+                    if chunk_idx == 0:
+                        # Update first message
+                        edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
+                    else:
+                        # Handle continuation message
+                        continuation_idx = chunk_idx - 1
+                        
+                        if continuation_idx < len(continuation_messages):
+                            # Update existing continuation message
+                            edit_message(chat_id, continuation_messages[continuation_idx], display_text, parse_mode=None)
+                        else:
+                            # Create new continuation message (without cursor initially)
+                            cont_msg = send_message(chat_id, chunk_text, parse_mode=None)
+                            if cont_msg and cont_msg.get("ok"):
+                                cont_id = cont_msg.get("result", {}).get("message_id")
+                                continuation_messages.append(cont_id)
+                                # If this is the last chunk, update it with cursor
+                                if is_last_chunk:
+                                    edit_message(chat_id, cont_id, display_text, parse_mode=None)
             else:
                 # Text fits in one message, just update with cursor
                 display_text = accumulated_text + " ▌"
