@@ -83,8 +83,8 @@ Preferred communication style: Simple, everyday language.
 5. **Context formatting**: Format messages as conversation history (user/assistant alternating)
 6. Message routing to LLM provider based on configuration
 7. **Streaming response generation**: Progressive message updates with continuation message support
-8. Credit deduction and Transaction record creation (1 credit per message, 10 per image)
-9. Message and response persistence to database (optional - skipped if database unavailable)
+8. **Synchronous storage**: Credit deduction and message record storage happen immediately (for conversation memory)
+9. **Async transaction logging**: Transaction records stored in background thread (non-critical for memory)
 10. **Response delivery**: Automatic multi-message chunking for responses >4000 characters
 11. Error handling ensures bot continues functioning even if database operations fail
 
