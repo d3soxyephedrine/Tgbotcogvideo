@@ -37,15 +37,23 @@ Preferred communication style: Simple, everyday language.
   - All database operations are optional and wrapped in error handling
 
 ### LLM Provider Architecture
-- **Single Provider**: ChatGPT-4o via OpenRouter API
-- **Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
-- **Authentication**: OPENROUTER_API_KEY environment variable
-- **Model Configuration**: Configurable via MODEL environment variable (default: "openai/gpt-4o")
-- **Rationale**: Simplified architecture focused on single, reliable provider for consistent performance
-- **API Design**: Centralized `generate_response()` function with retry logic and exponential backoff
+- **Text Generation**: ChatGPT-4o via OpenRouter API
+  - **Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
+  - **Authentication**: OPENROUTER_API_KEY environment variable
+  - **Model Configuration**: Configurable via MODEL environment variable (default: "openai/gpt-4o")
+  - **API Design**: Centralized `generate_response()` function with retry logic and exponential backoff
+- **Image Generation**: Grok-2-Image-Gen via XAI API
+  - **Endpoint**: `https://api.x.ai/v1/images/generations`
+  - **Authentication**: XAI_API_KEY environment variable
+  - **Model**: grok-2-image for text-to-image generation
+  - **Command**: `/imagine <prompt>` generates images (10 credits)
+  - **Delivery**: Images sent directly to Telegram with download and upload handling
+- **Rationale**: Dual-provider architecture for comprehensive AI capabilities (text + images)
 
 ### Pay-Per-Use Credit System
-- **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume 1 credit per AI message
+- **Model**: Users purchase credits via cryptocurrency through NOWPayments and consume credits per feature:
+  - Text messages: 1 credit per message
+  - Image generation: 10 credits per image
 - **New User Bonus**: All new users automatically receive 100 free credits upon first interaction
 - **Pricing**: $0.05 per credit (packages: 200 credits/$10, 500 credits/$25, 1000 credits/$50) - payable in cryptocurrency
 - **Minimum Amounts**: Credit packages sized to meet cryptocurrency minimum payment requirements (typically $9-10 USD for the smallest package)
@@ -74,11 +82,19 @@ Preferred communication style: Simple, everyday language.
 4. **Conversation history retrieval**: Fetch user's last 20 messages from database for context
 5. **Context formatting**: Format messages as conversation history (user/assistant alternating)
 6. Message routing to LLM provider based on configuration
-7. Response generation with system prompt injection and full conversation context
-8. Credit deduction and Transaction record creation (1 credit per message)
+7. **Streaming response generation**: Progressive message updates with continuation message support
+8. Credit deduction and Transaction record creation (1 credit per message, 10 per image)
 9. Message and response persistence to database (optional - skipped if database unavailable)
-10. Response delivery to Telegram with chunking for messages >4000 characters
+10. **Response delivery**: Automatic multi-message chunking for responses >4000 characters
 11. Error handling ensures bot continues functioning even if database operations fail
+
+### Streaming Response Delivery
+- **Progressive Updates**: Responses streamed in real-time with 1-second update intervals and cursor indicator (▌)
+- **Continuation Messages**: Long responses automatically split into 4000-character chunks across multiple messages
+- **Seamless Experience**: As response grows beyond 4000 chars, new continuation messages are created and updated
+- **Chunk Management**: Each chunk properly updated during streaming - no content drops or gaps
+- **Message Limits**: Edit limit increased to 4096 characters (Telegram's actual limit)
+- **Smart Chunking**: Final delivery splits responses at 4000 char boundaries for safety margin
 
 ### Conversation Memory
 - **Feature**: Bot remembers previous messages in each conversation
