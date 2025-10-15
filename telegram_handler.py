@@ -101,9 +101,9 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
         return {"error": "Bot token not configured"}
     
     try:
-        # Telegram limits message edits to 4096 characters
-        if len(text) > 4000:
-            text = text[:4000] + "..."
+        # Telegram limits message edits to 4096 characters - truncate if needed
+        if len(text) > 4096:
+            text = text[:4093] + "..."
         
         payload = {
             "chat_id": chat_id,
