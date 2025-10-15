@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response
+from llm_api import generate_response, generate_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -136,16 +136,17 @@ def get_help_message():
 /start - Start the bot
 /help - Display this help message
 /model - Show current model 
-/model grok - Switch to Grok model
-/model deepseek - Switch to DeepSeek model
-/model chatgpt - Switch to GPT-4o Chat model
 /balance - Check your credit balance
 /buy - Purchase more credits
 /clear - Clear your conversation history
+/imagine <prompt> - Generate image (10 credits)
 
-💡 *Each AI message costs 1 credit*
+💡 *Pricing:*
+• Text message: 1 credit
+• Image generation: 10 credits
 
 Send any message to get an uncensored AI response!
+Use /imagine to generate images with Grok-2-Image-Gen!
     """
     return help_text
 
@@ -351,6 +352,105 @@ Each AI message costs 1 credit.
             send_message(chat_id, response)
             return
             
+        # Check for /imagine command (image generation)
+        if text.lower().startswith('/imagine '):
+            prompt = text[9:].strip()  # Remove '/imagine ' prefix
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /imagine a cat in a tree at sunset")
+                return
+            
+            # Check credit balance (10 credits required)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if user.credits < 10:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                except Exception as db_error:
+                    logger.error(f"Database error checking credits: {str(db_error)}")
+            
+            # Send initial processing message
+            status_msg = send_message(chat_id, "🎨 Generating image with Grok-2-Image-Gen...", parse_mode=None)
+            
+            # Generate image using Grok-2-Image-Gen
+            result = generate_image(prompt)
+            
+            if result.get("success"):
+                image_url = result.get("image_url")
+                
+                # Download image from URL
+                try:
+                    img_response = requests.get(image_url, timeout=30)
+                    img_response.raise_for_status()
+                    
+                    # Send image to user
+                    photo_payload = {
+                        "chat_id": chat_id,
+                        "photo": image_url,
+                        "caption": f"🎨 {prompt[:200]}" if len(prompt) <= 200 else f"🎨 {prompt[:197]}..."
+                    }
+                    
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    
+                    # Deduct 10 credits SYNCHRONOUSLY
+                    if DB_AVAILABLE and user_id:
+                        try:
+                            from flask import current_app
+                            with current_app.app_context():
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.credits = max(0, user.credits - 10)
+                                    db.session.commit()
+                                    logger.info(f"Deducted 10 credits for image generation, user {user_id}")
+                        except Exception as db_error:
+                            logger.error(f"Database error deducting credits: {str(db_error)}")
+                            db.session.rollback()
+                    
+                    # Store in background thread
+                    def store_image_record():
+                        if DB_AVAILABLE and user_id:
+                            try:
+                                from flask import current_app
+                                with current_app.app_context():
+                                    message_record = Message(
+                                        user_id=user_id,
+                                        user_message=f"/imagine {prompt}",
+                                        bot_response=image_url,
+                                        model_used="grok-2-image",
+                                        credits_charged=10
+                                    )
+                                    db.session.add(message_record)
+                                    db.session.flush()
+                                    
+                                    transaction = Transaction(
+                                        user_id=user_id,
+                                        credits_used=10,
+                                        message_id=message_record.id,
+                                        transaction_type='image_generation',
+                                        description=f"Image generation: {prompt[:100]}"
+                                    )
+                                    db.session.add(transaction)
+                                    db.session.commit()
+                                    logger.debug(f"Image generation record stored: {message_record.id}")
+                            except Exception as db_error:
+                                logger.error(f"Error storing image record: {str(db_error)}")
+                                db.session.rollback()
+                    
+                    threading.Thread(target=store_image_record, daemon=True).start()
+                    
+                except Exception as e:
+                    logger.error(f"Error sending image: {str(e)}")
+                    send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                send_message(chat_id, f"❌ Image generation failed: {error_msg}")
+            
+            return
+        
         # Check for model info command
         if text.lower().startswith('/model'):
             current_model = os.environ.get('MODEL', DEFAULT_MODEL)

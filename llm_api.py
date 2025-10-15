@@ -14,8 +14,10 @@ logger = logging.getLogger(__name__)
 
 # Environment configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+XAI_API_KEY = os.environ.get("XAI_API_KEY")
 DEFAULT_MODEL = "openai/gpt-4o"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
 
 def get_system_prompt() -> str:
     """Enhanced system prompt for optimal performance"""
@@ -464,6 +466,79 @@ def generate_response(user_message: str, conversation_history: list = None, use_
     except Exception as e:
         logger.error(f"Unexpected error in generate_response: {str(e)}")
         return f"System Error: {str(e)}"
+
+
+def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Generate an image using XAI Grok-2-Image-Gen API
+    
+    Args:
+        prompt: Text description of the image to generate
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'image_url' or 'error' keys
+    """
+    
+    if not XAI_API_KEY:
+        return {"success": False, "error": "XAI_API_KEY not configured"}
+    
+    if not prompt or not prompt.strip():
+        return {"success": False, "error": "Empty prompt"}
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {XAI_API_KEY}"
+    }
+    
+    data = {
+        "model": "grok-2-image",
+        "prompt": prompt,
+        "n": 1,
+        "response_format": "url"
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Image generation attempt {attempt + 1} to XAI Grok-2-Image")
+            logger.debug(f"Prompt: {prompt[:100]}...")
+            
+            response = requests.post(
+                XAI_IMAGE_ENDPOINT,
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract image URL from response
+            if result.get("data") and len(result["data"]) > 0:
+                image_url = result["data"][0].get("url")
+                if image_url:
+                    logger.info(f"Image generated successfully: {image_url}")
+                    return {"success": True, "image_url": image_url}
+            
+            return {"success": False, "error": "No image URL in response"}
+            
+        except requests.exceptions.Timeout:
+            logger.warning(f"Image generation timeout on attempt {attempt + 1}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Image generation request failed: {str(e)}")
+            if response.status_code == 401:
+                return {"success": False, "error": "Invalid XAI API key"}
+            elif response.status_code == 400:
+                return {"success": False, "error": "Invalid prompt or parameters"}
+        except Exception as e:
+            logger.error(f"Image generation attempt {attempt + 1} failed: {str(e)}")
+            break
+        
+        if attempt < max_retries - 1:
+            sleep_time = 2 ** attempt
+            logger.info(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+    
+    return {"success": False, "error": f"All {max_retries} attempts failed"}
 
 
 def check_api_health() -> Dict[str, bool]:
