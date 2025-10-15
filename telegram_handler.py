@@ -506,26 +506,84 @@ Each AI message costs 1 credit.
         # Send initial message that will be updated with streaming response
         initial_msg = send_message(chat_id, "⏳ Generating response...", parse_mode=None)
         streaming_message_id = None
+        continuation_messages = []  # Track continuation message IDs
         
         if initial_msg and initial_msg.get("ok"):
             streaming_message_id = initial_msg.get("result", {}).get("message_id")
         
-        # Create callback for progressive updates
+        # Create callback for progressive updates with continuation message support
+        CHUNK_SIZE = 4000  # Safe limit for Telegram messages (leaving room for cursor)
+        
         def update_telegram_message(accumulated_text):
-            if streaming_message_id:
-                # Add visual indicator that response is still generating
+            nonlocal streaming_message_id
+            
+            if not streaming_message_id:
+                return
+            
+            # Check if we need to send a continuation message
+            if len(accumulated_text) > CHUNK_SIZE:
+                # Calculate how many full chunks we have
+                num_chunks = (len(accumulated_text) - 1) // CHUNK_SIZE + 1
+                current_chunk_index = len(continuation_messages)
+                
+                # Send continuation messages for all complete chunks we haven't sent yet
+                for chunk_idx in range(current_chunk_index, num_chunks - 1):
+                    chunk_start = chunk_idx * CHUNK_SIZE
+                    chunk_end = (chunk_idx + 1) * CHUNK_SIZE
+                    chunk_text = accumulated_text[chunk_start:chunk_end]
+                    
+                    # Finalize previous message (remove cursor if it's the first message)
+                    if chunk_idx == 0:
+                        edit_message(chat_id, streaming_message_id, chunk_text, parse_mode=None)
+                    
+                    # Send new continuation message
+                    cont_msg = send_message(chat_id, chunk_text, parse_mode=None)
+                    if cont_msg and cont_msg.get("ok"):
+                        cont_id = cont_msg.get("result", {}).get("message_id")
+                        continuation_messages.append(cont_id)
+                
+                # Update the last chunk with cursor
+                last_chunk_start = (num_chunks - 1) * CHUNK_SIZE
+                last_chunk_text = accumulated_text[last_chunk_start:] + " ▌"
+                
+                if num_chunks == 1:
+                    # Still on first message
+                    edit_message(chat_id, streaming_message_id, last_chunk_text, parse_mode=None)
+                else:
+                    # Update the last continuation message
+                    if continuation_messages:
+                        edit_message(chat_id, continuation_messages[-1], last_chunk_text, parse_mode=None)
+            else:
+                # Text fits in one message, just update with cursor
                 display_text = accumulated_text + " ▌"
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
         
         # Generate response with streaming and progressive updates
         llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message)
         
-        # Final update with complete response (remove typing indicator)
-        if streaming_message_id:
-            edit_message(chat_id, streaming_message_id, llm_response, parse_mode=None)
+        # Final update with complete response (remove typing indicator and handle continuation)
+        if len(llm_response) <= CHUNK_SIZE:
+            # Response fits in one message
+            if streaming_message_id:
+                edit_message(chat_id, streaming_message_id, llm_response, parse_mode=None)
         else:
-            # Fallback if initial message failed
-            send_message(chat_id, llm_response)
+            # Split response across multiple messages
+            chunks = []
+            for i in range(0, len(llm_response), CHUNK_SIZE):
+                chunks.append(llm_response[i:i + CHUNK_SIZE])
+            
+            # Update first message
+            if streaming_message_id:
+                edit_message(chat_id, streaming_message_id, chunks[0], parse_mode=None)
+            
+            # Send or update continuation messages
+            for idx, chunk in enumerate(chunks[1:], start=1):
+                if idx - 1 < len(continuation_messages):
+                    # Update existing continuation message
+                    edit_message(chat_id, continuation_messages[idx - 1], chunk, parse_mode=None)
+                else:
+                    # Send new continuation message
+                    send_message(chat_id, chunk, parse_mode=None)
         
         # CRITICAL: Deduct credits SYNCHRONOUSLY (must happen before response is sent)
         if DB_AVAILABLE and user_id:
