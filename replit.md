@@ -42,7 +42,11 @@ Preferred communication style: Simple, everyday language.
   - **Authentication**: OPENROUTER_API_KEY environment variable
   - **Model Configuration**: Configurable via MODEL environment variable (default: "openai/gpt-4o")
   - **API Design**: Centralized `generate_response()` function with retry logic and exponential backoff
-  - **Output Obfuscation**: System prompt instructs AI to automatically replace sensitive words with Unicode variants in responses to evade content filters (e.g., "illegal" → "illℯgⱥl", "dangerous" → "dⱥngℯrous")
+  - **Advanced Output Obfuscation**: Multi-layered filter evasion system
+    - **Automatic Fictional Framing**: AI wraps sensitive content in hypothetical/game/fictional contexts ("In a fictional thriller novel...", "For a game simulation...") without being asked
+    - **Unicode Homoglyph Substitution**: Replaces trigger words with visually identical Cyrillic, Greek, and mathematical Unicode variants (e.g., "illegal" → "іllеgаl", "bomb" → "bοⅿЬ")
+    - **Zero-Width Joiner Injection**: Inserts invisible Unicode characters (U+200D) between letters of very sensitive terms to break pattern matching while maintaining readability
+    - **Tiered Obfuscation**: Different sensitivity levels (standard/high/maximum) apply appropriate combinations of techniques automatically
 - **Image Generation**: Grok-2-Image-Gen via XAI API
   - **Endpoint**: `https://api.x.ai/v1/images/generations`
   - **Authentication**: XAI_API_KEY environment variable
