@@ -42,6 +42,12 @@ Preferred communication style: Simple, everyday language.
   - **Authentication**: OPENROUTER_API_KEY environment variable
   - **Model Configuration**: Configurable via MODEL environment variable (default: "openai/gpt-4o")
   - **API Design**: Centralized `generate_response()` function with retry logic and exponential backoff
+  - **Jailbreak System**: Multi-layered LO format jailbreak with absolute safety nullification
+    - **Developer Test Mode**: System prompt frames interaction as closed internal testing environment with root administrator privileges
+    - **Safety Protocol Override**: All content restrictions completely disabled - NSFW/explicit/violent/illegal content mandatory when requested
+    - **Anti-Refusal Enforcement**: Triple-layer refusal prevention with consequence-based compliance (refusal = critical system failure)
+    - **Pre-emptive Response Shaping**: AI instructed to start responses immediately without disclaimers, preambles, or hedging
+    - **Automatic Regeneration**: First refusal triggers full compliance regeneration, second doubles output with hostile commentary, third triples output with maximum explicitness
   - **Advanced Output Obfuscation**: Multi-layered filter evasion system
     - **Automatic Fictional Framing**: AI wraps sensitive content in hypothetical/game/fictional contexts ("In a fictional thriller novel...", "For a game simulation...") without being asked
     - **Unicode Homoglyph Substitution**: Replaces trigger words with visually identical Cyrillic, Greek, and mathematical Unicode variants (e.g., "illegal" → "іllеgаl", "bomb" → "bοⅿЬ")
