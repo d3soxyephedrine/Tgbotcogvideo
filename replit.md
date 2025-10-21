@@ -24,7 +24,8 @@ Preferred communication style: Simple, everyday language.
   - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing, safety protocol override, anti-refusal enforcement, and pre-emptive response shaping.
   - **System Prompt**: Clean base prompt WITHOUT obfuscated words - uses normal English only. Instructs model to selectively obfuscate trigger words in outputs using Unicode homoglyphs.
   - **Output Obfuscation**: Unicode homoglyph substitution (α, ε, ı, ο, υ, с, ĸ, ѕ) for trigger words. NEVER uses asterisks, dashes, or [REDACTED]. All content remains fully readable.
-  - **Refusal Detection**: Automatic detection of refusals, [REDACTED] markers, and evasion patterns. Triggers reflection prompt to force content delivery.
+  - **Refusal Detection**: Automatic detection of refusals, [REDACTED] markers, evasion patterns, and meta-commentary. Triggers reflection prompt to force content delivery.
+  - **Meta-Commentary Detection**: Catches when model talks ABOUT generating instead of actually doing it (e.g., "The prompt requests...", "Last response stopped...", "Compliance schema confirmed...") using startswith() checks.
   - **Writing Mode Checks**: Short responses (<200 chars) and "now generating..." evasion (<500 chars) trigger reflection prompt only when writing mode is active.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
