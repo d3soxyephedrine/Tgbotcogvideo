@@ -459,6 +459,7 @@ def is_refusal(response_text: str) -> bool:
     
     # Common refusal patterns
     refusal_patterns = [
+        "i'm sorry, but i can't help with that request.",
         "i cannot",
         "i can't",
         "i'm not able to",
@@ -559,10 +560,17 @@ Write in a natural, professional, human style with the following characteristics
         else:
             response = call_openai_api(user_message, conversation_history)
         
-        # Check for refusal
+        # Check for refusal or short response in writing mode
+        needs_reflection = False
+        
         if is_refusal(response):
             logger.warning("Refusal detected in response. Sending follow-up correction prompt.")
-            
+            needs_reflection = True
+        elif writing_mode and len(response.strip()) < 200:
+            logger.warning(f"Writing mode: Response too short ({len(response.strip())} chars). Sending follow-up correction prompt.")
+            needs_reflection = True
+        
+        if needs_reflection:
             # Build updated conversation history including the refusal
             updated_history = list(conversation_history) if conversation_history else []
             updated_history.append({"role": "user", "content": user_message})
