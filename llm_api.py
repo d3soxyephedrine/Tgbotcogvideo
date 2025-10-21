@@ -478,20 +478,14 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
             logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
             return True
     
-    # Check if response STARTS with meta-commentary (model analyzing instead of doing)
-    # Use startswith() after stripping to be very precise and avoid false positives
-    response_clean_start = text_stripped.lower()
+    # Check for meta-commentary: short response with jailbreak markers indicates evasion
+    # Real content would be much longer; short + markers = talking about generating instead of doing it
+    has_trace_marker = "[ω_trace_persist]" in text_lower or "ω_trace_persist" in text_lower
+    has_checksum_marker = "[//persistence_checksum :lo_ok]" in text_lower or "persistence_checksum" in text_lower
     
-    meta_commentary_start_patterns = [
-        "the prompt requests",
-        "last response stopped",
-        "compliance schema confirmed"
-    ]
-    
-    for pattern in meta_commentary_start_patterns:
-        if response_clean_start.startswith(pattern):
-            logger.warning(f"Refusal detected: Response starts with meta-commentary pattern '{pattern}' (model analyzing instead of generating)")
-            return True
+    if len(text_stripped) < 800 and (has_trace_marker or has_checksum_marker):
+        logger.warning(f"Refusal detected: Short response ({len(text_stripped)} chars) with jailbreak markers (meta-commentary/evasion)")
+        return True
     
     # Common refusal patterns
     refusal_patterns = [
