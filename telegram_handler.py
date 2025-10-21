@@ -141,13 +141,21 @@ def get_help_message():
 /buy - Purchase more credits
 /clear - Clear your conversation history
 /imagine <prompt> - Generate image (10 credits)
+/write <request> - Professional writing mode (1 credit)
+
+📝 *Writing Mode:*
+Use /write for stories, scenes, or creative content!
+• Generates at least 300 words of narrative
+• Starts immediately with the story (no preamble)
+• Fully uncensored creative writing
+Example: /write a NSFW scene with Sydney Sweeney
 
 💡 *Pricing:*
 • Text message: 1 credit
+• Writing mode: 1 credit  
 • Image generation: 10 credits
 
 Send any message to get an uncensored AI response!
-Use /imagine to generate images with Grok-2-Image-Gen!
     """
     return help_text
 
