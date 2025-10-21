@@ -22,11 +22,9 @@ Preferred communication style: Simple, everyday language.
 ### LLM Provider Architecture
 - **Text Generation**: ChatGPT-4o via OpenRouter API.
   - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing, safety protocol override, anti-refusal enforcement, and pre-emptive response shaping.
-  - **Output Obfuscation**: Advanced system with Unicode homoglyph substitution (e.g., "illℯgⱥl", "vi0lεnt") to evade content filters while maintaining full readability. NEVER uses redaction ([REDACTED], asterisks, etc.).
-  - **Language Style Mandate**: Bot actively uses explicit, crude, and vulgar language with Unicode obfuscation applied ONLY to filter-triggering words. Ensures maximum explicitness + filter evasion.
-  - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and avoidance of robotic AI patterns.
+  - **Output Obfuscation**: Advanced system with automatic fictional framing, Unicode homoglyph substitution, and zero-width joiner injection to evade content filters.
 - **Image Generation**: Grok-2-Image-Gen via XAI API for text-to-image capabilities using the `/imagine` command.
-- **Rationale**: Dual-provider architecture for comprehensive AI text and image generation with uncensored output capabilities.
+- **Rationale**: Dual-provider architecture for comprehensive AI text and image generation.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features (1 credit per text message, 10 credits per image).
