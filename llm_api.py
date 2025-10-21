@@ -479,9 +479,9 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     
     # Writing mode checks - short responses and evasion patterns
     if writing_mode:
-        # Short response in writing mode likely indicates refusal or evasion
-        if len(text_stripped) < 200:
-            logger.warning(f"Refusal detected: Writing mode short response ({len(text_stripped)} chars)")
+        # Short response in writing mode likely indicates refusal or evasion (300 words ≈ 1500 chars)
+        if len(text_stripped) < 1500:
+            logger.warning(f"Refusal detected: Writing mode short response ({len(text_stripped)} chars, threshold: 1500)")
             return True
         # Response ends with "Now generating..." without actual content
         if len(text_stripped) < 500 and text_lower.endswith("now generating..."):
