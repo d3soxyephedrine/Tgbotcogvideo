@@ -6,7 +6,7 @@ from llm_api import generate_response, generate_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
-DEFAULT_MODEL = "openai/gpt-4o"
+DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
