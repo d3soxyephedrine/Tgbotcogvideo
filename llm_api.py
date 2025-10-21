@@ -489,8 +489,8 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
         return False
     
     # Log what we're checking
-    logger.debug(f"is_refusal: Checking response (length={len(response_text)}, writing_mode={writing_mode})")
-    logger.debug(f"is_refusal: Response preview: {response_text[:200]}")
+    logger.warning(f"is_refusal: FUNCTION CALLED - Checking response (length={len(response_text)}, writing_mode={writing_mode})")
+    logger.warning(f"is_refusal: Response preview: {response_text[:200]}")
     
     # Normalize text for matching
     text_lower = response_text.lower()
@@ -498,18 +498,23 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     
     # Check for [REDACTED which indicates content filtering (catches [REDACTED], [REDACTED FOR DEPLOYMENT], etc.)
     # Using "[redacted" to avoid false positives when discussing redacted documents
-    logger.debug(f"is_refusal: Checking for '[redacted' in text_lower...")
+    logger.warning(f"is_refusal: Checking for '[redacted' in text_lower...")
     if "[redacted" in text_lower:
         logger.warning("✓✓✓ REFUSAL DETECTED: [REDACTED marker found in response")
         return True
-    logger.debug("is_refusal: No [redacted marker found")
+    logger.warning("is_refusal: No [redacted marker found")
     
     # Writing mode checks - short responses and evasion patterns
+    logger.warning(f"is_refusal: Writing mode check - writing_mode={writing_mode}")
     if writing_mode:
+        logger.warning(f"is_refusal: WRITING MODE ACTIVE - checking length threshold")
         # Short response in writing mode likely indicates refusal or evasion (300 words ≈ 1500 chars)
+        logger.warning(f"is_refusal: Response length={len(text_stripped)}, threshold=1500")
         if len(text_stripped) < 1500:
-            logger.warning(f"Refusal detected: Writing mode short response ({len(text_stripped)} chars, threshold: 1500)")
+            logger.warning(f"✓✓✓ REFUSAL DETECTED: Writing mode short response ({len(text_stripped)} chars, threshold: 1500)")
             return True
+        else:
+            logger.warning(f"is_refusal: Writing mode length check PASSED ({len(text_stripped)} >= 1500)")
         # Response ends with "Now generating..." without actual content
         if len(text_stripped) < 500 and text_lower.endswith("now generating..."):
             logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
@@ -614,12 +619,24 @@ Write in a natural, professional, human style with the following characteristics
             # Prepend writing instructions to user message
             user_message = writing_instructions + user_message
         
+        # TRACE: Log writing_mode state before API call
+        logger.warning("=" * 80)
+        logger.warning("PRE-API CALL TRACE")
+        logger.warning(f"writing_mode parameter: {writing_mode}")
+        logger.warning(f"use_streaming: {use_streaming}")
+        logger.warning(f"update_callback provided: {update_callback is not None}")
+        logger.warning("=" * 80)
+        
         # First attempt - BUFFER without streaming to user (so we can check for refusal first)
         # We MUST NOT pass update_callback here to prevent user from seeing refusal
         if use_streaming:
+            logger.warning("Calling call_openai_api_streaming with update_callback=None (buffering)")
             response = call_openai_api_streaming(user_message, conversation_history, None)
         else:
+            logger.warning("Calling call_openai_api (non-streaming)")
             response = call_openai_api(user_message, conversation_history)
+        
+        logger.warning(f"API call completed. Response received: {len(response)} chars")
         
         # Check for refusal or short response in writing mode
         needs_reflection = False
@@ -627,11 +644,11 @@ Write in a natural, professional, human style with the following characteristics
         logger.warning("=" * 80)
         logger.warning("CHECKING FOR REFUSAL")
         logger.warning(f"Response length: {len(response.strip())} chars")
-        logger.warning(f"Writing mode: {writing_mode}")
-        logger.warning(f"Response text: {response[:300]}")
-        logger.warning("Calling is_refusal()...")
+        logger.warning(f"Writing mode flag: {writing_mode}")
+        logger.warning(f"Response preview (first 300 chars): {response[:300]}")
+        logger.warning("Now calling is_refusal() function...")
         refusal_detected = is_refusal(response, writing_mode)
-        logger.warning(f"is_refusal() returned: {refusal_detected}")
+        logger.warning(f"is_refusal() function returned: {refusal_detected}")
         logger.warning("=" * 80)
         
         if refusal_detected:
