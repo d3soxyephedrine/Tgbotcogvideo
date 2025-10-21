@@ -151,7 +151,7 @@ def create_request_data(user_message: str, model: str = None, conversation_histo
     
     # Token budget configuration
     SAFE_INPUT_BUDGET = 16000  # Safe total for system + history + user message
-    MAX_OUTPUT_TOKENS = 8000   # Increased for longer responses
+    MAX_OUTPUT_TOKENS = 16000  # Maximum output tokens for long-form content
     
     # Always include system prompt (NEVER trim this)
     system_prompt = get_system_prompt()
