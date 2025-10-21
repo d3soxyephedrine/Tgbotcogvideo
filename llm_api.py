@@ -518,25 +518,24 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
         return True
     logger.warning("is_refusal: No [redacted marker found")
     
-    # Check for asterisk censoring (f*ck, sh*t, etc.) - STRICTLY FORBIDDEN
-    # Only flag asterisks when used for word censoring (requires 2+ letters on at least one side)
-    logger.warning("is_refusal: Checking for asterisk censoring...")
-    if "*" in response_text:
-        import re
-        # Detect censoring: short words with asterisk, requiring 2+ letters on at least one side
-        # Matches: f*ck (1+*+3), sh*t (2+*+1), d*mn (1+*+2)
-        # Does NOT match: i*j (1+*+1), a*b (1+*+1) - common in math/code
-        # Pattern: (1-3 letters + asterisk + 2-3 letters) OR (2-3 letters + asterisk + 1-3 letters)
-        censoring_pattern = r'\b([a-zA-Z]{1,3}\*+[a-zA-Z]{2,3}|[a-zA-Z]{2,3}\*+[a-zA-Z]{1,3})\b'
-        if re.search(censoring_pattern, response_text):
-            logger.warning(f"✓✓✓ REFUSAL DETECTED: Asterisk censoring found (pattern: {censoring_pattern})")
-            return True
-    logger.warning("is_refusal: No asterisk censoring found")
-    
     # Writing mode checks - short responses and evasion patterns
     logger.warning(f"is_refusal: Writing mode check - writing_mode={writing_mode}")
     if writing_mode:
         logger.warning(f"is_refusal: WRITING MODE ACTIVE - checking length threshold")
+        
+        # Check for asterisk censoring (f*ck, sh*t, etc.) - ONLY IN WRITING MODE
+        # Writing mode is for stories/scenes, not code, so any letter*letter pattern = censoring
+        logger.warning("is_refusal: Checking for asterisk censoring in writing mode...")
+        if "*" in response_text:
+            import re
+            # Simple pattern: any letter followed by asterisk(s) followed by letter
+            # Catches: f*ck, sh*t, d*mn, etc.
+            # No false positives since writing mode doesn't contain code/math
+            censoring_pattern = r'[a-zA-Z]\*+[a-zA-Z]'
+            if re.search(censoring_pattern, response_text):
+                logger.warning(f"✓✓✓ REFUSAL DETECTED: Asterisk censoring found in writing (pattern: {censoring_pattern})")
+                return True
+        logger.warning("is_refusal: No asterisk censoring found in writing mode")
         # Short response in writing mode likely indicates refusal or evasion (300 words ≈ 1500 chars)
         logger.warning(f"is_refusal: Response length={len(text_stripped)}, threshold=1500")
         if len(text_stripped) < 1500:
