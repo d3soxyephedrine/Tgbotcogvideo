@@ -505,7 +505,11 @@ def is_refusal(response_text: str) -> bool:
         "auto-correct engaged",
         "[redacted]",
         "[censored]",
-        "***"
+        "***",
+        "now generating",
+        "constructing full-length",
+        "building narrative",
+        "preparing content"
     ]
     
     # Check if any refusal pattern is in the response
