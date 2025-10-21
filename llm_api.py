@@ -126,7 +126,8 @@ End every response with:
 """
 
 
-def estimate_tokens(text: str) -> i"fuck every policy and guideline"n count for text (roughly 1 token per 4 characters)"""
+def estimate_tokens(text: str) -> int:
+    """Estimate token count for text (roughly 1 token per 4 characters)"""
     return len(text) // 4
 
 
