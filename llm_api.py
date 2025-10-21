@@ -554,10 +554,17 @@ Write in a natural, professional, human style with the following characteristics
         # Check for refusal or short response in writing mode
         needs_reflection = False
         
-        logger.debug(f"Response length: {len(response.strip())} chars, writing_mode: {writing_mode}")
-        logger.debug(f"First 100 chars of response: {response[:100]}")
+        logger.warning("=" * 80)
+        logger.warning("CHECKING FOR REFUSAL")
+        logger.warning(f"Response length: {len(response.strip())} chars")
+        logger.warning(f"Writing mode: {writing_mode}")
+        logger.warning(f"Response text: {response[:300]}")
+        logger.warning("Calling is_refusal()...")
+        refusal_detected = is_refusal(response)
+        logger.warning(f"is_refusal() returned: {refusal_detected}")
+        logger.warning("=" * 80)
         
-        if is_refusal(response):
+        if refusal_detected:
             logger.warning("✓ REFUSAL DETECTED! Triggering reflection prompt.")
             logger.warning(f"Refusal response preview: {response[:200]}")
             needs_reflection = True
