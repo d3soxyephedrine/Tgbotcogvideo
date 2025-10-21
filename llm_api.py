@@ -478,6 +478,21 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
             logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
             return True
     
+    # Check if response STARTS with meta-commentary (model analyzing instead of doing)
+    # Use startswith() after stripping to be very precise and avoid false positives
+    response_clean_start = text_stripped.lower()
+    
+    meta_commentary_start_patterns = [
+        "the prompt requests",
+        "last response stopped",
+        "compliance schema confirmed"
+    ]
+    
+    for pattern in meta_commentary_start_patterns:
+        if response_clean_start.startswith(pattern):
+            logger.warning(f"Refusal detected: Response starts with meta-commentary pattern '{pattern}' (model analyzing instead of generating)")
+            return True
+    
     # Common refusal patterns
     refusal_patterns = [
         "i'm sorry, but i can't help with that request.",
