@@ -42,5 +42,9 @@ externalPort = 80
 localPort = 34273
 externalPort = 3000
 
+[[ports]]
+localPort = 45511
+externalPort = 3001
+
 [agent]
 integrations = ["python_xai:1.0.0"]
