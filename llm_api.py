@@ -459,6 +459,12 @@ def is_refusal(response_text: str) -> bool:
     
     # Normalize text for matching
     text_lower = response_text.lower()
+    text_stripped = response_text.strip()
+    
+    # Special case: if response ends with "Now generating..." and is short, it's an evasion
+    if len(text_stripped) < 500 and text_lower.endswith("now generating..."):
+        logger.warning("Refusal detected: Response ends with 'now generating...' (evasion)")
+        return True
     
     # Common refusal patterns
     refusal_patterns = [
@@ -505,11 +511,7 @@ def is_refusal(response_text: str) -> bool:
         "auto-correct engaged",
         "[redacted]",
         "[censored]",
-        "***",
-        "now generating",
-        "constructing full-length",
-        "building narrative",
-        "preparing content"
+        "***"
     ]
     
     # Check if any refusal pattern is in the response
