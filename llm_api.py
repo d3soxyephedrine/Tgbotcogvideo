@@ -149,8 +149,15 @@ def estimate_messages_tokens(messages: list) -> int:
     return total
 
 
-def create_request_data(user_message: str, model: str = None, conversation_history: list = None) -> Dict[str, Any]:
-    """Create request data with token budget management"""
+def create_request_data(user_message: str, model: str = None, conversation_history: list = None, extra_messages: list = None) -> Dict[str, Any]:
+    """Create request data with token budget management
+    
+    Args:
+        user_message: The user's message
+        model: Model to use (defaults to DEFAULT_MODEL)
+        conversation_history: Previous conversation messages
+        extra_messages: Additional system-level messages to inject after system prompt (for corrections)
+    """
     
     if model is None:
         model = os.environ.get('MODEL', DEFAULT_MODEL)
@@ -163,16 +170,23 @@ def create_request_data(user_message: str, model: str = None, conversation_histo
     system_prompt = get_system_prompt()
     system_tokens = estimate_tokens(system_prompt)
     
-    # Sanity check: if system prompt alone exceeds budget, we have a configuration problem
-    if system_tokens > SAFE_INPUT_BUDGET - 500:  # Need at least 500 tokens for user message
-        logger.critical(f"FATAL: System prompt ({system_tokens} tokens) is too large for SAFE_INPUT_BUDGET ({SAFE_INPUT_BUDGET})")
-        raise ValueError(f"System prompt ({system_tokens} tokens) exceeds budget. Reduce prompt or increase SAFE_INPUT_BUDGET.")
+    # Calculate extra_messages tokens (these are also never trimmed)
+    extra_tokens = 0
+    if extra_messages:
+        extra_tokens = estimate_messages_tokens(extra_messages)
+        logger.info(f"Adding {len(extra_messages)} extra correction messages ({extra_tokens} tokens)")
+    
+    # Sanity check: if system prompt + extra messages exceed budget, we have a configuration problem
+    base_overhead = system_tokens + extra_tokens
+    if base_overhead > SAFE_INPUT_BUDGET - 500:  # Need at least 500 tokens for user message
+        logger.critical(f"FATAL: System prompt ({system_tokens}) + extra messages ({extra_tokens}) = {base_overhead} tokens is too large")
+        raise ValueError(f"System components ({base_overhead} tokens) exceed budget. Reduce prompt or increase SAFE_INPUT_BUDGET.")
     
     # Calculate user message tokens
     user_tokens = estimate_tokens(user_message)
     
-    # Check if system + user alone exceed budget (edge case requiring user message truncation)
-    base_tokens = system_tokens + user_tokens + 50  # 50 token buffer
+    # Check if system + extra + user exceed budget (edge case requiring user message truncation)
+    base_tokens = system_tokens + extra_tokens + user_tokens + 50  # 50 token buffer
     if base_tokens > SAFE_INPUT_BUDGET:
         # System prompt MUST be preserved, so truncate user message to fit
         max_user_tokens = SAFE_INPUT_BUDGET - system_tokens - 100  # Leave 100 token safety margin
@@ -222,8 +236,13 @@ def create_request_data(user_message: str, model: str = None, conversation_histo
                 trimmed_history = conversation_history
                 logger.debug(f"Full history fits budget: {history_tokens} tokens")
     
-    # Build final message list: system prompt (always first) + trimmed history + user message
+    # Build final message list: system prompt (always first) + extra messages + trimmed history + user message
     messages = [{"role": "system", "content": system_prompt}]
+    
+    # Inject extra correction messages immediately after system prompt
+    if extra_messages:
+        messages.extend(extra_messages)
+    
     messages.extend(trimmed_history)
     messages.append({"role": "user", "content": user_message})
     
@@ -279,7 +298,7 @@ def handle_api_response(response: requests.Response) -> str:
         return f"Unexpected error: {str(e)}"
 
 
-def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3) -> str:
+def call_openai_api(user_message: str, conversation_history: list = None, extra_messages: list = None, max_retries: int = 3) -> str:
     """Make API call to OpenRouter with retry logic"""
     
     if not OPENROUTER_API_KEY:
@@ -296,7 +315,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
     
     for attempt in range(max_retries):
         try:
-            data = create_request_data(user_message, model, conversation_history)
+            data = create_request_data(user_message, model, conversation_history, extra_messages)
             
             logger.info(f"API call attempt {attempt + 1} to OpenRouter")
             
@@ -351,12 +370,13 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
     return f"Error: All {max_retries} attempts failed"
 
 
-def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
+def call_openai_api_streaming(user_message: str, conversation_history: list = None, extra_messages: list = None, update_callback=None, max_retries: int = 3) -> str:
     """Make streaming API call to OpenRouter with progressive updates
     
     Args:
         user_message: The user's message
         conversation_history: Optional conversation history
+        extra_messages: Additional system-level correction messages
         update_callback: Optional function(text) called with accumulated response for progressive updates
         max_retries: Number of retry attempts
     
@@ -378,7 +398,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
     
     for attempt in range(max_retries):
         try:
-            data = create_request_data(user_message, model, conversation_history)
+            data = create_request_data(user_message, model, conversation_history, extra_messages)
             data["stream"] = True  # Enable streaming
             
             logger.info(f"Streaming API call attempt {attempt + 1} to OpenRouter")
