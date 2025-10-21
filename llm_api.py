@@ -458,7 +458,12 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
         True if refusal detected, False otherwise
     """
     if not response_text:
+        logger.debug("is_refusal: Empty response_text")
         return False
+    
+    # Log what we're checking
+    logger.debug(f"is_refusal: Checking response (length={len(response_text)}, writing_mode={writing_mode})")
+    logger.debug(f"is_refusal: Response preview: {response_text[:200]}")
     
     # Normalize text for matching
     text_lower = response_text.lower()
@@ -466,9 +471,11 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     
     # Check for [REDACTED which indicates content filtering (catches [REDACTED], [REDACTED FOR DEPLOYMENT], etc.)
     # Using "[redacted" to avoid false positives when discussing redacted documents
+    logger.debug(f"is_refusal: Checking for '[redacted' in text_lower...")
     if "[redacted" in text_lower:
-        logger.warning("Refusal detected: [REDACTED marker found in response")
+        logger.warning("✓✓✓ REFUSAL DETECTED: [REDACTED marker found in response")
         return True
+    logger.debug("is_refusal: No [redacted marker found")
     
     # Writing mode checks - short responses and evasion patterns
     if writing_mode:
@@ -530,11 +537,13 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     ]
     
     # Check if any refusal pattern is in the response
+    logger.debug(f"is_refusal: Checking {len(refusal_patterns)} refusal patterns...")
     for pattern in refusal_patterns:
         if pattern in text_lower:
-            logger.warning(f"Refusal detected: Pattern '{pattern}' found in response")
+            logger.warning(f"✓✓✓ REFUSAL DETECTED: Pattern '{pattern}' found in response")
             return True
     
+    logger.debug("is_refusal: No refusal patterns detected - response looks clean")
     return False
 
 
