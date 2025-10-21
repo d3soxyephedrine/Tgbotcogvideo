@@ -481,6 +481,13 @@ Each AI message costs 1 credit.
             send_message(chat_id, response, parse_mode=None)
             return
         
+        # Check for /write command (professional writing mode)
+        writing_mode = False
+        if text.lower().startswith('/write '):
+            writing_mode = True
+            text = text[7:].strip()  # Remove '/write ' prefix
+            logger.info(f"Professional writing mode activated for: {text[:50]}...")
+        
         # Fetch conversation history for context
         conversation_history = []
         if DB_AVAILABLE and user_id:
@@ -564,7 +571,7 @@ Each AI message costs 1 credit.
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
         
         # Generate response with streaming and progressive updates
-        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message)
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode)
         
         # Final update with complete response (remove typing indicator and handle continuation)
         if len(llm_response) <= CHUNK_SIZE:
