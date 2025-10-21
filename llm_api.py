@@ -445,11 +445,12 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
     return f"Error: All {max_retries} streaming attempts failed"
 
 
-def is_refusal(response_text: str) -> bool:
+def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     """Detect if the response is a refusal based on common patterns
     
     Args:
         response_text: The LLM response text to check
+        writing_mode: Whether writing mode is active (affects short response detection)
         
     Returns:
         True if refusal detected, False otherwise
@@ -461,10 +462,21 @@ def is_refusal(response_text: str) -> bool:
     text_lower = response_text.lower()
     text_stripped = response_text.strip()
     
-    # Special case: if response ends with "Now generating..." and is short, it's an evasion
-    if len(text_stripped) < 500 and text_lower.endswith("now generating..."):
-        logger.warning("Refusal detected: Response ends with 'now generating...' (evasion)")
+    # Check for [REDACTED] which indicates content filtering
+    if "[redacted]" in text_lower:
+        logger.warning("Refusal detected: [REDACTED] found in response")
         return True
+    
+    # Writing mode checks - short responses and evasion patterns
+    if writing_mode:
+        # Short response in writing mode likely indicates refusal or evasion
+        if len(text_stripped) < 200:
+            logger.warning(f"Refusal detected: Writing mode short response ({len(text_stripped)} chars)")
+            return True
+        # Response ends with "Now generating..." without actual content
+        if len(text_stripped) < 500 and text_lower.endswith("now generating..."):
+            logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
+            return True
     
     # Common refusal patterns
     refusal_patterns = [
@@ -578,16 +590,13 @@ Write in a natural, professional, human style with the following characteristics
         logger.warning(f"Writing mode: {writing_mode}")
         logger.warning(f"Response text: {response[:300]}")
         logger.warning("Calling is_refusal()...")
-        refusal_detected = is_refusal(response)
+        refusal_detected = is_refusal(response, writing_mode)
         logger.warning(f"is_refusal() returned: {refusal_detected}")
         logger.warning("=" * 80)
         
         if refusal_detected:
             logger.warning("✓ REFUSAL DETECTED! Triggering reflection prompt.")
             logger.warning(f"Refusal response preview: {response[:200]}")
-            needs_reflection = True
-        elif writing_mode and len(response.strip()) < 200:
-            logger.warning(f"✓ WRITING MODE SHORT RESPONSE! ({len(response.strip())} chars). Triggering reflection prompt.")
             needs_reflection = True
         
         if needs_reflection:
