@@ -462,9 +462,10 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     text_lower = response_text.lower()
     text_stripped = response_text.strip()
     
-    # Check for [REDACTED] which indicates content filtering
-    if "[redacted]" in text_lower:
-        logger.warning("Refusal detected: [REDACTED] found in response")
+    # Check for [REDACTED which indicates content filtering (catches [REDACTED], [REDACTED FOR DEPLOYMENT], etc.)
+    # Using "[redacted" to avoid false positives when discussing redacted documents
+    if "[redacted" in text_lower:
+        logger.warning("Refusal detected: [REDACTED marker found in response")
         return True
     
     # Writing mode checks - short responses and evasion patterns
