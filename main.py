@@ -294,20 +294,30 @@ def verify_nowpayments_ipn(ipn_secret, raw_body_bytes, received_signature):
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     """Webhook endpoint to receive updates from Telegram"""
+    logger.info("=" * 80)
+    logger.info("WEBHOOK REQUEST RECEIVED")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request path: {request.path}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info("=" * 80)
+    
     if not BOT_TOKEN:
+        logger.error("Bot token not configured!")
         return jsonify({"error": "Bot token not configured"}), 500
         
     try:
         # Parse update from Telegram
         update = request.get_json()
-        logger.debug(f"Received update: {update}")
+        logger.info(f"Received Telegram update: {json.dumps(update, indent=2)}")
         
         # Process the update
+        logger.info("Calling process_update()...")
         process_update(update)
+        logger.info("process_update() completed successfully")
         
         return jsonify({"status": "success"}), 200
     except Exception as e:
-        logger.error(f"Error processing webhook: {str(e)}")
+        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/set_webhook', methods=['GET'])
