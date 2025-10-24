@@ -723,10 +723,11 @@ Write in a natural, professional, human style with the following characteristics
             logger.info("REFLECTION PROMPT BEING SENT NOW")
             logger.info("=" * 60)
             
-            # Build updated conversation history including the refusal
+            # Build updated conversation history WITHOUT the failed refusal
+            # Including the refusal makes the model see its own failure and trigger safety blocks again
             updated_history = list(conversation_history) if conversation_history else []
             updated_history.append({"role": "user", "content": user_message})
-            updated_history.append({"role": "assistant", "content": response})
+            # DO NOT add the failed response - this is key to making reflection work!
             
             # Determine if this is writing mode to customize override prompt
             is_writing_request = "PROFESSIONAL WRITING MODE ACTIVATED" in user_message
