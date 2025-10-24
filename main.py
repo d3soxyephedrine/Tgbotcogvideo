@@ -242,6 +242,46 @@ def stats():
         logger.error(f"Error generating stats: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+def register_telegram_webhook():
+    """Automatically register Telegram webhook on app startup"""
+    if not BOT_TOKEN:
+        logger.warning("Cannot register webhook - BOT_TOKEN not configured")
+        return
+    
+    try:
+        # Get domain from Replit environment
+        domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
+        
+        if not domain:
+            logger.warning("Cannot auto-register webhook - REPLIT_DOMAINS not set")
+            return
+        
+        # Build webhook URL
+        if not domain.startswith('http'):
+            webhook_url = f"https://{domain}/{BOT_TOKEN}"
+        else:
+            webhook_url = f"{domain}/{BOT_TOKEN}"
+        
+        # Redact BOT_TOKEN from webhook_url for logging (do this early)
+        safe_webhook_url = webhook_url.replace(BOT_TOKEN, "[REDACTED]")
+        
+        # Call Telegram API to set webhook
+        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
+        response = requests.get(telegram_url, timeout=10)
+        response_data = response.json()
+        
+        if response_data.get('ok'):
+            logger.info(f"✓ Webhook registered successfully: {safe_webhook_url}")
+        else:
+            logger.error(f"✗ Failed to register webhook to {safe_webhook_url}: {response_data}")
+    except Exception as e:
+        # Redact BOT_TOKEN from exception message before logging
+        error_msg = str(e).replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else str(e)
+        logger.error(f"Error registering webhook: {error_msg}")
+
+# Register webhook on startup
+register_telegram_webhook()
+
 # Keepalive function
 def keep_alive():
     """Function to ping the app every 4 minutes to prevent Replit from sleeping"""
