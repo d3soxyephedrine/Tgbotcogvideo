@@ -430,7 +430,7 @@ Each AI message costs 1 credit.
                                 logger.info(f"Image message stored synchronously for user {user_id}: {message_id}")
                         except Exception as db_error:
                             logger.error(f"Database error storing image message: {str(db_error)}")
-                            db.session.rollback()
+                            # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
                     # Store transaction in background thread (non-critical for memory)
                     def store_transaction_async():
@@ -450,7 +450,7 @@ Each AI message costs 1 credit.
                                     logger.debug(f"Image transaction stored asynchronously: message_id={message_id}")
                             except Exception as db_error:
                                 logger.error(f"Async database error storing image transaction: {str(db_error)}")
-                                db.session.rollback()
+                                # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
                     threading.Thread(target=store_transaction_async, daemon=True).start()
                     
@@ -630,7 +630,7 @@ Each AI message costs 1 credit.
                     logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
             except Exception as db_error:
                 logger.error(f"Database error storing message: {str(db_error)}")
-                db.session.rollback()
+                # Flask-SQLAlchemy automatically rolls back on exception within app context
         
         # Store transaction record in BACKGROUND THREAD (non-critical for memory)
         def store_transaction_async():
@@ -650,7 +650,7 @@ Each AI message costs 1 credit.
                         logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
                 except Exception as db_error:
                     logger.error(f"Async database error storing transaction: {str(db_error)}")
-                    db.session.rollback()
+                    # Flask-SQLAlchemy automatically rolls back on exception within app context
         
         # Start background thread for transaction storage (non-blocking)
         threading.Thread(target=store_transaction_async, daemon=True).start()
