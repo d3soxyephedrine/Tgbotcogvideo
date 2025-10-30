@@ -375,6 +375,11 @@ Each AI message costs 1 credit.
                     from flask import current_app
                     with current_app.app_context():
                         user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for image generation: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
                         if user.credits < 10:
                             response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits."
                             send_message(chat_id, response)
