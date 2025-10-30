@@ -369,7 +369,7 @@ Each AI message costs 1 credit.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /imagine a cat in a tree at sunset")
                 return
             
-            # Check credit balance (10 credits required)
+            # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -379,8 +379,13 @@ Each AI message costs 1 credit.
                             response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits."
                             send_message(chat_id, response)
                             return
+                        
+                        # Deduct 10 credits immediately
+                        user.credits = max(0, user.credits - 10)
+                        db.session.commit()
+                        logger.debug(f"10 credits deducted for image. New balance: {user.credits}")
                 except Exception as db_error:
-                    logger.error(f"Database error checking credits: {str(db_error)}")
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
             # Send initial processing message
             status_msg = send_message(chat_id, "🎨 Generating image with Grok-2-Image-Gen...", parse_mode=None)
@@ -405,54 +410,44 @@ Each AI message costs 1 credit.
                     
                     requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
                     
-                    # Store message and deduct credits SYNCHRONOUSLY for conversation memory
-                    message_id = None
-                    if DB_AVAILABLE and user_id:
-                        try:
-                            from flask import current_app
-                            with current_app.app_context():
-                                # Deduct 10 credits from user
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.credits = max(0, user.credits - 10)
-                                
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/imagine {prompt}",
-                                    bot_response=image_url,
-                                    model_used="grok-2-image",
-                                    credits_charged=10
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Image message stored synchronously for user {user_id}: {message_id}")
-                        except Exception as db_error:
-                            logger.error(f"Database error storing image message: {str(db_error)}")
-                            # Flask-SQLAlchemy automatically rolls back on exception within app context
-                    
-                    # Store transaction in background thread (non-critical for memory)
-                    def store_transaction_async():
-                        if DB_AVAILABLE and user_id and message_id:
+                    # OPTIMIZATION: Store message + transaction in BACKGROUND THREAD (async after image sent)
+                    # Credits already deducted above, so user can't use same credits twice
+                    def store_image_message_and_transaction_async():
+                        if DB_AVAILABLE and user_id:
+                            message_id = None
                             try:
                                 from flask import current_app
                                 with current_app.app_context():
-                                    transaction = Transaction(
+                                    # Create message record for conversation history
+                                    message_record = Message(
                                         user_id=user_id,
-                                        credits_used=10,
-                                        message_id=message_id,
-                                        transaction_type='image_generation',
-                                        description=f"Image generation: {prompt[:100]}"
+                                        user_message=f"/imagine {prompt}",
+                                        bot_response=image_url,
+                                        model_used="grok-2-image",
+                                        credits_charged=10
                                     )
-                                    db.session.add(transaction)
+                                    db.session.add(message_record)
                                     db.session.commit()
-                                    logger.debug(f"Image transaction stored asynchronously: message_id={message_id}")
+                                    message_id = message_record.id
+                                    logger.debug(f"Image message stored asynchronously for user {user_id}: {message_id}")
+                                    
+                                    # Store transaction record in same context
+                                    if message_id:
+                                        transaction = Transaction(
+                                            user_id=user_id,
+                                            credits_used=10,
+                                            message_id=message_id,
+                                            transaction_type='image_generation',
+                                            description=f"Image generation: {prompt[:100]}"
+                                        )
+                                        db.session.add(transaction)
+                                        db.session.commit()
+                                        logger.debug(f"Image transaction stored asynchronously: message_id={message_id}")
                             except Exception as db_error:
-                                logger.error(f"Async database error storing image transaction: {str(db_error)}")
+                                logger.error(f"Async database error storing image message/transaction: {str(db_error)}")
                                 # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
-                    threading.Thread(target=store_transaction_async, daemon=True).start()
+                    threading.Thread(target=store_image_message_and_transaction_async, daemon=True).start()
                     
                 except Exception as e:
                     logger.error(f"Error sending image: {str(e)}")
@@ -496,28 +491,47 @@ Each AI message costs 1 credit.
             text = text[7:].strip()  # Remove '/write ' prefix
             logger.info(f"Professional writing mode activated for: {text[:50]}...")
         
-        # Fetch conversation history for context
+        # OPTIMIZATION: Consolidate DB operations - fetch user data + conversation history in ONE context
         conversation_history = []
+        credits_available = True  # Track if user has credits
+        
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
                 with current_app.app_context():
-                    # Get last 10 messages for this user (5 exchanges)
-                    recent_messages = Message.query.filter_by(user_id=user_id).order_by(Message.created_at.desc()).limit(10).all()
+                    # Fetch user and deduct credit immediately (must be synchronous)
+                    user = User.query.get(user_id)
+                    if user and user.credits > 0:
+                        user.credits = max(0, user.credits - 1)
+                        db.session.commit()
+                        logger.debug(f"Credit deducted. New balance: {user.credits}")
+                    else:
+                        credits_available = False
                     
-                    # Reverse to get chronological order (oldest first)
-                    recent_messages.reverse()
-                    
-                    # Format as conversation history
-                    for msg in recent_messages:
-                        conversation_history.append({"role": "user", "content": msg.user_message})
-                        if msg.bot_response:
-                            conversation_history.append({"role": "assistant", "content": msg.bot_response})
-                    
-                    logger.info(f"Loaded {len(recent_messages)} previous messages for context")
+                    # If credits available, fetch conversation history in same context
+                    if credits_available:
+                        # OPTIMIZATION: Use subquery to get last 10, then order ascending (no reverse needed)
+                        from sqlalchemy import desc
+                        subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
+                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+                        
+                        # Format as conversation history (already in chronological order)
+                        for msg in recent_messages:
+                            conversation_history.append({"role": "user", "content": msg.user_message})
+                            if msg.bot_response:
+                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
+                        
+                        logger.info(f"Loaded {len(recent_messages)} previous messages for context")
             except Exception as db_error:
-                logger.error(f"Error fetching conversation history: {str(db_error)}")
+                logger.error(f"Error in consolidated DB operations: {str(db_error)}")
                 conversation_history = []
+                credits_available = True  # Allow response even if DB fails
+        
+        # If no credits, send error and return
+        if not credits_available:
+            response = "⚠️ You're out of credits!\n\nTo continue using the bot, please purchase more credits using the /buy command."
+            send_message(chat_id, response)
+            return
         
         # Generate response from LLM with conversation context using streaming
         current_model = os.environ.get('MODEL', DEFAULT_MODEL)
@@ -605,55 +619,45 @@ Each AI message costs 1 credit.
                     # Send new continuation message
                     send_message(chat_id, chunk, parse_mode=None)
         
-        # CRITICAL: Store message and deduct credits SYNCHRONOUSLY for conversation memory
-        message_id = None
-        if DB_AVAILABLE and user_id:
-            try:
-                from flask import current_app
-                with current_app.app_context():
-                    # Deduct 1 credit from user
-                    user = User.query.get(user_id)
-                    if user:
-                        user.credits = max(0, user.credits - 1)
-                    
-                    # Create message record immediately for conversation history
-                    message_record = Message(
-                        user_id=user_id,
-                        user_message=text,
-                        bot_response=llm_response,
-                        model_used=current_model,
-                        credits_charged=1
-                    )
-                    db.session.add(message_record)
-                    db.session.commit()
-                    message_id = message_record.id
-                    logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
-            except Exception as db_error:
-                logger.error(f"Database error storing message: {str(db_error)}")
-                # Flask-SQLAlchemy automatically rolls back on exception within app context
-        
-        # Store transaction record in BACKGROUND THREAD (non-critical for memory)
-        def store_transaction_async():
-            if DB_AVAILABLE and user_id and message_id:
+        # OPTIMIZATION: Store message + transaction in BACKGROUND THREAD (async after response sent)
+        # Credit already deducted above, so user can't use same credit twice
+        def store_message_and_transaction_async():
+            if DB_AVAILABLE and user_id:
+                message_id = None
                 try:
                     from flask import current_app
                     with current_app.app_context():
-                        transaction = Transaction(
+                        # Create message record for conversation history
+                        message_record = Message(
                             user_id=user_id,
-                            credits_used=1,
-                            message_id=message_id,
-                            transaction_type='message',
-                            description=f"AI message response using {current_model}"
+                            user_message=text,
+                            bot_response=llm_response,
+                            model_used=current_model,
+                            credits_charged=1
                         )
-                        db.session.add(transaction)
+                        db.session.add(message_record)
                         db.session.commit()
-                        logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
+                        message_id = message_record.id
+                        logger.debug(f"Message stored asynchronously for user {user_id}: {message_id}")
+                        
+                        # Store transaction record in same context
+                        if message_id:
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=1,
+                                message_id=message_id,
+                                transaction_type='message',
+                                description=f"AI message response using {current_model}"
+                            )
+                            db.session.add(transaction)
+                            db.session.commit()
+                            logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
                 except Exception as db_error:
-                    logger.error(f"Async database error storing transaction: {str(db_error)}")
+                    logger.error(f"Async database error storing message/transaction: {str(db_error)}")
                     # Flask-SQLAlchemy automatically rolls back on exception within app context
         
-        # Start background thread for transaction storage (non-blocking)
-        threading.Thread(target=store_transaction_async, daemon=True).start()
+        # Start background thread for storage (non-blocking)
+        threading.Thread(target=store_message_and_transaction_async, daemon=True).start()
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
