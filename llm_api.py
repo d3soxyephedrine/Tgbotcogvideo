@@ -17,7 +17,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3beta/flux-1-kontext-max"
+NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
+NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
     """Enhanced system prompt for optimal performance"""
@@ -784,16 +785,13 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
-    # Using FLUX.1 Kontext Max - high quality uncensored model
+    # Using FLUX.1 Kontext Max - high quality uncensored model with maximum safety tolerance
     data = {
         "prompt": prompt,
-        "width": 1024,
-        "height": 1024,
-        "steps": 28,
         "seed": -1,
-        "response_image_type": "png",
-        "image_num": 1,
-        "safety_tolerance": 5
+        "guidance_scale": 3.5,
+        "safety_tolerance": "5",
+        "aspect_ratio": "1:1"
     }
     
     for attempt in range(max_retries):
@@ -801,27 +799,75 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
             logger.info(f"Image generation attempt {attempt + 1} to Novita AI (FLUX.1 Kontext Max)")
             logger.debug(f"Prompt: {prompt[:100]}...")
             
-            # Submit request to FLUX.1 Kontext Max endpoint (synchronous response)
+            # Step 1: Submit task to async endpoint
             response = requests.post(
                 NOVITA_IMAGE_ENDPOINT,
                 headers=headers,
                 json=data,
-                timeout=60
+                timeout=30
             )
             
             response.raise_for_status()
             result = response.json()
             
-            # Extract image URL from synchronous response
-            images = result.get("images", [])
-            if images and len(images) > 0:
-                image_url = images[0].get("image_url")
-                if image_url:
-                    logger.info(f"Image generated successfully: {image_url}")
-                    return {"success": True, "image_url": image_url}
+            # Extract task ID
+            task_id = result.get("task_id")
+            if not task_id:
+                logger.error(f"No task_id in response: {result}")
+                return {"success": False, "error": "No task ID returned"}
             
-            logger.error(f"No image URL in response: {result}")
-            return {"success": False, "error": "No image URL returned"}
+            logger.info(f"Task submitted successfully: {task_id}")
+            
+            # Step 2: Poll for task completion (max 60 seconds)
+            poll_count = 0
+            max_polls = 30  # 30 polls * 2 seconds = 60 seconds max wait
+            
+            while poll_count < max_polls:
+                time.sleep(2)
+                poll_count += 1
+                
+                try:
+                    task_response = requests.get(
+                        f"{NOVITA_TASK_ENDPOINT}?task_id={task_id}",
+                        headers=headers,
+                        timeout=10
+                    )
+                    
+                    task_response.raise_for_status()
+                    task_result = task_response.json()
+                    
+                    task_status = task_result.get("task", {}).get("status")
+                    
+                    if task_status == "TASK_STATUS_SUCCEED":
+                        # Extract image URL
+                        images = task_result.get("images", [])
+                        if images and len(images) > 0:
+                            image_url = images[0].get("image_url")
+                            if image_url:
+                                logger.info(f"Image generated successfully: {image_url}")
+                                return {"success": True, "image_url": image_url}
+                        
+                        return {"success": False, "error": "No image URL in completed task"}
+                    
+                    elif task_status == "TASK_STATUS_FAILED":
+                        error_msg = task_result.get("task", {}).get("reason", "Unknown error")
+                        logger.error(f"Task failed: {error_msg}")
+                        return {"success": False, "error": f"Generation failed: {error_msg}"}
+                    
+                    elif task_status in ["TASK_STATUS_QUEUED", "TASK_STATUS_PROCESSING"]:
+                        logger.debug(f"Task {task_id} still processing... (poll {poll_count}/{max_polls})")
+                        continue
+                    
+                    else:
+                        logger.warning(f"Unknown task status: {task_status}")
+                        continue
+                        
+                except requests.exceptions.RequestException as poll_error:
+                    logger.warning(f"Polling error: {str(poll_error)}")
+                    continue
+            
+            # Timeout waiting for task
+            return {"success": False, "error": "Task timeout - image generation took too long"}
             
         except requests.exceptions.Timeout:
             logger.warning(f"Image generation timeout on attempt {attempt + 1}")
