@@ -791,7 +791,7 @@ def generate_image(prompt: str, image_url: str = None, max_retries: int = 3) -> 
         "prompt": prompt,
         "seed": -1,
         "guidance_scale": 3.5,
-        "safety_tolerance": "5",
+        "safety_tolerance": "6",  # Maximum uncensored setting (6 is highest)
         "aspect_ratio": "1:1"
     }
     
