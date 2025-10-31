@@ -75,7 +75,7 @@ Preferred communication style: Simple, everyday language.
 
 - **Telegram Bot API**: Primary interface for user communication via webhooks.
 - **OpenRouter (ChatGPT-4o)**: Main LLM provider for text generation.
-- **Novita AI (FLUX.1 Kontext Max)**: Uncensored image generation provider via synchronous API. Generates 1024×1024 images using FLUX.1 Kontext Max model for superior quality, prompt adherence, and typography. True uncensored capabilities with no content filters.
+- **Novita AI (FLUX.1 Kontext Max)**: Uncensored image generation provider via async task-based API. Generates 1024×1024 images using FLUX.1 Kontext Max model for superior quality, exceptional prompt adherence, advanced typography capabilities, and truly uncensored output with safety_tolerance set to maximum (5).
 - **SQL Database**: Persistent storage for user data and conversation history (provider-agnostic via SQLAlchemy).
 - **Python Libraries**: Flask, SQLAlchemy/Flask-SQLAlchemy, requests, logging.
 - **NOWPayments API**: Cryptocurrency payment gateway for credit purchases, including IPN callback support and HMAC-SHA512 signature verification.
