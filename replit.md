@@ -38,13 +38,13 @@ Preferred communication style: Simple, everyday language.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 
 ### Message Processing Flow
-- **Workflow**: Telegram webhook receives updates, user lookup/creation, credit deduction (synchronous), conversation history retrieval, context formatting, LLM processing, streaming response generation, and asynchronous message storage.
+- **Workflow**: Telegram webhook receives updates, user lookup/creation, credit deduction (synchronous), conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.
 - **Response Delivery**: Progressive updates with 1-second intervals, automatic multi-message chunking for long responses, and smart chunking at character boundaries.
 - **Performance Optimizations** (October 2025):
   - **Consolidated DB Operations**: User fetch + credit deduction + history retrieval in ONE app context (eliminates multiple context switches)
   - **Optimized History Query**: Subquery pattern for last 10 messages with ascending order (no in-memory reversal)
-  - **Async Message Storage**: Message + transaction records stored in background thread after response sent (400-700ms faster initial response)
-  - **Upfront Credit Deduction**: Credits deducted before LLM call to prevent double-spending while keeping response fast
+  - **Synchronous Message Storage**: Messages stored immediately for conversation memory (transactions async)
+  - **Upfront Credit Deduction**: Credits deducted before LLM call to prevent double-spending
 
 ### Conversation Memory
 - **Feature**: Bot remembers previous messages (last 10 messages) to maintain context in conversations.
