@@ -56,6 +56,7 @@ Preferred communication style: Simple, everyday language.
   - **Optimized History Query**: Subquery pattern for last 10 messages with ascending order (no in-memory reversal)
   - **Synchronous Message Storage**: Messages stored immediately for conversation memory (transactions async)
   - **Upfront Credit Deduction**: Credits deducted before LLM call to prevent double-spending
+  - **Background Image Processing** (October 31, 2025): Image editing operations run in background threads to prevent Telegram webhook timeouts (60s limit). Flask app context is captured before thread launch using `current_app._get_current_object()` to enable database operations (credit refunds, message storage) within the background thread. Webhook returns immediately (~2s) while Novita API processes the image (up to 60s).
 
 ### Conversation Memory
 - **Feature**: Bot remembers previous messages (last 10 messages) to maintain context in conversations.
