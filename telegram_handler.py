@@ -696,18 +696,35 @@ Each AI message costs 1 credit.
                 send_message(chat_id, "❌ Could not get photo file ID")
                 return
             
-            # Get publicly accessible URL for the photo
-            photo_url = get_photo_url(file_id)
-            if not photo_url:
-                send_message(chat_id, "❌ Could not download photo from Telegram")
-                return
-            
-            logger.info(f"Photo URL: {photo_url}")
+            # Capture Flask app object for use in background thread (current_app doesn't work in threads)
+            flask_app = None
+            if DB_AVAILABLE:
+                from flask import current_app
+                flask_app = current_app._get_current_object()
             
             # Process image editing in background thread to avoid webhook timeout (Telegram has 60s limit)
             def process_image_edit_background():
                 """Background function to process image editing without blocking webhook"""
                 try:
+                    # Get publicly accessible URL for the photo (in background to avoid webhook timeout)
+                    photo_url = get_photo_url(file_id)
+                    if not photo_url:
+                        send_message(chat_id, "❌ Could not download photo from Telegram")
+                        # Refund credits
+                        if DB_AVAILABLE and user_id and flask_app:
+                            try:
+                                with flask_app.app_context():
+                                    user = User.query.get(user_id)
+                                    if user:
+                                        user.credits += credits_required
+                                        db.session.commit()
+                                        logger.info(f"Refunded {credits_required} credits due to photo download failure. New balance: {user.credits}")
+                            except Exception as db_error:
+                                logger.error(f"Database error refunding credits: {str(db_error)}")
+                        return
+                    
+                    logger.info(f"Photo URL: {photo_url}")
+                    
                     # Call appropriate editing function based on model choice
                     if use_qwen:
                         result = generate_qwen_edit_image(photo_url, edit_prompt)
@@ -733,10 +750,9 @@ Each AI message costs 1 credit.
                             
                             # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                             # Credit already deducted above, so user can't use same credits twice
-                            if DB_AVAILABLE and user_id:
+                            if DB_AVAILABLE and user_id and flask_app:
                                 try:
-                                    from flask import current_app
-                                    with current_app.app_context():
+                                    with flask_app.app_context():
                                         # Create message record immediately for conversation history
                                         message_record = Message(
                                             user_id=user_id,
@@ -773,10 +789,9 @@ Each AI message costs 1 credit.
                         error_msg = result.get("error", "Unknown error")
                         
                         # Refund credits since editing failed
-                        if DB_AVAILABLE and user_id:
+                        if DB_AVAILABLE and user_id and flask_app:
                             try:
-                                from flask import current_app
-                                with current_app.app_context():
+                                with flask_app.app_context():
                                     user = User.query.get(user_id)
                                     if user:
                                         user.credits += credits_required
@@ -791,10 +806,9 @@ Each AI message costs 1 credit.
                 except Exception as e:
                     logger.error(f"Background image editing exception: {str(e)}", exc_info=True)
                     # Refund on exception
-                    if DB_AVAILABLE and user_id:
+                    if DB_AVAILABLE and user_id and flask_app:
                         try:
-                            from flask import current_app
-                            with current_app.app_context():
+                            with flask_app.app_context():
                                 user = User.query.get(user_id)
                                 if user:
                                     user.credits += credits_required
