@@ -624,45 +624,51 @@ Each AI message costs 1 credit.
                     # Send new continuation message
                     send_message(chat_id, chunk, parse_mode=None)
         
-        # OPTIMIZATION: Store message + transaction in BACKGROUND THREAD (async after response sent)
+        # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
         # Credit already deducted above, so user can't use same credit twice
-        def store_message_and_transaction_async():
-            if DB_AVAILABLE and user_id:
-                message_id = None
+        message_id = None
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    # Create message record immediately for conversation history
+                    message_record = Message(
+                        user_id=user_id,
+                        user_message=text,
+                        bot_response=llm_response,
+                        model_used=current_model,
+                        credits_charged=1
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
+                    message_id = message_record.id
+                    logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
+            except Exception as db_error:
+                logger.error(f"Database error storing message: {str(db_error)}")
+                # Flask-SQLAlchemy automatically rolls back on exception within app context
+        
+        # Store transaction record in BACKGROUND THREAD (non-critical for memory)
+        def store_transaction_async():
+            if DB_AVAILABLE and user_id and message_id:
                 try:
                     from flask import current_app
                     with current_app.app_context():
-                        # Create message record for conversation history
-                        message_record = Message(
+                        transaction = Transaction(
                             user_id=user_id,
-                            user_message=text,
-                            bot_response=llm_response,
-                            model_used=current_model,
-                            credits_charged=1
+                            credits_used=1,
+                            message_id=message_id,
+                            transaction_type='message',
+                            description=f"AI message response using {current_model}"
                         )
-                        db.session.add(message_record)
+                        db.session.add(transaction)
                         db.session.commit()
-                        message_id = message_record.id
-                        logger.debug(f"Message stored asynchronously for user {user_id}: {message_id}")
-                        
-                        # Store transaction record in same context
-                        if message_id:
-                            transaction = Transaction(
-                                user_id=user_id,
-                                credits_used=1,
-                                message_id=message_id,
-                                transaction_type='message',
-                                description=f"AI message response using {current_model}"
-                            )
-                            db.session.add(transaction)
-                            db.session.commit()
-                            logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
+                        logger.debug(f"Transaction stored asynchronously: message_id={message_id}")
                 except Exception as db_error:
-                    logger.error(f"Async database error storing message/transaction: {str(db_error)}")
+                    logger.error(f"Async database error storing transaction: {str(db_error)}")
                     # Flask-SQLAlchemy automatically rolls back on exception within app context
         
-        # Start background thread for storage (non-blocking)
-        threading.Thread(target=store_message_and_transaction_async, daemon=True).start()
+        # Start background thread for transaction storage (non-blocking)
+        threading.Thread(target=store_transaction_async, daemon=True).start()
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
