@@ -30,7 +30,7 @@ Preferred communication style: Simple, everyday language.
   - **Writing Mode Checks**: Short responses (<200 chars) and "now generating..." evasion (<500 chars) trigger reflection prompt only when writing mode is active.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
-- **Image Generation**: Flux.1-dev (12B parameter model) via Novita AI API for uncensored text-to-image capabilities using the `/imagine` command. Flux.1-dev delivers exceptional photorealistic quality with superior text rendering, anatomy accuracy, and prompt adherence compared to SDXL.
+- **Image Generation**: Stable Diffusion XL via Novita AI API for uncensored text-to-image capabilities using the `/imagine` command. SDXL provides photorealistic 1024×1024 images with minimal content restrictions.
 - **Rationale**: Dual-provider architecture for comprehensive AI text and image generation with advanced content filter bypass.
 
 ### Pay-Per-Use Credit System
@@ -75,7 +75,7 @@ Preferred communication style: Simple, everyday language.
 
 - **Telegram Bot API**: Primary interface for user communication via webhooks.
 - **OpenRouter (ChatGPT-4o)**: Main LLM provider for text generation.
-- **Novita AI (Flux.1-dev)**: Uncensored image generation provider via async task-based API. Generates 1024×1024 images with superior quality using Flux.1-dev (12B parameters). Excels at photorealism, complex prompts, text rendering, and human anatomy. NSFW filtering disabled for unrestricted generation.
+- **Novita AI (SDXL)**: Uncensored image generation provider via async task-based API. Generates 1024×1024 images with ~$0.0015 cost per image. Uses Stable Diffusion XL base model for photorealistic outputs.
 - **SQL Database**: Persistent storage for user data and conversation history (provider-agnostic via SQLAlchemy).
 - **Python Libraries**: Flask, SQLAlchemy/Flask-SQLAlchemy, requests, logging.
 - **NOWPayments API**: Cryptocurrency payment gateway for credit purchases, including IPN callback support and HMAC-SHA512 signature verification.

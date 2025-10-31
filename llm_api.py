@@ -17,7 +17,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-dev"  # Flux.1-dev endpoint
+NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/txt2img"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
@@ -764,7 +764,7 @@ Write in a natural, professional, human style with the following characteristics
 
 
 def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Generate an image using Novita AI API with Flux.1-dev (highest quality uncensored model)
+    """Generate an image using Novita AI API with SDXL (uncensored model)
     
     Args:
         prompt: Text description of the image to generate
@@ -785,22 +785,29 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
-    # Using Flux.1-dev - highest quality uncensored model (12B parameters)
-    # Superior photorealism, text rendering, anatomy, and prompt adherence
-    # Flux uses dedicated endpoint - no model_name parameter needed
+    # Using SDXL - high quality uncensored model
     data = {
-        "prompt": prompt,
-        "width": 1024,
-        "height": 1024,
-        "image_num": 1,
-        "steps": 28,  # Flux works well with 20-30 steps
-        "seed": -1,  # Random seed for variety
-        "response_image_type": "jpeg"
+        "extra": {
+            "response_image_type": "jpeg"
+        },
+        "request": {
+            "model_name": "sd_xl_base_1.0.safetensors",  # Stable Diffusion XL base model
+            "prompt": prompt,
+            "negative_prompt": "low quality, blurry, distorted, watermark",
+            "width": 1024,
+            "height": 1024,
+            "image_num": 1,
+            "steps": 30,
+            "guidance_scale": 7.5,
+            "sampler_name": "DPM++ 2M Karras",
+            "seed": -1,  # Random seed
+            "clip_skip": 1
+        }
     }
     
     for attempt in range(max_retries):
         try:
-            logger.info(f"Image generation attempt {attempt + 1} to Novita AI (Flux.1-dev)")
+            logger.info(f"Image generation attempt {attempt + 1} to Novita AI (SDXL)")
             logger.debug(f"Prompt: {prompt[:100]}...")
             
             # Step 1: Submit task
