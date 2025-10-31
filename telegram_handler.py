@@ -393,9 +393,9 @@ Each AI message costs 1 credit.
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
             # Send initial processing message
-            status_msg = send_message(chat_id, "🎨 Generating image with Novita AI (Flux 1.0)...", parse_mode=None)
+            status_msg = send_message(chat_id, "🎨 Generating image with Novita AI (SDXL)...", parse_mode=None)
             
-            # Generate image using Novita AI with Flux 1.0
+            # Generate image using Novita AI with SDXL
             result = generate_image(prompt)
             
             if result.get("success"):

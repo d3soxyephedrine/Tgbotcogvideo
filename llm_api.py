@@ -764,7 +764,7 @@ Write in a natural, professional, human style with the following characteristics
 
 
 def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Generate an image using Novita AI API with Flux 1.0 (uncensored model)
+    """Generate an image using Novita AI API with SDXL (uncensored model)
     
     Args:
         prompt: Text description of the image to generate
@@ -785,22 +785,29 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
-    # Using Flux 1.0 - best uncensored model with high quality
+    # Using SDXL - high quality uncensored model
     data = {
-        "model_name": "flux1-dev-fp8@q_4",  # Flux 1.0 optimized version
-        "prompt": prompt,
-        "negative_prompt": "low quality, blurry, distorted, watermark",
-        "width": 1024,
-        "height": 1024,
-        "steps": 28,
-        "cfg_scale": 7.5,
-        "sampler_name": "DPM++ 2M Karras",
-        "seed": -1  # Random seed
+        "extra": {
+            "response_image_type": "jpeg"
+        },
+        "request": {
+            "model_name": "sd_xl_base_1.0.safetensors",  # Stable Diffusion XL base model
+            "prompt": prompt,
+            "negative_prompt": "low quality, blurry, distorted, watermark",
+            "width": 1024,
+            "height": 1024,
+            "image_num": 1,
+            "steps": 30,
+            "guidance_scale": 7.5,
+            "sampler_name": "DPM++ 2M Karras",
+            "seed": -1,  # Random seed
+            "clip_skip": 1
+        }
     }
     
     for attempt in range(max_retries):
         try:
-            logger.info(f"Image generation attempt {attempt + 1} to Novita AI (Flux 1.0)")
+            logger.info(f"Image generation attempt {attempt + 1} to Novita AI (SDXL)")
             logger.debug(f"Prompt: {prompt[:100]}...")
             
             # Step 1: Submit task
