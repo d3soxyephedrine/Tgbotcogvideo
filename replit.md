@@ -30,12 +30,18 @@ Preferred communication style: Simple, everyday language.
   - **Writing Mode Checks**: Short responses (<200 chars) and "now generating..." evasion (<500 chars) trigger reflection prompt only when writing mode is active.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
-- **Image Generation**: FLUX.1 Kontext Max via Novita AI API for uncensored text-to-image capabilities using the `/imagine` command. FLUX.1 Kontext Max provides superior quality, exceptional prompt adherence, advanced typography capabilities, and truly uncensored 1024×1024 images with no content restrictions.
-- **Image Editing**: FLUX.1 Kontext Max via Novita AI API for uncensored image-to-image editing. Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness (10 credits per edit).
-- **Rationale**: Dual-provider architecture for comprehensive AI text and image generation/editing with advanced content filter bypass.
+- **Image Generation (Dual Models)**:
+  - **FLUX.1 Kontext Max** (`/imagine` command): Photorealistic images via Novita AI with safety_tolerance: "5". Superior quality, exceptional prompt adherence, 1024×1024 images. Best for realistic photos and scenes. **5 credits per image**.
+  - **Qwen-Image** (`/qwen` command): Less censored model via Novita AI, specialized in graphic posters with native text rendering. 20B MMDiT model, 1024×1024 images. Best for design work, posters, and maximum permissiveness. **3 credits per image**.
+- **Image Editing**: FLUX.1 Kontext Max via Novita AI API for uncensored image-to-image editing. Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **10 credits per edit**.
+- **Rationale**: Dual-model architecture provides users choice between photorealism (FLUX) and maximum uncensored graphic design (Qwen) for comprehensive AI image generation/editing with advanced content filter bypass.
 
 ### Pay-Per-Use Credit System
-- **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features (1 credit per text message, 5 credits per image generation, 10 credits per image editing).
+- **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features:
+  - Text messages: 1 credit
+  - FLUX image generation (`/imagine`): 5 credits
+  - Qwen image generation (`/qwen`): 3 credits (less censored)
+  - Image editing: 10 credits
 - **New User Bonus**: 100 free credits upon first interaction.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 

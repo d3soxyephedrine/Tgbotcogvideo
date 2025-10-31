@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image
+from llm_api import generate_response, generate_image, generate_qwen_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -176,14 +176,15 @@ def get_help_message():
 /balance - Check your credit balance
 /buy - Purchase more credits
 /clear - Clear your conversation history
-/imagine <prompt> - Generate image (10 credits)
+/imagine <prompt> - FLUX photorealistic image (5 credits)
+/qwen <prompt> - Qwen less censored image (3 credits)
 /write <request> - Professional writing mode (1 credit)
 
-🎨 *Image Features:*
-• Generate: /imagine <description>
-• Edit: Send photo + caption with editing instructions
-• Truly uncensored with FLUX.1 Kontext Max
-• 1024×1024 high quality images
+🎨 *Image Generation:*
+• /imagine <prompt> - FLUX.1 (photorealistic, 5 credits)
+• /qwen <prompt> - Qwen-Image (less censored, posters/text, 3 credits)
+• Edit: Send photo + caption (10 credits)
+• All models: 1024×1024 high quality, truly uncensored
 
 📝 *Writing Mode:*
 Use /write for stories, scenes, or creative content!
@@ -195,7 +196,8 @@ Example: /write a NSFW scene with Sydney Sweeney
 💡 *Pricing:*
 • Text message: 1 credit
 • Writing mode: 1 credit  
-• Image generation: 5 credits
+• FLUX image: 5 credits
+• Qwen image: 3 credits (less censored!)
 • Image editing: 10 credits
 
 Send any message to get an uncensored AI response!
@@ -519,7 +521,143 @@ Each AI message costs 1 credit.
                     send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
             else:
                 error_msg = result.get("error", "Unknown error")
-                send_message(chat_id, f"❌ Image generation failed: {error_msg}")
+                
+                # Refund credits since generation failed
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            user = User.query.get(user_id)
+                            if user:
+                                user.credits += 5
+                                db.session.commit()
+                                logger.info(f"Refunded 5 credits due to failed FLUX generation. New balance: {user.credits}")
+                    except Exception as db_error:
+                        logger.error(f"Database error refunding credits: {str(db_error)}")
+                
+                send_message(chat_id, f"❌ Image generation failed: {error_msg}\n\n✅ 5 credits have been refunded to your account.")
+            
+            return
+        
+        # Check for /qwen command (Qwen-Image generation - less censored, great for text/posters)
+        if text.lower().startswith('/qwen '):
+            prompt = text[6:].strip()  # Remove '/qwen ' prefix
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /qwen a cyberpunk poster with 'NEON CITY' text")
+                return
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for Qwen image generation: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 3:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 3 credits to generate a Qwen image.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct 3 credits immediately
+                        user.credits = max(0, user.credits - 3)
+                        db.session.commit()
+                        logger.debug(f"3 credits deducted for Qwen image. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Send initial processing message
+            status_msg = send_message(chat_id, "🎨 Generating Qwen image (less censored)...", parse_mode=None)
+            
+            # Generate image using Novita AI Qwen-Image
+            result = generate_qwen_image(prompt)
+            
+            if result.get("success"):
+                image_url = result.get("image_url")
+                
+                # Download image from URL
+                try:
+                    img_response = requests.get(image_url, timeout=30)
+                    img_response.raise_for_status()
+                    
+                    # Send image to user
+                    photo_payload = {
+                        "chat_id": chat_id,
+                        "photo": image_url,
+                        "caption": f"🖼️ {prompt[:200]}" if len(prompt) <= 200 else f"🖼️ {prompt[:197]}..."
+                    }
+                    
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    
+                    # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
+                    # Credit already deducted above, so user can't use same credits twice
+                    message_id = None
+                    if DB_AVAILABLE and user_id:
+                        try:
+                            from flask import current_app
+                            with current_app.app_context():
+                                # Create message record immediately for conversation history
+                                message_record = Message(
+                                    user_id=user_id,
+                                    user_message=f"/qwen {prompt}",
+                                    bot_response=image_url,
+                                    model_used="qwen-image",
+                                    credits_charged=3
+                                )
+                                db.session.add(message_record)
+                                db.session.commit()
+                                message_id = message_record.id
+                                logger.info(f"Qwen image message stored synchronously for user {user_id}: {message_id}")
+                        except Exception as db_error:
+                            logger.error(f"Database error storing Qwen image message: {str(db_error)}")
+                            # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                    # Store transaction in background thread (non-critical for memory)
+                    def store_transaction_async():
+                        if DB_AVAILABLE and user_id and message_id:
+                            try:
+                                from flask import current_app
+                                with current_app.app_context():
+                                    transaction = Transaction(
+                                        user_id=user_id,
+                                        credits_used=3,
+                                        message_id=message_id,
+                                        transaction_type='qwen_image_generation',
+                                        description=f"Qwen image generation: {prompt[:100]}"
+                                    )
+                                    db.session.add(transaction)
+                                    db.session.commit()
+                                    logger.debug(f"Qwen image transaction stored asynchronously: message_id={message_id}")
+                            except Exception as db_error:
+                                logger.error(f"Async database error storing Qwen image transaction: {str(db_error)}")
+                                # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                    threading.Thread(target=store_transaction_async, daemon=True).start()
+                    
+                except Exception as e:
+                    logger.error(f"Error sending Qwen image: {str(e)}")
+                    send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                
+                # Refund credits since generation failed
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            user = User.query.get(user_id)
+                            if user:
+                                user.credits += 3
+                                db.session.commit()
+                                logger.info(f"Refunded 3 credits due to failed Qwen generation. New balance: {user.credits}")
+                    except Exception as db_error:
+                        logger.error(f"Database error refunding credits: {str(db_error)}")
+                
+                send_message(chat_id, f"❌ Qwen image generation failed: {error_msg}\n\n✅ 3 credits have been refunded to your account.")
             
             return
         
