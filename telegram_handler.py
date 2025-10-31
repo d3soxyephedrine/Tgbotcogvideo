@@ -195,8 +195,8 @@ Example: /write a NSFW scene with Sydney Sweeney
 💡 *Pricing:*
 • Text message: 1 credit
 • Writing mode: 1 credit  
-• Image generation: 10 credits
-• Image editing: 15 credits
+• Image generation: 5 credits
+• Image editing: 10 credits
 
 Send any message to get an uncensored AI response!
     """
@@ -434,15 +434,15 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 10:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits."
+                        if user.credits < 5:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 5 credits to generate an image.\n\nUse /buy to purchase more credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 10 credits immediately
-                        user.credits = max(0, user.credits - 10)
+                        # Deduct 5 credits immediately
+                        user.credits = max(0, user.credits - 5)
                         db.session.commit()
-                        logger.debug(f"10 credits deducted for image. New balance: {user.credits}")
+                        logger.debug(f"5 credits deducted for image. New balance: {user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -481,8 +481,8 @@ Each AI message costs 1 credit.
                                     user_id=user_id,
                                     user_message=f"/imagine {prompt}",
                                     bot_response=image_url,
-                                    model_used="grok-2-image",
-                                    credits_charged=10
+                                    model_used="flux-1-kontext-max",
+                                    credits_charged=5
                                 )
                                 db.session.add(message_record)
                                 db.session.commit()
@@ -500,7 +500,7 @@ Each AI message costs 1 credit.
                                 with current_app.app_context():
                                     transaction = Transaction(
                                         user_id=user_id,
-                                        credits_used=10,
+                                        credits_used=5,
                                         message_id=message_id,
                                         transaction_type='image_generation',
                                         description=f"Image generation: {prompt[:100]}"
@@ -538,15 +538,15 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 15:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 15 credits to edit an image.\n\nUse /buy to purchase more credits."
+                        if user.credits < 10:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to edit an image.\n\nUse /buy to purchase more credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 15 credits immediately
-                        user.credits = max(0, user.credits - 15)
+                        # Deduct 10 credits immediately
+                        user.credits = max(0, user.credits - 10)
                         db.session.commit()
-                        logger.debug(f"15 credits deducted for image editing. New balance: {user.credits}")
+                        logger.debug(f"10 credits deducted for image editing. New balance: {user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -600,7 +600,7 @@ Each AI message costs 1 credit.
                                     user_message=f"[Image Edit] {caption}",
                                     bot_response=image_url,
                                     model_used="flux-1-kontext-max-edit",
-                                    credits_charged=15
+                                    credits_charged=10
                                 )
                                 db.session.add(message_record)
                                 db.session.commit()
@@ -618,7 +618,7 @@ Each AI message costs 1 credit.
                                 with current_app.app_context():
                                     transaction = Transaction(
                                         user_id=user_id,
-                                        credits_used=15,
+                                        credits_used=10,
                                         message_id=message_id,
                                         transaction_type='image_editing',
                                         description=f"Image editing: {caption[:100]}"
