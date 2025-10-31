@@ -59,24 +59,25 @@ def broadcast_message(message_text):
 
 if __name__ == "__main__":
     # Message to broadcast
-    message = """🎉 Great News! The Bot is Back Online! 🎉
+    message = """🎨 MAJOR UPGRADE: Uncensored Image Generation! 🎨
 
-Your AI assistant is now fully operational and ready to help you with:
+We've just upgraded to FLUX.1 Kontext Max - the most advanced uncensored image generation model available!
 
-✨ Smart conversations with ChatGPT-4o
-🎨 Image generation with Grok-2
-📝 Professional writing mode (/write)
-💬 Full conversation history
+✨ What's New:
+🔥 TRULY uncensored - no content restrictions
+🎯 Superior prompt adherence - your vision, perfectly realized
+✍️ Advanced typography - text in images that actually works
+🖼️ 1024×1024 high-quality images
+⚡ Maximum quality settings enabled
 
-🎁 BONUS: Users with zero credits just received 30 free credits!
+Try it now with /imagine followed by any description - no limits, no censorship!
 
-Try these commands:
-/help - See all available features
-/balance - Check your credit balance
-/write - Activate professional writing mode
-/imagine - Generate AI images
+Example: /imagine a stunning fantasy landscape at sunset
 
-Let's chat! 🚀"""
+Cost: 10 credits per image
+Check your balance: /balance
+
+Let your imagination run wild! 🚀"""
 
     print("=" * 60)
     print("BROADCAST NOTIFICATION")
