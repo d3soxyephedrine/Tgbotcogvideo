@@ -13,6 +13,11 @@ from models import db, User, Message, Payment, Transaction, CryptoPayment
 from datetime import datetime
 from nowpayments_api import NOWPaymentsAPI
 from nowpayments_wrapper import NOWPaymentsWrapper
+from docx import Document
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from flask import send_file
+import io
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -240,6 +245,115 @@ def stats():
         })
     except Exception as e:
         logger.error(f"Error generating stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/export/conversations', methods=['GET'])
+def export_conversations():
+    """Export all conversations to a DOCX file"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Database not available",
+            "message": "Export requires database connection"
+        }), 503
+    
+    try:
+        # Query all messages ordered by user and timestamp
+        messages = Message.query.order_by(Message.user_id, Message.created_at).all()
+        
+        if not messages:
+            return jsonify({"error": "No conversations found"}), 404
+        
+        # Create DOCX document
+        doc = Document()
+        
+        # Add title
+        title = doc.add_heading('Telegram Bot Conversations Export', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Add export date
+        export_info = doc.add_paragraph()
+        export_info.add_run(f'Exported on: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")}')
+        export_info.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        doc.add_paragraph()  # Blank line
+        
+        # Group messages by user
+        current_user_id = None
+        
+        for msg in messages:
+            user = User.query.get(msg.user_id)
+            
+            # Add user header when switching to a new user
+            if msg.user_id != current_user_id:
+                current_user_id = msg.user_id
+                
+                # Add separator
+                if doc.paragraphs[-1].text != '':
+                    doc.add_page_break()
+                
+                # User info header
+                username = user.username if user and user.username else f"User {user.telegram_id if user else 'Unknown'}"
+                user_heading = doc.add_heading(f'User: {username}', level=1)
+                
+                if user:
+                    user_info = doc.add_paragraph()
+                    user_info.add_run(f'Telegram ID: {user.telegram_id}').bold = True
+                    user_info.add_run(f'\nName: {user.first_name or ""} {user.last_name or ""}'.strip())
+                    user_info.add_run(f'\nRegistered: {user.registered_at.strftime("%Y-%m-%d %H:%M:%S")}')
+                    user_info.add_run(f'\nCredits: {user.credits}')
+                
+                doc.add_paragraph()  # Blank line
+            
+            # Add message timestamp
+            timestamp_para = doc.add_paragraph()
+            timestamp_run = timestamp_para.add_run(f'[{msg.created_at.strftime("%Y-%m-%d %H:%M:%S")}]')
+            timestamp_run.font.size = Pt(9)
+            timestamp_run.font.color.rgb = RGBColor(128, 128, 128)
+            
+            # Add user message
+            user_msg_para = doc.add_paragraph()
+            user_label = user_msg_para.add_run('User: ')
+            user_label.bold = True
+            user_label.font.color.rgb = RGBColor(0, 102, 204)
+            user_msg_para.add_run(msg.user_message)
+            
+            # Add bot response
+            if msg.bot_response:
+                bot_msg_para = doc.add_paragraph()
+                bot_label = bot_msg_para.add_run('Bot: ')
+                bot_label.bold = True
+                bot_label.font.color.rgb = RGBColor(34, 139, 34)
+                bot_msg_para.add_run(msg.bot_response)
+            
+            # Add model info
+            if msg.model_used:
+                model_para = doc.add_paragraph()
+                model_run = model_para.add_run(f'Model: {msg.model_used} | Credits: {msg.credits_charged}')
+                model_run.font.size = Pt(8)
+                model_run.font.color.rgb = RGBColor(128, 128, 128)
+                model_run.italic = True
+            
+            doc.add_paragraph()  # Blank line between messages
+        
+        # Save document to memory buffer
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        # Generate filename with timestamp
+        filename = f'telegram_conversations_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.docx'
+        
+        logger.info(f"Exported {len(messages)} messages to DOCX")
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting conversations: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 def register_telegram_webhook():
