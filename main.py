@@ -249,7 +249,24 @@ def stats():
 
 @app.route('/export/conversations', methods=['GET'])
 def export_conversations():
-    """Export all conversations to a DOCX file"""
+    """Export all conversations to a DOCX file (ADMIN ONLY - requires authentication)"""
+    # CRITICAL SECURITY: Require admin authentication
+    admin_token = request.args.get('admin_token')
+    expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
+    
+    if not expected_token:
+        return jsonify({
+            "error": "Export feature not configured",
+            "message": "Admin token not set in environment"
+        }), 503
+    
+    if not admin_token or admin_token != expected_token:
+        logger.warning(f"Unauthorized export attempt from {request.remote_addr}")
+        return jsonify({
+            "error": "Unauthorized",
+            "message": "Valid admin token required"
+        }), 401
+    
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Database not available",
@@ -257,8 +274,9 @@ def export_conversations():
         }), 503
     
     try:
-        # Query all messages ordered by user and timestamp
-        messages = Message.query.order_by(Message.user_id, Message.created_at).all()
+        # Query all messages with eager loading to prevent N+1 queries
+        from sqlalchemy.orm import joinedload
+        messages = Message.query.options(joinedload(Message.user)).order_by(Message.user_id, Message.created_at).all()
         
         if not messages:
             return jsonify({"error": "No conversations found"}), 404
@@ -281,7 +299,8 @@ def export_conversations():
         current_user_id = None
         
         for msg in messages:
-            user = User.query.get(msg.user_id)
+            # Use eager-loaded user from relationship (no additional query)
+            user = msg.user
             
             # Add user header when switching to a new user
             if msg.user_id != current_user_id:
@@ -291,16 +310,28 @@ def export_conversations():
                 if doc.paragraphs[-1].text != '':
                     doc.add_page_break()
                 
-                # User info header
+                # User info header with defensive NULL handling
                 username = user.username if user and user.username else f"User {user.telegram_id if user else 'Unknown'}"
                 user_heading = doc.add_heading(f'User: {username}', level=1)
                 
                 if user:
                     user_info = doc.add_paragraph()
                     user_info.add_run(f'Telegram ID: {user.telegram_id}').bold = True
-                    user_info.add_run(f'\nName: {user.first_name or ""} {user.last_name or ""}'.strip())
-                    user_info.add_run(f'\nRegistered: {user.registered_at.strftime("%Y-%m-%d %H:%M:%S")}')
-                    user_info.add_run(f'\nCredits: {user.credits}')
+                    
+                    # Defensive handling for optional fields
+                    name_parts = []
+                    if user.first_name:
+                        name_parts.append(user.first_name)
+                    if user.last_name:
+                        name_parts.append(user.last_name)
+                    if name_parts:
+                        user_info.add_run(f'\nName: {" ".join(name_parts)}')
+                    
+                    if user.registered_at:
+                        user_info.add_run(f'\nRegistered: {user.registered_at.strftime("%Y-%m-%d %H:%M:%S")}')
+                    
+                    if user.credits is not None:
+                        user_info.add_run(f'\nCredits: {user.credits}')
                 
                 doc.add_paragraph()  # Blank line
             
