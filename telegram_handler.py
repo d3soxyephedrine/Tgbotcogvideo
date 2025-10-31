@@ -704,85 +704,110 @@ Each AI message costs 1 credit.
             
             logger.info(f"Photo URL: {photo_url}")
             
-            # Call appropriate editing function based on model choice
-            if use_qwen:
-                result = generate_qwen_edit_image(photo_url, edit_prompt)
-            else:
-                result = generate_image(edit_prompt, image_url=photo_url)
-            
-            if result.get("success"):
-                image_url = result.get("image_url")
-                
-                # Download image from URL
+            # Process image editing in background thread to avoid webhook timeout (Telegram has 60s limit)
+            def process_image_edit_background():
+                """Background function to process image editing without blocking webhook"""
                 try:
-                    img_response = requests.get(image_url, timeout=30)
-                    img_response.raise_for_status()
+                    # Call appropriate editing function based on model choice
+                    if use_qwen:
+                        result = generate_qwen_edit_image(photo_url, edit_prompt)
+                    else:
+                        result = generate_image(edit_prompt, image_url=photo_url)
                     
-                    # Send edited image to user
-                    photo_payload = {
-                        "chat_id": chat_id,
-                        "photo": image_url,
-                        "caption": f"✨ Edited: {edit_prompt[:180]}" if len(edit_prompt) <= 180 else f"✨ Edited: {edit_prompt[:177]}..."
-                    }
-                    
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
-                    
-                    # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
-                    # Credit already deducted above, so user can't use same credits twice
+                    if result.get("success"):
+                        image_url = result.get("image_url")
+                        
+                        # Download image from URL
+                        try:
+                            img_response = requests.get(image_url, timeout=30)
+                            img_response.raise_for_status()
+                            
+                            # Send edited image to user
+                            photo_payload = {
+                                "chat_id": chat_id,
+                                "photo": image_url,
+                                "caption": f"✨ Edited: {edit_prompt[:180]}" if len(edit_prompt) <= 180 else f"✨ Edited: {edit_prompt[:177]}..."
+                            }
+                            
+                            requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                            
+                            # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
+                            # Credit already deducted above, so user can't use same credits twice
+                            if DB_AVAILABLE and user_id:
+                                try:
+                                    from flask import current_app
+                                    with current_app.app_context():
+                                        # Create message record immediately for conversation history
+                                        message_record = Message(
+                                            user_id=user_id,
+                                            user_message=f"[Image Edit] {caption}",
+                                            bot_response=image_url,
+                                            model_used=model_name,
+                                            credits_charged=credits_required
+                                        )
+                                        db.session.add(message_record)
+                                        db.session.commit()
+                                        message_id = message_record.id
+                                        logger.info(f"Image edit message stored synchronously for user {user_id}: {message_id}")
+                                        
+                                        # Also store transaction synchronously for reliability
+                                        transaction_type = 'qwen_image_editing' if use_qwen else 'image_editing'
+                                        transaction = Transaction(
+                                            user_id=user_id,
+                                            credits_used=credits_required,
+                                            message_id=message_id,
+                                            transaction_type=transaction_type,
+                                            description=f"{model_name}: {edit_prompt[:100]}"
+                                        )
+                                        db.session.add(transaction)
+                                        db.session.commit()
+                                        logger.debug(f"Image edit transaction stored synchronously: message_id={message_id}")
+                                except Exception as db_error:
+                                    logger.error(f"Database error storing image edit message/transaction: {str(db_error)}")
+                                    # Flask-SQLAlchemy automatically rolls back on exception within app context
+                            
+                        except Exception as e:
+                            logger.error(f"Error sending edited image: {str(e)}")
+                            send_message(chat_id, f"❌ Error downloading/sending edited image: {str(e)}")
+                    else:
+                        error_msg = result.get("error", "Unknown error")
+                        
+                        # Refund credits since editing failed
+                        if DB_AVAILABLE and user_id:
+                            try:
+                                from flask import current_app
+                                with current_app.app_context():
+                                    user = User.query.get(user_id)
+                                    if user:
+                                        user.credits += credits_required
+                                        db.session.commit()
+                                        model_display = "Qwen" if use_qwen else "FLUX"
+                                        logger.info(f"Refunded {credits_required} credits due to failed {model_display} editing. New balance: {user.credits}")
+                            except Exception as db_error:
+                                logger.error(f"Database error refunding credits: {str(db_error)}")
+                        
+                        send_message(chat_id, f"❌ Image editing failed: {error_msg}\n\n✅ {credits_required} credits have been refunded to your account.")
+                
+                except Exception as e:
+                    logger.error(f"Background image editing exception: {str(e)}", exc_info=True)
+                    # Refund on exception
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
                             with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"[Image Edit] {caption}",
-                                    bot_response=image_url,
-                                    model_used=model_name,
-                                    credits_charged=credits_required
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Image edit message stored synchronously for user {user_id}: {message_id}")
-                                
-                                # Also store transaction synchronously for reliability
-                                transaction_type = 'qwen_image_editing' if use_qwen else 'image_editing'
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=credits_required,
-                                    message_id=message_id,
-                                    transaction_type=transaction_type,
-                                    description=f"{model_name}: {edit_prompt[:100]}"
-                                )
-                                db.session.add(transaction)
-                                db.session.commit()
-                                logger.debug(f"Image edit transaction stored synchronously: message_id={message_id}")
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.credits += credits_required
+                                    db.session.commit()
+                                    logger.info(f"Refunded {credits_required} credits due to exception. New balance: {user.credits}")
                         except Exception as db_error:
-                            logger.error(f"Database error storing image edit message/transaction: {str(db_error)}")
-                            # Flask-SQLAlchemy automatically rolls back on exception within app context
-                    
-                except Exception as e:
-                    logger.error(f"Error sending edited image: {str(e)}")
-                    send_message(chat_id, f"❌ Error downloading/sending edited image: {str(e)}")
-            else:
-                error_msg = result.get("error", "Unknown error")
-                
-                # Refund credits since editing failed
-                if DB_AVAILABLE and user_id:
-                    try:
-                        from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += credits_required
-                                db.session.commit()
-                                model_display = "Qwen" if use_qwen else "FLUX"
-                                logger.info(f"Refunded {credits_required} credits due to failed {model_display} editing. New balance: {user.credits}")
-                    except Exception as db_error:
-                        logger.error(f"Database error refunding credits: {str(db_error)}")
-                
-                send_message(chat_id, f"❌ Image editing failed: {error_msg}\n\n✅ {credits_required} credits have been refunded to your account.")
+                            logger.error(f"Database error refunding credits after exception: {str(db_error)}")
+                    send_message(chat_id, f"❌ Image editing error: {str(e)}\n\n✅ {credits_required} credits have been refunded.")
+            
+            # Start background thread and return immediately (prevents webhook timeout)
+            edit_thread = threading.Thread(target=process_image_edit_background, daemon=True)
+            edit_thread.start()
+            logger.info(f"Image editing started in background thread. Webhook will return immediately.")
             
             return
         
