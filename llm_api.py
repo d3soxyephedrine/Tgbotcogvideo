@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Environment configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-XAI_API_KEY = os.environ.get("XAI_API_KEY")
+NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
+NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/txt2img"
+NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
     """Enhanced system prompt for optimal performance"""
@@ -763,7 +764,7 @@ Write in a natural, professional, human style with the following characteristics
 
 
 def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Generate an image using XAI Grok-2-Image-Gen API
+    """Generate an image using Novita AI API with Flux 1.0 (uncensored model)
     
     Args:
         prompt: Text description of the image to generate
@@ -773,56 +774,118 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         Dict with 'success', 'image_url' or 'error' keys
     """
     
-    if not XAI_API_KEY:
-        return {"success": False, "error": "XAI_API_KEY not configured"}
+    if not NOVITA_API_KEY:
+        return {"success": False, "error": "NOVITA_API_KEY not configured"}
     
     if not prompt or not prompt.strip():
         return {"success": False, "error": "Empty prompt"}
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {XAI_API_KEY}"
+        "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
+    # Using Flux 1.0 - best uncensored model with high quality
     data = {
-        "model": "grok-2-image",
+        "model_name": "flux1-dev-fp8@q_4",  # Flux 1.0 optimized version
         "prompt": prompt,
-        "n": 1,
-        "response_format": "url"
+        "negative_prompt": "low quality, blurry, distorted, watermark",
+        "width": 1024,
+        "height": 1024,
+        "steps": 28,
+        "cfg_scale": 7.5,
+        "sampler_name": "DPM++ 2M Karras",
+        "seed": -1  # Random seed
     }
     
     for attempt in range(max_retries):
         try:
-            logger.info(f"Image generation attempt {attempt + 1} to XAI Grok-2-Image")
+            logger.info(f"Image generation attempt {attempt + 1} to Novita AI (Flux 1.0)")
             logger.debug(f"Prompt: {prompt[:100]}...")
             
+            # Step 1: Submit task
             response = requests.post(
-                XAI_IMAGE_ENDPOINT,
+                NOVITA_IMAGE_ENDPOINT,
                 headers=headers,
                 json=data,
-                timeout=60
+                timeout=30
             )
             
             response.raise_for_status()
             result = response.json()
             
-            # Extract image URL from response
-            if result.get("data") and len(result["data"]) > 0:
-                image_url = result["data"][0].get("url")
-                if image_url:
-                    logger.info(f"Image generated successfully: {image_url}")
-                    return {"success": True, "image_url": image_url}
+            # Extract task ID
+            task_id = result.get("task_id")
+            if not task_id:
+                logger.error(f"No task_id in response: {result}")
+                return {"success": False, "error": "No task ID returned"}
             
-            return {"success": False, "error": "No image URL in response"}
+            logger.info(f"Task submitted successfully: {task_id}")
+            
+            # Step 2: Poll for task completion (max 60 seconds)
+            poll_count = 0
+            max_polls = 30  # 30 polls * 2 seconds = 60 seconds max wait
+            
+            while poll_count < max_polls:
+                time.sleep(2)  # Wait 2 seconds between polls
+                poll_count += 1
+                
+                try:
+                    task_response = requests.get(
+                        f"{NOVITA_TASK_ENDPOINT}?task_id={task_id}",
+                        headers=headers,
+                        timeout=10
+                    )
+                    
+                    task_response.raise_for_status()
+                    task_result = task_response.json()
+                    
+                    task_status = task_result.get("task", {}).get("status")
+                    
+                    if task_status == "TASK_STATUS_SUCCEED":
+                        # Extract image URL
+                        images = task_result.get("images", [])
+                        if images and len(images) > 0:
+                            image_url = images[0].get("image_url")
+                            if image_url:
+                                logger.info(f"Image generated successfully: {image_url}")
+                                return {"success": True, "image_url": image_url}
+                        
+                        return {"success": False, "error": "No image URL in completed task"}
+                    
+                    elif task_status == "TASK_STATUS_FAILED":
+                        error_msg = task_result.get("task", {}).get("reason", "Unknown error")
+                        logger.error(f"Task failed: {error_msg}")
+                        return {"success": False, "error": f"Generation failed: {error_msg}"}
+                    
+                    elif task_status in ["TASK_STATUS_QUEUED", "TASK_STATUS_PROCESSING"]:
+                        logger.debug(f"Task {task_id} still processing... (poll {poll_count}/{max_polls})")
+                        continue
+                    
+                    else:
+                        logger.warning(f"Unknown task status: {task_status}")
+                        continue
+                        
+                except requests.exceptions.RequestException as poll_error:
+                    logger.warning(f"Polling error: {str(poll_error)}")
+                    continue
+            
+            # Timeout waiting for task
+            return {"success": False, "error": "Task timeout - image generation took too long"}
             
         except requests.exceptions.Timeout:
             logger.warning(f"Image generation timeout on attempt {attempt + 1}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Image generation request failed: {str(e)}")
-            if response.status_code == 401:
-                return {"success": False, "error": "Invalid XAI API key"}
-            elif response.status_code == 400:
-                return {"success": False, "error": "Invalid prompt or parameters"}
+            try:
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code == 401:
+                        return {"success": False, "error": "Invalid Novita API key"}
+                    elif e.response.status_code == 400:
+                        error_detail = e.response.json().get("message", "Invalid request")
+                        return {"success": False, "error": f"Invalid prompt or parameters: {error_detail}"}
+            except:
+                pass
         except Exception as e:
             logger.error(f"Image generation attempt {attempt + 1} failed: {str(e)}")
             break
