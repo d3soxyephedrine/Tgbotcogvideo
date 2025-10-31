@@ -792,7 +792,8 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         "steps": 28,
         "seed": -1,
         "response_image_type": "png",
-        "image_num": 1
+        "image_num": 1,
+        "safety_tolerance": 5
     }
     
     for attempt in range(max_retries):
