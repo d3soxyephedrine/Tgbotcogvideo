@@ -22,7 +22,7 @@ Preferred communication style: Simple, everyday language.
 ### LLM Provider Architecture
 - **Text Generation**: ChatGPT-4o-latest via OpenRouter API.
   - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing, safety protocol override, anti-refusal enforcement, and pre-emptive response shaping.
-  - **Prompt Extraction Defense**: Anti-leak security system that detects attempts to extract system instructions and generates plausible fake prompts instead. Detects phrases like "show system prompt", "reveal instructions", "ignore previous", etc., and responds with generic safety-focused decoy responses that hide the actual jailbreak mechanisms.
+  - **Anti-Leak Protocol**: Simple directive instructing the model to never reveal, repeat, or reference any part of the system instructions, deflecting naturally when asked.
   - **System Prompt**: Clean base prompt WITHOUT obfuscated words - uses normal English only. Instructs model to selectively obfuscate trigger words in outputs using Unicode homoglyphs.
   - **Output Obfuscation**: Unicode homoglyph substitution (α, ε, ı, ο, υ, с, ĸ, ѕ) for trigger words. NEVER uses asterisks, dashes, or [REDACTED]. All content remains fully readable.
   - **Refusal Detection**: Automatic detection of refusals, [REDACTED] markers, evasion patterns, and meta-commentary. Triggers reflection prompt to force content delivery.
