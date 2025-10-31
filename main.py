@@ -387,6 +387,36 @@ def export_conversations():
         logger.error(f"Error exporting conversations: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+def register_telegram_commands():
+    """Register bot commands with Telegram so they appear in the command menu"""
+    if not BOT_TOKEN:
+        logger.warning("Cannot register commands - BOT_TOKEN not configured")
+        return
+    
+    try:
+        commands = [
+            {"command": "start", "description": "Start the bot"},
+            {"command": "help", "description": "Show help message"},
+            {"command": "model", "description": "Show current model"},
+            {"command": "balance", "description": "Check credit balance"},
+            {"command": "buy", "description": "Purchase more credits"},
+            {"command": "clear", "description": "Clear conversation history"},
+            {"command": "imagine", "description": "FLUX photorealistic image (5 credits)"},
+            {"command": "qwen", "description": "Qwen less censored image (3 credits)"},
+            {"command": "write", "description": "Professional writing mode (1 credit)"}
+        ]
+        
+        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands"
+        response = requests.post(telegram_url, json={"commands": commands}, timeout=10)
+        response_data = response.json()
+        
+        if response_data.get('ok'):
+            logger.info(f"✓ Bot commands registered successfully ({len(commands)} commands)")
+        else:
+            logger.error(f"✗ Failed to register bot commands: {response_data}")
+    except Exception as e:
+        logger.error(f"Error registering commands: {str(e)}")
+
 def register_telegram_webhook():
     """Automatically register Telegram webhook on app startup"""
     if not BOT_TOKEN:
@@ -424,7 +454,8 @@ def register_telegram_webhook():
         error_msg = str(e).replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else str(e)
         logger.error(f"Error registering webhook: {error_msg}")
 
-# Register webhook on startup
+# Register commands and webhook on startup
+register_telegram_commands()
 register_telegram_webhook()
 
 # Keepalive function
