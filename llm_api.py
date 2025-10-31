@@ -407,7 +407,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
             
             logger.info(f"API call attempt {attempt + 1} to OpenRouter")
             
-            # Log full request details for debugging
+            # Log full request details for debugging (REDACTED system prompt for security)
             logger.debug(f"=== API REQUEST DEBUG ===")
             logger.debug(f"Endpoint: {OPENROUTER_ENDPOINT}")
             logger.debug(f"Model: {data.get('model')}")
@@ -415,13 +415,12 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
             logger.debug(f"Max tokens: {data.get('max_tokens')}")
             logger.debug(f"Messages count: {len(data.get('messages', []))}")
             
-            # Show first message (system prompt) preview
+            # Log message metadata WITHOUT revealing system prompt content
             messages = data.get('messages', [])
             if messages:
                 first_msg = messages[0]
-                content_preview = first_msg.get('content', '')[:200] + '...' if len(first_msg.get('content', '')) > 200 else first_msg.get('content', '')
                 logger.debug(f"First message (system): role={first_msg.get('role')}, content_length={len(first_msg.get('content', ''))}")
-                logger.debug(f"System prompt preview: {content_preview}")
+                logger.debug(f"System prompt: [REDACTED for security - {len(first_msg.get('content', ''))} chars]")
             
             logger.debug(f"=== END REQUEST DEBUG ===")
             

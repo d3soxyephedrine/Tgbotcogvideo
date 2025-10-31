@@ -64,7 +64,8 @@ Preferred communication style: Simple, everyday language.
 - **Session Management**: Flask secret key.
 
 ### Logging & Monitoring
-- **Features**: DEBUG level logging, `/health` endpoint for application and dependency status, `/stats` for usage, and environment variable validation.
+- **Features**: DEBUG level logging with system prompt redaction (security), `/health` endpoint for application and dependency status, `/stats` for usage, and environment variable validation.
+- **Security**: System prompt content is redacted from logs (`[REDACTED for security]`) to prevent log-based prompt extraction attacks.
 
 ### Deployment Features
 - **Cloud-Ready**: Optimized for serverless platforms with non-blocking startup, graceful degradation, and resilient connection handling.
