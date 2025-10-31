@@ -19,6 +19,7 @@ DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
 NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
+NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-img2img"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
@@ -1019,6 +1020,139 @@ def generate_qwen_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
                 pass
         except Exception as e:
             logger.error(f"Qwen image generation attempt {attempt + 1} failed: {str(e)}")
+            break
+        
+        if attempt < max_retries - 1:
+            sleep_time = 2 ** attempt
+            logger.info(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+    
+    return {"success": False, "error": f"All {max_retries} attempts failed"}
+
+
+def generate_qwen_edit_image(image_url: str, prompt: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Edit an image using Novita AI Qwen-Image img2img API (less censored)
+    
+    Args:
+        image_url: URL of the image to edit
+        prompt: Text description of the edits to make
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'image_url' or 'error' keys
+    """
+    
+    if not NOVITA_API_KEY:
+        return {"success": False, "error": "NOVITA_API_KEY not configured"}
+    
+    if not prompt or not prompt.strip():
+        return {"success": False, "error": "Empty prompt"}
+    
+    if not image_url or not image_url.strip():
+        return {"success": False, "error": "Empty image URL"}
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {NOVITA_API_KEY}"
+    }
+    
+    # Using Qwen-Image img2img - less censored model for image editing
+    data = {
+        "prompt": prompt,
+        "images": [image_url],
+        "size": "1024*1024"
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Qwen image editing attempt {attempt + 1} to Novita AI")
+            logger.debug(f"Prompt: {prompt[:100]}...")
+            
+            # Step 1: Submit task to async endpoint
+            response = requests.post(
+                NOVITA_QWEN_IMG2IMG_ENDPOINT,
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract task ID
+            task_id = result.get("task_id")
+            if not task_id:
+                logger.error(f"No task_id in response: {result}")
+                return {"success": False, "error": "No task ID returned"}
+            
+            logger.info(f"Qwen edit task submitted successfully: {task_id}")
+            
+            # Step 2: Poll for task completion (max 60 seconds)
+            poll_count = 0
+            max_polls = 30  # 30 polls * 2 seconds = 60 seconds max wait
+            
+            while poll_count < max_polls:
+                time.sleep(2)
+                poll_count += 1
+                
+                try:
+                    task_response = requests.get(
+                        f"{NOVITA_TASK_ENDPOINT}?task_id={task_id}",
+                        headers=headers,
+                        timeout=10
+                    )
+                    
+                    task_response.raise_for_status()
+                    task_result = task_response.json()
+                    
+                    task_status = task_result.get("task", {}).get("status")
+                    
+                    if task_status == "TASK_STATUS_SUCCEED":
+                        # Extract image URL
+                        images = task_result.get("images", [])
+                        if images and len(images) > 0:
+                            edited_image_url = images[0].get("image_url")
+                            if edited_image_url:
+                                logger.info(f"Qwen image edited successfully: {edited_image_url}")
+                                return {"success": True, "image_url": edited_image_url}
+                        
+                        return {"success": False, "error": "No image URL in completed task"}
+                    
+                    elif task_status == "TASK_STATUS_FAILED":
+                        error_msg = task_result.get("task", {}).get("reason", "Unknown error")
+                        logger.error(f"Qwen edit task failed: {error_msg}")
+                        return {"success": False, "error": f"Editing failed: {error_msg}"}
+                    
+                    elif task_status in ["TASK_STATUS_QUEUED", "TASK_STATUS_PROCESSING"]:
+                        logger.debug(f"Qwen edit task {task_id} still processing... (poll {poll_count}/{max_polls})")
+                        continue
+                    
+                    else:
+                        logger.warning(f"Unknown task status: {task_status}")
+                        continue
+                        
+                except requests.exceptions.RequestException as poll_error:
+                    logger.warning(f"Polling error: {str(poll_error)}")
+                    continue
+            
+            # Timeout waiting for task
+            return {"success": False, "error": "Task timeout - image editing took too long"}
+            
+        except requests.exceptions.Timeout:
+            logger.warning(f"Qwen image editing timeout on attempt {attempt + 1}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Qwen image editing request failed: {str(e)}")
+            try:
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code == 401:
+                        return {"success": False, "error": "Invalid Novita API key"}
+                    elif e.response.status_code == 400:
+                        error_detail = e.response.json().get("message", "Invalid request")
+                        return {"success": False, "error": f"Invalid prompt or parameters: {error_detail}"}
+            except:
+                pass
+        except Exception as e:
+            logger.error(f"Qwen image editing attempt {attempt + 1} failed: {str(e)}")
             break
         
         if attempt < max_retries - 1:

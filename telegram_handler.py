@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image, generate_qwen_image
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -183,8 +183,12 @@ def get_help_message():
 🎨 *Image Generation:*
 • /imagine <prompt> - FLUX.1 (photorealistic, 5 credits)
 • /qwen <prompt> - Qwen-Image (less censored, posters/text, 3 credits)
-• Edit: Send photo + caption (10 credits)
 • All models: 1024×1024 high quality, truly uncensored
+
+✨ *Image Editing:*
+• FLUX edit: Send photo + caption (10 credits)
+• Qwen edit: Send photo + caption with /qwen prefix (5 credits, less censored!)
+Example: Send photo with caption "/qwen make it darker and more dramatic"
 
 📝 *Writing Mode:*
 Use /write for stories, scenes, or creative content!
@@ -198,7 +202,8 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Writing mode: 1 credit  
 • FLUX image: 5 credits
 • Qwen image: 3 credits (less censored!)
-• Image editing: 10 credits
+• FLUX editing: 10 credits
+• Qwen editing: 5 credits (less censored!)
 
 Send any message to get an uncensored AI response!
     """
@@ -641,7 +646,22 @@ Each AI message costs 1 credit.
         
         # Check for photo with caption (image editing)
         if photo and caption:
-            logger.info(f"Processing image editing request: {caption[:50]}...")
+            # Detect which model to use based on caption prefix
+            use_qwen = caption.lower().startswith('/qwen ')
+            
+            if use_qwen:
+                # Remove /qwen prefix for actual prompt
+                edit_prompt = caption[6:].strip()
+                credits_required = 5
+                model_name = "qwen-image-edit"
+                status_message = "🎨 Editing with Qwen (less censored)..."
+            else:
+                edit_prompt = caption
+                credits_required = 10
+                model_name = "flux-1-kontext-max-edit"
+                status_message = "🎨 Editing with FLUX..."
+            
+            logger.info(f"Processing {model_name} image editing request: {edit_prompt[:50]}...")
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before editing)
             if DB_AVAILABLE and user_id:
@@ -654,20 +674,21 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 10:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to edit an image.\n\nUse /buy to purchase more credits."
+                        if user.credits < credits_required:
+                            model_display = "Qwen" if use_qwen else "FLUX"
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need {credits_required} credits to edit with {model_display}.\n\nUse /buy to purchase more credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 10 credits immediately
-                        user.credits = max(0, user.credits - 10)
+                        # Deduct credits immediately
+                        user.credits = max(0, user.credits - credits_required)
                         db.session.commit()
-                        logger.debug(f"10 credits deducted for image editing. New balance: {user.credits}")
+                        logger.debug(f"{credits_required} credits deducted for {model_name} editing. New balance: {user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
             # Send initial processing message
-            status_msg = send_message(chat_id, "🎨 Editing your image...", parse_mode=None)
+            status_msg = send_message(chat_id, status_message, parse_mode=None)
             
             # Get highest quality photo (last element in array)
             file_id = photo[-1].get("file_id")
@@ -683,8 +704,11 @@ Each AI message costs 1 credit.
             
             logger.info(f"Photo URL: {photo_url}")
             
-            # Edit image using Novita AI FLUX.1 Kontext Max with image input
-            result = generate_image(caption, image_url=photo_url)
+            # Call appropriate editing function based on model choice
+            if use_qwen:
+                result = generate_qwen_edit_image(photo_url, edit_prompt)
+            else:
+                result = generate_image(edit_prompt, image_url=photo_url)
             
             if result.get("success"):
                 image_url = result.get("image_url")
@@ -698,14 +722,13 @@ Each AI message costs 1 credit.
                     photo_payload = {
                         "chat_id": chat_id,
                         "photo": image_url,
-                        "caption": f"✨ Edited: {caption[:180]}" if len(caption) <= 180 else f"✨ Edited: {caption[:177]}..."
+                        "caption": f"✨ Edited: {edit_prompt[:180]}" if len(edit_prompt) <= 180 else f"✨ Edited: {edit_prompt[:177]}..."
                     }
                     
                     requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
                     
-                    # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
+                    # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
-                    message_id = None
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
@@ -715,45 +738,51 @@ Each AI message costs 1 credit.
                                     user_id=user_id,
                                     user_message=f"[Image Edit] {caption}",
                                     bot_response=image_url,
-                                    model_used="flux-1-kontext-max-edit",
-                                    credits_charged=10
+                                    model_used=model_name,
+                                    credits_charged=credits_required
                                 )
                                 db.session.add(message_record)
                                 db.session.commit()
                                 message_id = message_record.id
                                 logger.info(f"Image edit message stored synchronously for user {user_id}: {message_id}")
+                                
+                                # Also store transaction synchronously for reliability
+                                transaction_type = 'qwen_image_editing' if use_qwen else 'image_editing'
+                                transaction = Transaction(
+                                    user_id=user_id,
+                                    credits_used=credits_required,
+                                    message_id=message_id,
+                                    transaction_type=transaction_type,
+                                    description=f"{model_name}: {edit_prompt[:100]}"
+                                )
+                                db.session.add(transaction)
+                                db.session.commit()
+                                logger.debug(f"Image edit transaction stored synchronously: message_id={message_id}")
                         except Exception as db_error:
-                            logger.error(f"Database error storing image edit message: {str(db_error)}")
+                            logger.error(f"Database error storing image edit message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
-                    
-                    # Store transaction in background thread (non-critical for memory)
-                    def store_transaction_async():
-                        if DB_AVAILABLE and user_id and message_id:
-                            try:
-                                from flask import current_app
-                                with current_app.app_context():
-                                    transaction = Transaction(
-                                        user_id=user_id,
-                                        credits_used=10,
-                                        message_id=message_id,
-                                        transaction_type='image_editing',
-                                        description=f"Image editing: {caption[:100]}"
-                                    )
-                                    db.session.add(transaction)
-                                    db.session.commit()
-                                    logger.debug(f"Image edit transaction stored asynchronously: message_id={message_id}")
-                            except Exception as db_error:
-                                logger.error(f"Async database error storing image edit transaction: {str(db_error)}")
-                                # Flask-SQLAlchemy automatically rolls back on exception within app context
-                    
-                    threading.Thread(target=store_transaction_async, daemon=True).start()
                     
                 except Exception as e:
                     logger.error(f"Error sending edited image: {str(e)}")
                     send_message(chat_id, f"❌ Error downloading/sending edited image: {str(e)}")
             else:
                 error_msg = result.get("error", "Unknown error")
-                send_message(chat_id, f"❌ Image editing failed: {error_msg}")
+                
+                # Refund credits since editing failed
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            user = User.query.get(user_id)
+                            if user:
+                                user.credits += credits_required
+                                db.session.commit()
+                                model_display = "Qwen" if use_qwen else "FLUX"
+                                logger.info(f"Refunded {credits_required} credits due to failed {model_display} editing. New balance: {user.credits}")
+                    except Exception as db_error:
+                        logger.error(f"Database error refunding credits: {str(db_error)}")
+                
+                send_message(chat_id, f"❌ Image editing failed: {error_msg}\n\n✅ {credits_required} credits have been refunded to your account.")
             
             return
         
