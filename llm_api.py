@@ -17,7 +17,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/txt2img"
+NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-dev"  # Flux.1-dev endpoint
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
@@ -787,23 +787,15 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     
     # Using Flux.1-dev - highest quality uncensored model (12B parameters)
     # Superior photorealism, text rendering, anatomy, and prompt adherence
+    # Flux uses dedicated endpoint - no model_name parameter needed
     data = {
-        "extra": {
-            "response_image_type": "jpeg",
-            "enable_nsfw_detection": False  # Disable content filtering for uncensored generation
-        },
-        "request": {
-            "model_name": "flux1-dev-fp8@q_4",  # Flux.1-dev optimized version
-            "prompt": prompt,
-            "negative_prompt": "low quality, blurry, distorted, watermark, text artifacts",
-            "width": 1024,
-            "height": 1024,
-            "image_num": 1,
-            "steps": 28,  # Flux works well with 20-30 steps
-            "guidance_scale": 3.5,  # Flux prefers lower guidance (3.5-5.0)
-            "sampler_name": "Euler",  # Recommended sampler for Flux
-            "seed": -1  # Random seed
-        }
+        "prompt": prompt,
+        "width": 1024,
+        "height": 1024,
+        "image_num": 1,
+        "steps": 28,  # Flux works well with 20-30 steps
+        "seed": -1,  # Random seed for variety
+        "response_image_type": "jpeg"
     }
     
     for attempt in range(max_retries):
