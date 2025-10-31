@@ -763,11 +763,12 @@ Write in a natural, professional, human style with the following characteristics
         return f"System Error: {str(e)}"
 
 
-def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Generate an image using Novita AI API with FLUX.1 Kontext Max (uncensored model)
+def generate_image(prompt: str, image_url: str = None, max_retries: int = 3) -> Dict[str, Any]:
+    """Generate or edit an image using Novita AI API with FLUX.1 Kontext Max (uncensored model)
     
     Args:
-        prompt: Text description of the image to generate
+        prompt: Text description of the image to generate or editing instructions
+        image_url: Optional URL of image to edit (for image editing mode)
         max_retries: Number of retry attempts
     
     Returns:
@@ -793,6 +794,11 @@ def generate_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
         "safety_tolerance": "5",
         "aspect_ratio": "1:1"
     }
+    
+    # Add image URL for editing mode
+    if image_url:
+        data["images"] = [image_url]
+        logger.info(f"Image editing mode: input image = {image_url}")
     
     for attempt in range(max_retries):
         try:

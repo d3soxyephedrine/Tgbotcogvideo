@@ -31,10 +31,11 @@ Preferred communication style: Simple, everyday language.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
 - **Image Generation**: FLUX.1 Kontext Max via Novita AI API for uncensored text-to-image capabilities using the `/imagine` command. FLUX.1 Kontext Max provides superior quality, exceptional prompt adherence, advanced typography capabilities, and truly uncensored 1024×1024 images with no content restrictions.
-- **Rationale**: Dual-provider architecture for comprehensive AI text and image generation with advanced content filter bypass.
+- **Image Editing**: FLUX.1 Kontext Max via Novita AI API for uncensored image-to-image editing. Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness (15 credits per edit).
+- **Rationale**: Dual-provider architecture for comprehensive AI text and image generation/editing with advanced content filter bypass.
 
 ### Pay-Per-Use Credit System
-- **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features (1 credit per text message, 10 credits per image).
+- **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features (1 credit per text message, 10 credits per image generation, 15 credits per image editing).
 - **New User Bonus**: 100 free credits upon first interaction.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 

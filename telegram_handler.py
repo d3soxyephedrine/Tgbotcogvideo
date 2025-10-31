@@ -129,6 +129,42 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
         logger.debug(f"Error editing message: {str(e)}")
         return {"error": str(e)}
 
+def get_photo_url(file_id):
+    """Get a publicly accessible URL for a photo from Telegram
+    
+    Args:
+        file_id (str): The file_id from Telegram photo message
+        
+    Returns:
+        str: URL to the photo, or None if failed
+    """
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not configured")
+        return None
+    
+    try:
+        # Step 1: Get file path
+        response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}", timeout=10)
+        result = response.json()
+        
+        if not result.get("ok"):
+            logger.error(f"Failed to get file path: {result}")
+            return None
+        
+        file_path = result.get("result", {}).get("file_path")
+        if not file_path:
+            logger.error("No file_path in response")
+            return None
+        
+        # Step 2: Construct download URL
+        photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+        logger.info(f"Photo URL obtained: {photo_url}")
+        return photo_url
+        
+    except Exception as e:
+        logger.error(f"Error getting photo URL: {str(e)}")
+        return None
+
 def get_help_message():
     """Get the help message with available commands"""
     help_text = """
@@ -143,6 +179,12 @@ def get_help_message():
 /imagine <prompt> - Generate image (10 credits)
 /write <request> - Professional writing mode (1 credit)
 
+🎨 *Image Features:*
+• Generate: /imagine <description>
+• Edit: Send photo + caption with editing instructions
+• Truly uncensored with FLUX.1 Kontext Max
+• 1024×1024 high quality images
+
 📝 *Writing Mode:*
 Use /write for stories, scenes, or creative content!
 • Generates at least 300 words of narrative
@@ -154,6 +196,7 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Text message: 1 credit
 • Writing mode: 1 credit  
 • Image generation: 10 credits
+• Image editing: 15 credits
 
 Send any message to get an uncensored AI response!
     """
@@ -173,6 +216,8 @@ def process_update(update):
     message = update.get("message", {})
     chat_id = message.get("chat", {}).get("id")
     text = message.get("text", "")
+    caption = message.get("caption", "")
+    photo = message.get("photo")
     
     # Get user information
     user_info = message.get("from", {})
@@ -181,9 +226,18 @@ def process_update(update):
     first_name = user_info.get("first_name")
     last_name = user_info.get("last_name")
     
-    # If no chat_id or empty text, ignore
-    if not chat_id or not text:
-        logger.debug(f"Missing chat_id or text: {chat_id}, {text}")
+    # If no chat_id, ignore
+    if not chat_id:
+        logger.debug(f"Missing chat_id: {chat_id}")
+        return
+    
+    # If there's a photo with caption, treat it as image editing request
+    if photo and caption:
+        logger.info(f"Photo with caption detected - treating as image editing request")
+        text = ""  # Clear text to skip normal text processing
+    # If no text and no photo with caption, ignore
+    elif not text:
+        logger.debug(f"Missing text and no photo with caption")
         return
     
     logger.debug(f"Processing message from chat {chat_id}: {text}")
@@ -466,6 +520,124 @@ Each AI message costs 1 credit.
             else:
                 error_msg = result.get("error", "Unknown error")
                 send_message(chat_id, f"❌ Image generation failed: {error_msg}")
+            
+            return
+        
+        # Check for photo with caption (image editing)
+        if photo and caption:
+            logger.info(f"Processing image editing request: {caption[:50]}...")
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before editing)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for image editing: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 15:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 15 credits to edit an image.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct 15 credits immediately
+                        user.credits = max(0, user.credits - 15)
+                        db.session.commit()
+                        logger.debug(f"15 credits deducted for image editing. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Send initial processing message
+            status_msg = send_message(chat_id, "🎨 Editing your image...", parse_mode=None)
+            
+            # Get highest quality photo (last element in array)
+            file_id = photo[-1].get("file_id")
+            if not file_id:
+                send_message(chat_id, "❌ Could not get photo file ID")
+                return
+            
+            # Get publicly accessible URL for the photo
+            photo_url = get_photo_url(file_id)
+            if not photo_url:
+                send_message(chat_id, "❌ Could not download photo from Telegram")
+                return
+            
+            logger.info(f"Photo URL: {photo_url}")
+            
+            # Edit image using Novita AI FLUX.1 Kontext Max with image input
+            result = generate_image(caption, image_url=photo_url)
+            
+            if result.get("success"):
+                image_url = result.get("image_url")
+                
+                # Download image from URL
+                try:
+                    img_response = requests.get(image_url, timeout=30)
+                    img_response.raise_for_status()
+                    
+                    # Send edited image to user
+                    photo_payload = {
+                        "chat_id": chat_id,
+                        "photo": image_url,
+                        "caption": f"✨ Edited: {caption[:180]}" if len(caption) <= 180 else f"✨ Edited: {caption[:177]}..."
+                    }
+                    
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    
+                    # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
+                    # Credit already deducted above, so user can't use same credits twice
+                    message_id = None
+                    if DB_AVAILABLE and user_id:
+                        try:
+                            from flask import current_app
+                            with current_app.app_context():
+                                # Create message record immediately for conversation history
+                                message_record = Message(
+                                    user_id=user_id,
+                                    user_message=f"[Image Edit] {caption}",
+                                    bot_response=image_url,
+                                    model_used="flux-1-kontext-max-edit",
+                                    credits_charged=15
+                                )
+                                db.session.add(message_record)
+                                db.session.commit()
+                                message_id = message_record.id
+                                logger.info(f"Image edit message stored synchronously for user {user_id}: {message_id}")
+                        except Exception as db_error:
+                            logger.error(f"Database error storing image edit message: {str(db_error)}")
+                            # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                    # Store transaction in background thread (non-critical for memory)
+                    def store_transaction_async():
+                        if DB_AVAILABLE and user_id and message_id:
+                            try:
+                                from flask import current_app
+                                with current_app.app_context():
+                                    transaction = Transaction(
+                                        user_id=user_id,
+                                        credits_used=15,
+                                        message_id=message_id,
+                                        transaction_type='image_editing',
+                                        description=f"Image editing: {caption[:100]}"
+                                    )
+                                    db.session.add(transaction)
+                                    db.session.commit()
+                                    logger.debug(f"Image edit transaction stored asynchronously: message_id={message_id}")
+                            except Exception as db_error:
+                                logger.error(f"Async database error storing image edit transaction: {str(db_error)}")
+                                # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                    threading.Thread(target=store_transaction_async, daemon=True).start()
+                    
+                except Exception as e:
+                    logger.error(f"Error sending edited image: {str(e)}")
+                    send_message(chat_id, f"❌ Error downloading/sending edited image: {str(e)}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                send_message(chat_id, f"❌ Image editing failed: {error_msg}")
             
             return
         
