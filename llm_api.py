@@ -19,7 +19,7 @@ DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
 NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
-NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-img2img"
+NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 
 def get_system_prompt() -> str:
@@ -1056,11 +1056,11 @@ def generate_qwen_edit_image(image_url: str, prompt: str, max_retries: int = 3) 
         "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
-    # Using Qwen-Image img2img - less censored model for image editing
+    # Using Qwen-Image Edit API - less censored model for image editing
     data = {
         "prompt": prompt,
-        "images": [image_url],
-        "size": "1024*1024"
+        "image": image_url,
+        "output_format": "jpeg"
     }
     
     for attempt in range(max_retries):
