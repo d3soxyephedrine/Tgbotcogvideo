@@ -334,6 +334,7 @@ def process_update(update):
     
     message = update.get("message", {})
     chat_id = message.get("chat", {}).get("id")
+    chat_type = message.get("chat", {}).get("type")
     text = message.get("text", "")
     caption = message.get("caption", "")
     photo = message.get("photo")
@@ -576,6 +577,18 @@ Bigger packs = better value!
         
         # Check for /getapikey command
         if text.lower() == '/getapikey':
+            # Security: Only allow /getapikey in private chats to prevent API key exposure
+            if chat_type != 'private':
+                response = """🔒 Security Notice
+
+For your protection, API keys can only be retrieved in private chats.
+
+Please send me a direct message (DM) and use /getapikey there to receive your API key securely.
+
+⚠️ Never share your API key in group chats - anyone with your API key can use your credits!"""
+                send_message(chat_id, response)
+                return
+            
             if DB_AVAILABLE and user:
                 try:
                     from flask import current_app
