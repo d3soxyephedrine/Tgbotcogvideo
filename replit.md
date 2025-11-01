@@ -69,16 +69,20 @@ Preferred communication style: Simple, everyday language.
 - Cloud-ready design for serverless platforms.
 
 ### LibreChat Web Integration
-- **Architecture**: `/v1/chat/completions` endpoint provides an OpenAI-compatible API. Shared credit pool and unified database for web and Telegram users.
+- **Architecture**: `/v1/chat/completions` endpoint provides an OpenAI-compatible API using the SAME `generate_response()` function as Telegram. Shared credit pool and unified database for web and Telegram users.
+- **Jailbreak Integration**: Web chat uses identical jailbreak system as Telegram via `generate_response()` function, including refusal detection, reflection prompts, and token budget management.
+- **Conversation Memory**: Fetches last 10 messages from database (filtered by `platform='web'`) for conversation context, identical to Telegram pattern.
 - **Authentication**: API keys obtained via `/getapikey` Telegram command.
-- **Credit System**: Web requests cost 1 credit/message, same deduction logic as Telegram. Credits are refunded on OpenRouter failure.
-- **Error Responses**: 401 (Invalid API key), 402 (Insufficient credits), 500 (Server error), 502 (OpenRouter API error).
+- **Credit System**: Web requests cost 1 credit/message, same deduction logic as Telegram. Credits are refunded on error.
+- **Error Responses**: 401 (Invalid API key), 402 (Insufficient credits), 500 (Server error).
 
 ### Web Chat Interface
 - **Overview**: Built-in ChatGPT-style web interface at `/chat` for text-only conversations.
-- **Features**: Modern UI, streaming responses, real-time credit balance display, API key authentication (saved in localStorage), shared credit system, and identical uncensored system prompt as Telegram.
-- **Technical Details**: Uses existing `/v1/chat/completions` proxy and `/api/balance` endpoint. Messages stored with `platform='web'`.
-- **Differences from Telegram**: Text-only, session-based history, no commands.
+- **Features**: Modern UI, streaming responses, real-time credit balance display, API key authentication (saved in localStorage), shared credit system.
+- **Jailbreak System**: Uses IDENTICAL uncensored jailbreak as Telegram - same system prompt, refusal detection, reflection prompts, and token management via `generate_response()` function.
+- **Conversation Memory**: Remembers last 10 messages per session, stored in database with `platform='web'`.
+- **Technical Details**: `/v1/chat/completions` calls `generate_response()` with conversation history, returns OpenAI-compatible streaming format. `/api/balance` endpoint for credit display.
+- **Differences from Telegram**: Text-only, no image/video generation commands.
 
 ## External Dependencies
 
