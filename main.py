@@ -10,7 +10,7 @@ import uuid
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
-from models import db, User, Message, Payment, Transaction, CryptoPayment
+from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation
 from datetime import datetime
 from nowpayments_api import NOWPaymentsAPI
 from nowpayments_wrapper import NOWPaymentsWrapper
@@ -306,6 +306,163 @@ def get_messages():
         return jsonify({"messages": formatted_messages})
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/conversations', methods=['GET'])
+def get_conversations():
+    """Get all conversations for authenticated user"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            "error": "Invalid API key"
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            return jsonify({
+                "error": "Invalid API key"
+            }), 401
+        
+        # Get all conversations for this user, ordered by most recent first
+        from sqlalchemy import desc
+        conversations = Conversation.query.filter_by(
+            user_id=user.id
+        ).order_by(desc(Conversation.updated_at)).all()
+        
+        # Format conversations for frontend
+        formatted_conversations = []
+        for conv in conversations:
+            # Get message count for this conversation
+            message_count = Message.query.filter_by(conversation_id=conv.id).count()
+            
+            formatted_conversations.append({
+                "id": conv.id,
+                "title": conv.title,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat(),
+                "message_count": message_count
+            })
+        
+        logger.info(f"Loaded {len(formatted_conversations)} conversations for user {user.telegram_id}")
+        return jsonify({"conversations": formatted_conversations})
+    except Exception as e:
+        logger.error(f"Error fetching conversations: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/conversations', methods=['POST'])
+def create_conversation():
+    """Create a new conversation for authenticated user"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            "error": "Invalid API key"
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            return jsonify({
+                "error": "Invalid API key"
+            }), 401
+        
+        # Get title from request body (optional)
+        data = request.get_json() or {}
+        title = data.get('title', 'New Chat')
+        
+        # Create new conversation
+        new_conversation = Conversation(
+            user_id=user.id,
+            title=title
+        )
+        
+        db.session.add(new_conversation)
+        db.session.commit()
+        
+        logger.info(f"Created new conversation {new_conversation.id} for user {user.telegram_id}")
+        
+        return jsonify({
+            "id": new_conversation.id,
+            "title": new_conversation.title,
+            "created_at": new_conversation.created_at.isoformat(),
+            "updated_at": new_conversation.updated_at.isoformat(),
+            "message_count": 0
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creating conversation: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/conversations/<int:conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    """Delete a conversation and all its messages"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            "error": "Invalid API key"
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            return jsonify({
+                "error": "Invalid API key"
+            }), 401
+        
+        # Find the conversation
+        conversation = Conversation.query.filter_by(
+            id=conversation_id,
+            user_id=user.id
+        ).first()
+        
+        if not conversation:
+            return jsonify({
+                "error": "Conversation not found"
+            }), 404
+        
+        # Delete the conversation (cascade will delete all messages)
+        db.session.delete(conversation)
+        db.session.commit()
+        
+        logger.info(f"Deleted conversation {conversation_id} for user {user.telegram_id}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Conversation deleted"
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting conversation: {str(e)}")
         return jsonify({
             "error": "Internal server error"
         }), 500
