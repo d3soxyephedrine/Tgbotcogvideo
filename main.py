@@ -401,10 +401,10 @@ def register_telegram_commands():
             {"command": "balance", "description": "Check credit balance"},
             {"command": "buy", "description": "Purchase more credits"},
             {"command": "clear", "description": "Clear conversation history"},
-            {"command": "imagine", "description": "FLUX photorealistic image (5 credits)"},
-            {"command": "qwen", "description": "Qwen less censored image (3 credits)"},
-            {"command": "grok", "description": "Grok stylized image (4 credits)"},
-            {"command": "hunyuan", "description": "Hunyuan AI image (5 credits)"},
+            {"command": "imagine", "description": "FLUX high quality photorealistic (5 credits)"},
+            {"command": "hunyuan", "description": "Hunyuan fully uncensored (5 credits)"},
+            {"command": "qwen", "description": "Qwen for image editing (3 credits)"},
+            {"command": "grok", "description": "Grok (4 credits)"},
             {"command": "write", "description": "Professional writing mode (1 credit)"}
         ]
         
