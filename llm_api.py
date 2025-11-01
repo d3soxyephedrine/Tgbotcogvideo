@@ -1326,7 +1326,7 @@ def generate_qwen_edit_image(image_url: str, prompt: str, max_retries: int = 3) 
 
 
 def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
-    """Generate an image using xAI Grok API (grok-2-image-1212 model)
+    """Generate an image using xAI Grok API (grok-2-image model)
     
     Args:
         prompt: Text description of the image to generate
@@ -1352,7 +1352,7 @@ def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     
     # Using Grok-2-Image model via xAI API
     data = {
-        "model": "grok-2-image-1212",
+        "model": "grok-2-image",
         "prompt": truncated_prompt,
         "n": 1
     }
