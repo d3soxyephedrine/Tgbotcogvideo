@@ -35,11 +35,15 @@ args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
 waitForPort = 5000
 
 [agent]
-integrations = ["python_xai:1.0.0"]
+integrations = ["python_xai:1.0.0", "flask_stripe:1.0.0"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 34163
+externalPort = 5173
 
 [[ports]]
 localPort = 34873
