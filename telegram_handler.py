@@ -201,7 +201,7 @@ def get_help_message():
 • /grok <prompt> - Grok (4 credits)
 
 ✨ *Image Editing:*
-• FLUX edit: Send photo + caption (10 credits)
+• FLUX edit: Send photo + caption (6 credits)
 • Qwen edit: Send photo + caption with /qwen prefix (5 credits)
 Example: Send photo with caption "/qwen make it darker and more dramatic"
 
@@ -224,7 +224,7 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Hunyuan image: 5 credits
 • Grok image: 4 credits
 • Qwen image: 3 credits
-• FLUX editing: 10 credits
+• FLUX editing: 6 credits
 • Qwen editing: 5 credits
 • WAN 2.2 video: 8 credits
 • WAN 2.5 video: 10 credits
