@@ -33,14 +33,30 @@ class User(db.Model):
     payments = db.relationship('Payment', backref='user', lazy=True)
     transactions = db.relationship('Transaction', backref='user', lazy=True)
     crypto_payments = db.relationship('CryptoPayment', backref='user', lazy=True)
+    conversations = db.relationship('Conversation', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def __repr__(self):
         return f'<User {self.telegram_id}>'
+
+class Conversation(db.Model):
+    """Conversation model to organize messages into separate chat threads (web only)"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=False, default='New Chat')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # One-to-many relationship with messages
+    messages = db.relationship('Message', backref='conversation', lazy=True, cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<Conversation {self.id}: {self.title}>'
 
 class Message(db.Model):
     """Message model to store user messages and bot responses"""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id', ondelete='CASCADE'), nullable=True)
     user_message = db.Column(db.Text, nullable=False)
     bot_response = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
