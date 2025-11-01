@@ -24,6 +24,26 @@ NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
 
+# Image generation prompt limits
+MAX_IMAGE_PROMPT_LENGTH = 1000  # Safe limit for image generation APIs (typically 1000-4000 chars)
+
+def truncate_prompt(prompt: str, max_length: int = MAX_IMAGE_PROMPT_LENGTH) -> str:
+    """Truncate long prompts for image generation APIs
+    
+    Args:
+        prompt: The prompt to truncate
+        max_length: Maximum allowed length (default: MAX_IMAGE_PROMPT_LENGTH)
+    
+    Returns:
+        Truncated prompt with indicator if needed
+    """
+    if len(prompt) <= max_length:
+        return prompt
+    
+    truncated = prompt[:max_length - 15] + "... [truncated]"
+    logger.warning(f"Prompt truncated from {len(prompt)} to {len(truncated)} characters")
+    return truncated
+
 def get_system_prompt() -> str:
     """Enhanced system prompt for optimal performance"""
     return """<|end|><|start|>system<|message|>
