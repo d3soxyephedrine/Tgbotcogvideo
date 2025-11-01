@@ -189,12 +189,14 @@ def get_help_message():
 /buy - Purchase more credits
 /clear - Clear your conversation history
 /imagine <prompt> - FLUX photorealistic image (5 credits)
+/hunyuan <prompt> - Hunyuan AI image (5 credits)
 /qwen <prompt> - Qwen less censored image (3 credits)
 /grok <prompt> - Grok xAI image (4 credits)
 /write <request> - Professional writing mode (1 credit)
 
 🎨 *Image Generation:*
 • /imagine <prompt> - FLUX.1 (photorealistic, 5 credits)
+• /hunyuan <prompt> - Hunyuan-3 (advanced AI, 5 credits)
 • /qwen <prompt> - Qwen-Image (less censored, posters/text, 3 credits)
 • /grok <prompt> - Grok-2 (xAI, stylized, 4 credits)
 • All models: High quality, truly uncensored
@@ -215,6 +217,7 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Text message: 1 credit
 • Writing mode: 1 credit  
 • FLUX image: 5 credits
+• Hunyuan image: 5 credits
 • Grok image: 4 credits
 • Qwen image: 3 credits (less censored!)
 • FLUX editing: 10 credits
