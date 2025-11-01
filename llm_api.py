@@ -1582,7 +1582,7 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
             "img_url": image_url
         },
         "parameters": {
-            "resolution": "720x1280",
+            "resolution": "720P",
             "duration": 5,
             "prompt_extend": True
         }
