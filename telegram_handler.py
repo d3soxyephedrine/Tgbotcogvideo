@@ -607,31 +607,17 @@ Please send me a direct message (DM) and use /getapikey there to receive your AP
                                 db.session.commit()
                                 logger.info(f"Generated new API key for user {telegram_id}")
                             
-                            # Get domain
-                            domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
-                            
-                            response = f"""🔑 Your LibreChat API Key:
+                            response = f"""🔑 Your API Key:
 
 `{user.api_key}`
 
-📋 *Setup Instructions:*
+🌐 *Web Chat:*
+https://telegram-ai-companion-fxtor1g21.replit.app/chat
 
-1. Install LibreChat (see librechat.ai)
-2. Add this to your `librechat.yaml`:
-
-```yaml
-endpoints:
-  custom:
-    - name: "Uncensored AI"
-      apiKey: "{user.api_key}"
-      baseURL: "https://{domain}/v1"
-      models:
-        default: ["openai/chatgpt-4o-latest"]
-      titleConvo: true
-```
-
-3. Restart LibreChat
-4. Select "Uncensored AI" from the model dropdown
+📋 *How to use:*
+1. Click the link above
+2. Paste your API key when prompted
+3. Start chatting!
 
 💳 *Credits:* Uses the SAME credit pool as Telegram!
 • Text: 1 credit/message
