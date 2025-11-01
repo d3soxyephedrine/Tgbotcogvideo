@@ -221,10 +221,17 @@
             font-size: 24px;
             line-height: 1;
             transition: all 0.2s ease;
+            flex: 0 0 44px;
+            min-width: 44px;
+            flex-shrink: 0;
         }
 
         .menu-toggle:hover {
             background: rgba(0, 212, 255, 0.3);
+        }
+
+        .header-left {
+            flex-shrink: 0;
         }
 
         /* Sidebar Backdrop */
@@ -896,6 +903,11 @@
         const sidebar = document.getElementById('sidebar');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
+        // Defensive check for menu toggle
+        if (!menuToggle) {
+            console.error('Menu toggle button not found');
+        }
+
         // Show/hide API key modal and load conversations
         if (!apiKey) {
             apiKeyModal.style.display = 'flex';
@@ -923,16 +935,20 @@
         newChatBtn.addEventListener('click', createNewConversation);
 
         // Mobile menu toggle
-        menuToggle.addEventListener('click', () => {
-            sidebar.classList.toggle('active');
-            sidebarBackdrop.classList.toggle('active');
-        });
+        if (menuToggle) {
+            menuToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('active');
+                sidebarBackdrop.classList.toggle('active');
+            });
+        }
 
         // Close sidebar when clicking backdrop
-        sidebarBackdrop.addEventListener('click', () => {
-            sidebar.classList.remove('active');
-            sidebarBackdrop.classList.remove('active');
-        });
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener('click', () => {
+                sidebar.classList.remove('active');
+                sidebarBackdrop.classList.remove('active');
+            });
+        }
 
         // Allow Enter to save API key
         apiKeyInput.addEventListener('keypress', (e) => {
