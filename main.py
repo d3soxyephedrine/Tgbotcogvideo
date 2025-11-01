@@ -6,6 +6,7 @@ import requests
 import json
 import hmac
 import hashlib
+import uuid
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
@@ -557,17 +558,19 @@ def verify_nowpayments_ipn(ipn_secret, raw_body_bytes, received_signature):
 
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions_proxy():
-    """OpenAI-compatible proxy endpoint for LibreChat integration
+    """OpenAI-compatible proxy endpoint with FULL jailbreak system (same as Telegram)
     
     This endpoint:
     - Authenticates users via API key
+    - Fetches last 10 messages for conversation context
+    - Injects jailbreak system prompt
     - Deducts credits (1 per request)
-    - Forwards requests to OpenRouter
-    - Returns OpenAI-compatible responses
-    - Supports streaming
+    - Uses generate_response() with refusal detection
+    - Returns OpenAI-compatible streaming responses
+    - Stores messages with platform='web'
     """
     logger.info("=" * 80)
-    logger.info("LIBRECHAT PROXY REQUEST RECEIVED")
+    logger.info("WEB CHAT REQUEST RECEIVED")
     logger.info(f"Request method: {request.method}")
     logger.info(f"Request path: {request.path}")
     logger.info("=" * 80)
@@ -607,7 +610,7 @@ def chat_completions_proxy():
                 }
             }), 401
         
-        logger.info(f"Authenticated user: {user.telegram_id} (username: {user.username})")
+        logger.info(f"Authenticated web user: {user.telegram_id} (username: {user.username})")
         
         from telegram_handler import deduct_credits
         success, daily_used, purchased_used, credit_warning = deduct_credits(user, 1)
@@ -644,49 +647,83 @@ def chat_completions_proxy():
                 }
             }), 400
         
-        is_streaming = payload.get('stream', False)
-        
-        if not OPENROUTER_API_KEY:
+        messages = payload.get('messages', [])
+        if not messages:
             return jsonify({
                 "error": {
-                    "message": "OpenRouter API key not configured",
-                    "type": "server_error",
-                    "code": "api_key_missing"
+                    "message": "No messages provided",
+                    "type": "invalid_request_error",
+                    "code": "no_messages"
                 }
-            }), 500
+            }), 400
         
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": request.headers.get("Referer", "https://librechat.ai"),
-            "X-Title": request.headers.get("X-Title", "LibreChat via Replit Proxy")
-        }
+        # Get user's current message (last message in the array)
+        user_message = messages[-1].get('content', '') if messages else ''
+        if not user_message:
+            return jsonify({
+                "error": {
+                    "message": "Empty user message",
+                    "type": "invalid_request_error",
+                    "code": "empty_message"
+                }
+            }), 400
         
-        logger.debug(f"Forwarding to OpenRouter: model={payload.get('model')}, streaming={is_streaming}")
+        logger.info(f"Web user message: {user_message[:100]}...")
         
-        try:
-            response = requests.post(
-                OPENROUTER_ENDPOINT,
-                headers=headers,
-                json=payload,
-                timeout=120,
-                stream=is_streaming
+        # Fetch last 10 messages from database for conversation context (same as Telegram)
+        from sqlalchemy import desc
+        subquery = db.session.query(Message.id).filter(
+            Message.user_id == user.id,
+            Message.platform == 'web'
+        ).order_by(desc(Message.created_at)).limit(10).subquery()
+        
+        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+        logger.info(f"Loaded {len(recent_messages)} previous web messages for context")
+        
+        # Build conversation history (same format as Telegram)
+        conversation_history = []
+        for msg in recent_messages:
+            if msg.user_message:
+                conversation_history.append({
+                    "role": "user",
+                    "content": msg.user_message
+                })
+            if msg.bot_response:
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": msg.bot_response
+                })
+        
+        logger.info(f"Built conversation history with {len(conversation_history)} messages")
+        
+        # Use the SAME generate_response function as Telegram (includes jailbreak, refusal detection, etc.)
+        is_streaming = payload.get('stream', True)
+        
+        if is_streaming:
+            # For streaming, we need to capture the response and convert to OpenAI format
+            from flask import Response
+            
+            accumulated_response = ""
+            
+            def update_callback(chunk):
+                nonlocal accumulated_response
+                accumulated_response += chunk
+            
+            # Call generate_response with streaming callback
+            bot_response = generate_response(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                use_streaming=True,
+                update_callback=update_callback,
+                writing_mode=False
             )
             
-            response.raise_for_status()
-            
-            user_message = ""
-            bot_response = ""
-            if payload.get('messages'):
-                last_msg = payload['messages'][-1]
-                if isinstance(last_msg, dict) and last_msg.get('content'):
-                    user_message = last_msg['content'][:1000]
-            
+            # Store message in database
             message_record = Message(
                 user_id=user.id,
-                user_message=user_message,
-                bot_response="",
-                model_used=payload.get('model', 'unknown'),
+                user_message=user_message[:1000],
+                bot_response=bot_response[:10000] if bot_response else "",
+                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
                 credits_charged=1,
                 platform='web'
             )
@@ -694,80 +731,118 @@ def chat_completions_proxy():
             db.session.commit()
             message_id = message_record.id
             
+            # Create transaction record
             transaction = Transaction(
                 user_id=user.id,
                 credits_used=1,
                 message_id=message_id,
                 transaction_type='web_message',
-                description=f"Web chat via LibreChat using {payload.get('model', 'unknown')}"
+                description=f"Web chat message"
             )
             db.session.add(transaction)
             db.session.commit()
             
-            logger.info(f"Created message record (id={message_id}) and transaction for web request")
+            logger.info(f"Stored web message (id={message_id}) and transaction")
             
-            if is_streaming:
-                from flask import Response
+            # Convert to OpenAI streaming format
+            def generate_openai_stream():
+                # Send chunks
+                words = bot_response.split(' ') if bot_response else []
+                for i, word in enumerate(words):
+                    chunk_data = {
+                        "id": f"chatcmpl-{uuid.uuid4()}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": word + (' ' if i < len(words) - 1 else '')},
+                            "finish_reason": None
+                        }]
+                    }
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
                 
-                def generate():
-                    accumulated_response = ""
-                    for line in response.iter_lines():
-                        if line:
-                            line_str = line.decode('utf-8')
-                            yield line_str + '\n'
-                            
-                            if line_str.startswith('data: ') and line_str != 'data: [DONE]':
-                                try:
-                                    data = json.loads(line_str[6:])
-                                    if data.get('choices'):
-                                        delta = data['choices'][0].get('delta', {})
-                                        content = delta.get('content', '')
-                                        if content:
-                                            accumulated_response += content
-                                except:
-                                    pass
-                    
-                    if accumulated_response and message_id:
-                        try:
-                            msg = Message.query.get(message_id)
-                            if msg:
-                                msg.bot_response = accumulated_response[:10000]
-                                db.session.commit()
-                        except:
-                            pass
-                
-                return Response(generate(), content_type='text/event-stream')
-            else:
-                response_json = response.json()
-                
-                if response_json.get('choices'):
-                    bot_response = response_json['choices'][0].get('message', {}).get('content', '')
-                    if bot_response and message_id:
-                        msg = Message.query.get(message_id)
-                        if msg:
-                            msg.bot_response = bot_response[:10000]
-                            db.session.commit()
-                
-                return jsonify(response_json)
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"OpenRouter API error: {str(e)}")
+                # Send final chunk
+                final_chunk = {
+                    "id": f"chatcmpl-{uuid.uuid4()}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop"
+                    }]
+                }
+                yield f"data: {json.dumps(final_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
             
+            return Response(generate_openai_stream(), content_type='text/event-stream')
+        else:
+            # Non-streaming response
+            bot_response = generate_response(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                use_streaming=False,
+                writing_mode=False
+            )
+            
+            # Store message
+            message_record = Message(
+                user_id=user.id,
+                user_message=user_message[:1000],
+                bot_response=bot_response[:10000] if bot_response else "",
+                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
+                credits_charged=1,
+                platform='web'
+            )
+            db.session.add(message_record)
+            db.session.commit()
+            
+            # Create transaction
+            transaction = Transaction(
+                user_id=user.id,
+                credits_used=1,
+                message_id=message_record.id,
+                transaction_type='web_message',
+                description=f"Web chat message"
+            )
+            db.session.add(transaction)
+            db.session.commit()
+            
+            # Return OpenAI-compatible format
+            return jsonify({
+                "id": f"chatcmpl-{uuid.uuid4()}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": bot_response
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+            })
+            
+    except Exception as e:
+        logger.error(f"Web chat endpoint error: {str(e)}", exc_info=True)
+        
+        # Refund credits on error
+        try:
             user.credits += purchased_used
             user.daily_credits += daily_used
             db.session.commit()
-            logger.info(f"Refunded {purchased_used + daily_used} credits due to API error")
-            
-            return jsonify({
-                "error": {
-                    "message": f"OpenRouter API error: {str(e)}",
-                    "type": "api_error",
-                    "code": "openrouter_error"
-                }
-            }), 502
-            
-    except Exception as e:
-        logger.error(f"Proxy endpoint error: {str(e)}", exc_info=True)
+            logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
+        except:
+            pass
+        
         return jsonify({
             "error": {
                 "message": f"Internal server error: {str(e)}",
