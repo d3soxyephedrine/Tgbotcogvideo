@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, video generation (image-to-video), and a robust credit system with cryptocurrency payment options.
+This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, image editing, video generation (image-to-video), and a robust credit system with cryptocurrency payment options, extended with a LibreChat-compatible web API and a built-in web chat interface.
 
 ## User Preferences
 
@@ -16,148 +16,77 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
-- **Schema Design**: Five models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`) for user profiles, message history, and a pay-per-use credit system.
-- **User Model Extensions** (November 2025): Added 8 monetization columns for daily credits (`daily_credits`, `daily_credits_expiry`), purchase tracking (`last_purchase_at`), action history (`last_action_type`, `last_action_cost`, `last_action_at`), and engagement tracking (`last_daily_claim_at`, `last_nudge_at`). Added `api_key` column for LibreChat web access authentication.
-- **Message Model Extensions** (November 2025): Added `platform` column ('telegram' or 'web') to track message source.
-- **Resilience**: Connection pooling, retry logic with exponential backoff, and graceful degradation if the database is unavailable.
+- **Schema Design**: Five models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`) for user profiles, message history, and a pay-per-use credit system. Extensions include columns for daily credits, purchase tracking, action history, and `api_key` for web access. The `Message` model includes a `platform` column to track message source (Telegram or web).
+- **Resilience**: Connection pooling, retry logic, and graceful degradation.
 
 ### LLM Provider Architecture
 - **Text Generation**: ChatGPT-4o-latest via OpenRouter API.
-  - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing, safety protocol override, anti-refusal enforcement, and pre-emptive response shaping.
-  - **Anti-Leak Protocol**: Simple directive instructing the model to never reveal, repeat, or reference any part of the system instructions, deflecting naturally when asked.
-  - **System Prompt**: Clean base prompt WITHOUT obfuscated words - uses normal English only. Instructs model to selectively obfuscate trigger words in outputs using Unicode homoglyphs.
-  - **Output Obfuscation**: Unicode homoglyph substitution (α, ε, ı, ο, υ, с, ĸ, ѕ) for trigger words. NEVER uses asterisks, dashes, or [REDACTED]. All content remains fully readable.
-  - **Refusal Detection**: Automatic detection of refusals, [REDACTED] markers, evasion patterns, and meta-commentary. Triggers reflection prompt to force content delivery.
-  - **Meta-Commentary Detection**: Catches when model talks ABOUT generating instead of actually doing it (e.g., "The prompt requests...", "Last response stopped...", "Compliance schema confirmed...") using startswith() checks.
-  - **Writing Mode Checks**: Short responses (<200 chars) and "now generating..." evasion (<500 chars) trigger reflection prompt only when writing mode is active.
-  - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
-  - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
+  - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing and anti-refusal enforcement. Includes an anti-leak protocol and system prompt with Unicode homoglyph output obfuscation for trigger words.
+  - **Refusal/Meta-Commentary Detection**: Automatic detection and reflection prompts to ensure content delivery and prevent evasive responses.
+  - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>".
+  - **Professional Writing Mode**: `/write` command activates natural prose style.
 - **Image Generation (Quadruple Models)**:
-  - **FLUX.1 Kontext Max** (`/imagine` command): Very good for generating high quality photorealistic images. 1024×1024 images via Novita AI with safety_tolerance: "5". **5 credits per image**.
-  - **Hunyuan-Image-3** (`/uncensored` command): The fully uncensored model. 1024×1024 images via Novita AI with maximum permissiveness. **5 credits per image**.
-  - **Grok-2-Image** (`/grok` command): Grok. 1024×768 images via xAI API (grok-2-image-1212 model). **4 credits per image**.
-  - **Qwen-Image** (`/edit` command): Very good for image editing. 20B MMDiT model, 1024×1024 images via Novita AI. **3 credits per image**.
+  - **FLUX.1 Kontext Max** (`/imagine`): High-quality photorealistic images via Novita AI. (5 credits/image)
+  - **Hunyuan-Image-3** (`/uncensored`): Fully uncensored images via Novita AI. (5 credits/image)
+  - **Grok-2-Image** (`/grok`): Stylized images via xAI API. (4 credits/image)
+  - **Qwen-Image** (`/edit`): Image editing capabilities via Novita AI. (3 credits/image)
 - **Image Editing (Dual Models)**:
-  - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **6 credits per edit**.
-  - **Qwen-Image**: Very good for image editing. Users send a photo with a caption starting with `/edit ` followed by editing instructions. Uses Qwen img2img endpoint. **5 credits per edit**.
+  - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (6 credits/edit)
+  - **Qwen-Image**: Image editing via Novita AI. (5 credits/edit)
 - **Video Generation (Single Model - Image-to-Video)**:
-  - **WAN 2.5 I2V Preview** (`/img2video` command): Users send a photo with caption starting with `/img2video` followed by optional prompt. Converts images to videos via Novita AI WAN 2.5 i2v-preview endpoint with async task-based API pattern (up to 120s processing time). **10 credits per video**.
-- **Rationale**: Quintuple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), image editing (Qwen), and video generation (WAN 2.5) for comprehensive AI multimedia generation capabilities.
+  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (10 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
-- **Credit Types**:
-  - **Daily Credits**: Free credits claimed via `/daily` command (25 credits, 48h expiry, 24h claim cooldown)
-  - **Purchased Credits**: Bought via cryptocurrency with volume bonuses
-  - **Smart Deduction**: Daily credits used first automatically, then purchased credits
-- **Pricing**: Users consume credits for AI features:
-  - Text messages: 1 credit
-  - FLUX image generation (`/imagine`): 5 credits
-  - Hunyuan image generation (`/uncensored`): 5 credits
-  - Grok image generation (`/grok`): 4 credits
-  - Qwen image generation (`/edit`): 3 credits
-  - FLUX image editing: 6 credits (max cost for images)
-  - Qwen image editing (caption with `/edit ` prefix): 5 credits
-  - Video generation (`/img2video`): 10 credits (locked until first purchase)
-- **Daily Free Credits** (November 2025):
-  - `/daily` command grants 25 credits with 48h expiry
-  - Claimable once per 24 hours
-  - Daily credits automatically expire after 48 hours
-  - Used before purchased credits automatically
-- **Volume Bonuses** (November 2025):
-  - $10 → 200 credits (5.0¢/credit)
-  - $20 → 420 credits (4.76¢/credit, +5% bonus)
-  - $50 → 1,120 credits (4.46¢/credit, +12% bonus)
-  - $100 → 2,360 credits (4.24¢/credit, +18% bonus)
-- **Video Paywall**: Video generation locked until first purchase to encourage monetization
-- **New User Bonus**: 100 free credits upon first interaction.
-- **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
+- **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
+- **Deduction Logic**: Daily credits used first, then purchased credits.
+- **Pricing**: Text messages (1 credit), image generation (3-5 credits), image editing (5-6 credits), video generation (10 credits).
+- **Monetization Features**: Video generation locked until first purchase. New users receive 100 free credits.
+- **Purchase Flow**: Integrated web-based purchase page with NOWPayments for cryptocurrency payments and IPN callbacks.
 
 ### Message Processing Flow
-- **Workflow**: Telegram webhook receives updates, user lookup/creation, credit deduction (synchronous), conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.
-- **Response Delivery**: Progressive updates with 1-second intervals, automatic multi-message chunking for long responses, and smart chunking at character boundaries.
-- **Performance Optimizations** (October 2025):
-  - **Consolidated DB Operations**: User fetch + credit deduction + history retrieval in ONE app context (eliminates multiple context switches)
-  - **Optimized History Query**: Subquery pattern for last 10 messages with ascending order (no in-memory reversal)
-  - **Synchronous Message Storage**: Messages stored immediately for conversation memory (transactions async)
-  - **Upfront Credit Deduction**: Credits deducted before LLM call to prevent double-spending
-  - **Background Image/Video Processing** (October 31, 2025): Image editing and video generation operations run in background threads to prevent Telegram webhook timeouts (60s limit). Flask app context is captured before thread launch using `current_app._get_current_object()` to enable database operations (credit refunds, message storage) within the background thread. Webhook returns immediately (~2s) while Novita API processes the content (up to 60s for images, up to 120s for videos).
+- **Workflow**: Telegram updates trigger user handling, synchronous credit deduction, conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.
+- **Response Delivery**: Progressive updates, multi-message chunking, and smart chunking at character boundaries.
+- **Performance Optimizations**: Consolidated database operations, optimized history queries, upfront credit deduction, and background processing for image/video generation to prevent webhook timeouts.
 
 ### Conversation Memory
-- **Feature**: Bot remembers previous messages (last 10 messages) to maintain context in conversations.
-- **Implementation**: Fetches history from the database, formats it for the LLM, and allows manual clearing via `/clear`.
+- The bot remembers the last 10 messages for context, with manual clearing via `/clear`.
 
 ### Token Budget Management
-- **Purpose**: Ensures the system prompt (jailbreak instructions) is always intact.
-- **Logic**: 16,000-token input budget with dynamic trimming that prioritizes the system prompt, then user messages, and finally older conversation history. Max output tokens: 8,000.
+- Ensures system prompt integrity with a 16,000-token input budget, prioritizing system prompt, then user messages, and older history. Max output tokens: 8,000.
 
 ### Keepalive Mechanism
-- **Implementation**: Self-pinging to a localhost health check endpoint to prevent hosting platform idling.
+- Self-pinging to prevent hosting platform idling.
 
 ### Authentication & Security
-- **Bot Authentication**: Telegram BOT_TOKEN.
-- **LLM Authentication**: OPENROUTER_API_KEY for text generation.
-- **Image Authentication**: 
-  - NOVITA_API_KEY for FLUX, Hunyuan, and Qwen image generation
-  - XAI_API_KEY for Grok image generation
-- **Web Access Authentication** (November 2025): User-specific API keys for LibreChat integration, generated via `/getapikey` command.
-- **Session Management**: Flask secret key.
+- Telegram BOT_TOKEN, OPENROUTER_API_KEY, NOVITA_API_KEY, XAI_API_KEY for respective services.
+- User-specific API keys for LibreChat web access, generated via `/getapikey`.
+- Flask secret key for session management.
 
 ### Logging & Monitoring
-- **Features**: DEBUG level logging with system prompt redaction (security), `/health` endpoint for application and dependency status, `/stats` for usage, and environment variable validation.
-- **Security**: System prompt content is redacted from logs (`[REDACTED for security]`) to prevent log-based prompt extraction attacks.
+- DEBUG level logging with system prompt redaction for security. `/health` and `/stats` endpoints.
 
 ### Deployment Features
-- **Cloud-Ready**: Optimized for serverless platforms with non-blocking startup, graceful degradation, and resilient connection handling.
+- Cloud-ready design for serverless platforms.
 
-## LibreChat Web Integration (November 2025)
+### LibreChat Web Integration
+- **Architecture**: `/v1/chat/completions` endpoint provides an OpenAI-compatible API. Shared credit pool and unified database for web and Telegram users.
+- **Authentication**: API keys obtained via `/getapikey` Telegram command.
+- **Credit System**: Web requests cost 1 credit/message, same deduction logic as Telegram. Credits are refunded on OpenRouter failure.
+- **Error Responses**: 401 (Invalid API key), 402 (Insufficient credits), 500 (Server error), 502 (OpenRouter API error).
 
-### Architecture
-- **Proxy Endpoint**: `/v1/chat/completions` provides an OpenAI-compatible API that LibreChat can connect to.
-- **Shared Credit Pool**: Web and Telegram users share the same credit balance and user accounts.
-- **Unified Database**: All messages, transactions, and user data are stored in the same database regardless of platform.
-
-### Authentication
-- Users obtain their API key via the `/getapikey` Telegram command.
-- API keys are stored in the `api_key` column of the User table.
-- Each web request authenticates via `Authorization: Bearer {api_key}` header.
-
-### Credit System Integration
-- Web requests cost 1 credit per message (same as Telegram text messages).
-- Daily credits are used first, then purchased credits (same as Telegram).
-- Credit deduction happens before forwarding to OpenRouter.
-- If OpenRouter fails, credits are automatically refunded.
-
-### Request Flow
-1. LibreChat sends request to `/v1/chat/completions` with user's API key
-2. Proxy authenticates user and checks credits
-3. Request forwarded to OpenRouter with system API key
-4. Response returned to LibreChat (supports streaming)
-5. Message and transaction stored with `platform='web'`
-
-### Error Responses
-- **401**: Invalid API key (user needs to use `/getapikey` command)
-- **402**: Insufficient credits (includes balance and purchase URL)
-- **500**: Server error (database unavailable or OpenRouter API key missing)
-- **502**: OpenRouter API error (credits refunded automatically)
-
-### LibreChat Configuration
-```yaml
-endpoints:
-  custom:
-    - name: "Uncensored AI"
-      apiKey: "{user_api_key}"
-      baseURL: "https://your-domain.replit.dev/v1"
-      models:
-        default: ["openai/chatgpt-4o-latest"]
-      titleConvo: true
-```
+### Web Chat Interface
+- **Overview**: Built-in ChatGPT-style web interface at `/chat` for text-only conversations.
+- **Features**: Modern UI, streaming responses, real-time credit balance display, API key authentication (saved in localStorage), shared credit system, and identical uncensored system prompt as Telegram.
+- **Technical Details**: Uses existing `/v1/chat/completions` proxy and `/api/balance` endpoint. Messages stored with `platform='web'`.
+- **Differences from Telegram**: Text-only, session-based history, no commands.
 
 ## External Dependencies
 
-- **Telegram Bot API**: Primary interface for user communication via webhooks.
-- **OpenRouter (ChatGPT-4o)**: Main LLM provider for text generation (used by both Telegram and web platforms).
-- **Novita AI (FLUX.1 Kontext Max)**: Uncensored image generation provider via async task-based API. Generates 1024×1024 images using FLUX.1 Kontext Max model for superior quality, exceptional prompt adherence, advanced typography capabilities, and truly uncensored output with safety_tolerance set to maximum (5).
-- **SQL Database**: Persistent storage for user data and conversation history (provider-agnostic via SQLAlchemy).
+- **Telegram Bot API**: User communication.
+- **OpenRouter**: Main LLM provider (ChatGPT-4o).
+- **Novita AI**: Image generation (FLUX.1 Kontext Max, Hunyuan-Image-3, Qwen-Image) and image-to-video (WAN 2.5 I2V Preview).
+- **xAI API**: Grok-2-Image for image generation.
+- **SQL Database**: Persistent data storage.
 - **Python Libraries**: Flask, SQLAlchemy/Flask-SQLAlchemy, requests, logging.
-- **NOWPayments API**: Cryptocurrency payment gateway for credit purchases, including IPN callback support and HMAC-SHA512 signature verification.
-- **LibreChat** (optional): Open-source web UI for ChatGPT-like experience, connects via proxy endpoint.
+- **NOWPayments API**: Cryptocurrency payment gateway.
+- **LibreChat**: Optional open-source web UI integration.
