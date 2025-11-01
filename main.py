@@ -400,6 +400,7 @@ def register_telegram_commands():
             {"command": "model", "description": "Show current model"},
             {"command": "balance", "description": "Check credit balance"},
             {"command": "buy", "description": "Purchase more credits"},
+            {"command": "getapikey", "description": "Get API key for LibreChat web access"},
             {"command": "clear", "description": "Clear conversation history"},
             {"command": "imagine", "description": "FLUX high quality photorealistic (5 credits)"},
             {"command": "hunyuan", "description": "Hunyuan fully uncensored (5 credits)"},
