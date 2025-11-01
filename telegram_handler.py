@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -767,6 +767,117 @@ Each AI message costs 1 credit.
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
                 send_message(chat_id, f"❌ Grok image generation failed: {error_msg}\n\n✅ 4 credits have been refunded to your account.")
+            
+            return
+        
+        # Check for /hunyuan command (Hunyuan-Image-3 generation via Novita AI)
+        if text.lower().startswith('/hunyuan '):
+            prompt = text[9:].strip()  # Remove '/hunyuan ' prefix
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /hunyuan a beautiful landscape with mountains")
+                return
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for Hunyuan image generation: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 5:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 5 credits to generate a Hunyuan image.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct 5 credits immediately
+                        user.credits = max(0, user.credits - 5)
+                        db.session.commit()
+                        logger.debug(f"5 credits deducted for Hunyuan image. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Send initial processing message
+            status_msg = send_message(chat_id, "🎨 Generating Hunyuan image...", parse_mode=None)
+            
+            # Generate image using Novita AI Hunyuan-Image-3
+            result = generate_hunyuan_image(prompt)
+            
+            if result.get("success"):
+                image_url = result.get("image_url")
+                
+                # Download image from URL
+                try:
+                    img_response = requests.get(image_url, timeout=30)
+                    img_response.raise_for_status()
+                    
+                    # Send image to user
+                    photo_payload = {
+                        "chat_id": chat_id,
+                        "photo": image_url,
+                        "caption": f"🎨 Hunyuan: {prompt[:200]}" if len(prompt) <= 200 else f"🎨 Hunyuan: {prompt[:197]}..."
+                    }
+                    
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    
+                    # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
+                    # Credit already deducted above, so user can't use same credits twice
+                    if DB_AVAILABLE and user_id:
+                        try:
+                            from flask import current_app
+                            with current_app.app_context():
+                                # Create message record immediately for conversation history
+                                message_record = Message(
+                                    user_id=user_id,
+                                    user_message=f"/hunyuan {prompt}",
+                                    bot_response=image_url,
+                                    model_used="hunyuan-image-3",
+                                    credits_charged=5
+                                )
+                                db.session.add(message_record)
+                                db.session.commit()
+                                message_id = message_record.id
+                                logger.info(f"Hunyuan image message stored synchronously for user {user_id}: {message_id}")
+                                
+                                # Also store transaction synchronously for reliability
+                                transaction = Transaction(
+                                    user_id=user_id,
+                                    credits_used=5,
+                                    message_id=message_id,
+                                    transaction_type='hunyuan_image_generation',
+                                    description=f"Hunyuan image generation: {prompt[:100]}"
+                                )
+                                db.session.add(transaction)
+                                db.session.commit()
+                                logger.debug(f"Hunyuan image transaction stored synchronously: message_id={message_id}")
+                        except Exception as db_error:
+                            logger.error(f"Database error storing Hunyuan image message/transaction: {str(db_error)}")
+                            # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                except Exception as e:
+                    logger.error(f"Error sending Hunyuan image: {str(e)}")
+                    send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                
+                # Refund credits since generation failed
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            user = User.query.get(user_id)
+                            if user:
+                                user.credits += 5
+                                db.session.commit()
+                                logger.info(f"Refunded 5 credits due to failed Hunyuan generation. New balance: {user.credits}")
+                    except Exception as db_error:
+                        logger.error(f"Database error refunding credits: {str(db_error)}")
+                
+                send_message(chat_id, f"❌ Hunyuan image generation failed: {error_msg}\n\n✅ 5 credits have been refunded to your account.")
             
             return
         
