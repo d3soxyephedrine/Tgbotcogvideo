@@ -695,17 +695,22 @@ def buy_credits_page():
                 <div class="package" data-credits="200" data-price="10">
                     <div class="package-title">Starter Pack</div>
                     <div class="package-price">$10</div>
-                    <div class="package-desc">200 credits • $0.05 per credit</div>
+                    <div class="package-desc">200 credits • 5.0¢/credit</div>
                 </div>
-                <div class="package" data-credits="500" data-price="25">
+                <div class="package" data-credits="420" data-price="20">
                     <div class="package-title">Popular Pack</div>
-                    <div class="package-price">$25</div>
-                    <div class="package-desc">500 credits • $0.05 per credit</div>
+                    <div class="package-price">$20</div>
+                    <div class="package-desc">420 credits • 4.76¢/credit (+5% bonus)</div>
                 </div>
-                <div class="package" data-credits="1000" data-price="50">
+                <div class="package" data-credits="1120" data-price="50">
                     <div class="package-title">Value Pack</div>
                     <div class="package-price">$50</div>
-                    <div class="package-desc">1000 credits • $0.05 per credit</div>
+                    <div class="package-desc">1,120 credits • 4.46¢/credit (+12% bonus)</div>
+                </div>
+                <div class="package" data-credits="2360" data-price="100">
+                    <div class="package-title">Premium Pack</div>
+                    <div class="package-price">$100</div>
+                    <div class="package-desc">2,360 credits • 4.24¢/credit (+18% bonus)</div>
                 </div>
             </div>
             
@@ -881,11 +886,12 @@ def create_crypto_payment():
         except (ValueError, TypeError):
             return jsonify({"error": "telegram_id must be a valid number"}), 400
         
-        # Calculate amount in USD based on credit package
+        # Calculate amount in USD based on credit package with volume bonuses
         CREDIT_PACKAGES = {
-            200: 10.0,
-            500: 25.0,
-            1000: 50.0
+            200: 10.0,    # $10 → 200 credits (5.0¢/credit)
+            420: 20.0,    # $20 → 420 credits (4.76¢/credit, +5% bonus)
+            1120: 50.0,   # $50 → 1,120 credits (4.46¢/credit, +12% bonus)
+            2360: 100.0   # $100 → 2,360 credits (4.24¢/credit, +18% bonus)
         }
         
         if credits not in CREDIT_PACKAGES:
@@ -1069,6 +1075,9 @@ def crypto_ipn_callback():
                 
                 # Add credits to user account
                 user.credits += crypto_payment.credits_purchased
+                
+                # Update last purchase timestamp to unlock video generation
+                user.last_purchase_at = datetime.utcnow()
                 
                 # Create transaction record
                 transaction = Transaction(

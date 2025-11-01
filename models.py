@@ -15,6 +15,16 @@ class User(db.Model):
     last_interaction = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     credits = db.Column(db.Integer, default=100, nullable=False)
     
+    # Monetization system columns
+    daily_credits = db.Column(db.Integer, default=0, nullable=False)
+    daily_credits_expiry = db.Column(db.DateTime, nullable=True)
+    last_purchase_at = db.Column(db.DateTime, nullable=True)
+    last_action_type = db.Column(db.String(100), nullable=True)
+    last_action_cost = db.Column(db.Integer, nullable=True)
+    last_action_at = db.Column(db.DateTime, nullable=True)
+    last_daily_claim_at = db.Column(db.DateTime, nullable=True)
+    last_nudge_at = db.Column(db.DateTime, nullable=True)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)

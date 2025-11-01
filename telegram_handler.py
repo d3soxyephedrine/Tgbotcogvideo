@@ -20,6 +20,51 @@ def set_db_available(available):
     global DB_AVAILABLE
     DB_AVAILABLE = available
 
+def deduct_credits(user, amount):
+    """Smart credit deduction: use daily credits first (check expiry), then purchased credits
+    
+    Args:
+        user: User object from database
+        amount: Number of credits to deduct
+    
+    Returns:
+        tuple: (success: bool, daily_used: int, purchased_used: int)
+    """
+    from datetime import timedelta
+    
+    now = datetime.utcnow()
+    daily_used = 0
+    purchased_used = 0
+    
+    # Check if daily credits are expired
+    if user.daily_credits_expiry and now > user.daily_credits_expiry:
+        logger.debug(f"Daily credits expired for user {user.telegram_id}, clearing {user.daily_credits} daily credits")
+        user.daily_credits = 0
+        user.daily_credits_expiry = None
+    
+    # Calculate total available credits
+    total_available = user.daily_credits + user.credits
+    
+    if total_available < amount:
+        logger.debug(f"Insufficient credits: need {amount}, have {total_available} (daily: {user.daily_credits}, purchased: {user.credits})")
+        return False, 0, 0
+    
+    # Deduct from daily credits first
+    if user.daily_credits > 0:
+        daily_deduction = min(user.daily_credits, amount)
+        user.daily_credits -= daily_deduction
+        daily_used = daily_deduction
+        amount -= daily_deduction
+        logger.debug(f"Deducted {daily_deduction} from daily credits. Remaining daily: {user.daily_credits}")
+    
+    # Deduct remaining from purchased credits
+    if amount > 0:
+        user.credits -= amount
+        purchased_used = amount
+        logger.debug(f"Deducted {amount} from purchased credits. Remaining purchased: {user.credits}")
+    
+    return True, daily_used, purchased_used
+
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -184,15 +229,22 @@ def get_help_message():
 
 /start - Start the bot
 /help - Display this help message
+/daily - Claim 25 free credits (once per 24h, expires in 48h)
 /model - Show current model 
 /balance - Check your credit balance
-/buy - Purchase more credits
+/buy - Purchase credits with volume bonuses
 /clear - Clear your conversation history
 /imagine <prompt> - High quality photorealistic images (5 credits)
 /uncensored <prompt> - Fully uncensored image generation (5 credits)
 /edit <prompt> - Image generation optimized for editing (3 credits)
 /grok <prompt> - Stylized image generation (4 credits)
 /write <request> - Professional writing mode (1 credit)
+
+🎁 *Daily Free Credits:*
+• Use /daily to claim 25 free credits
+• Claimable once every 24 hours
+• Daily credits expire after 48 hours
+• Used automatically before purchased credits
 
 🎨 *Image Generation:*
 • /imagine <prompt> - High quality photorealistic images (5 credits)
@@ -207,6 +259,7 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
 
 🎬 *Video Generation (Image-to-Video):*
 • Send photo + caption with /img2video prefix (10 credits)
+• 🔒 Unlocked after first purchase
 Example: Send photo with caption "/img2video make it move and zoom out"
 
 📝 *Writing Mode:*
@@ -226,6 +279,13 @@ Example: /write a NSFW scene with Sydney Sweeney
 • FLUX editing: 6 credits
 • Qwen editing: 5 credits
 • Video generation: 10 credits
+
+💰 *Volume Bonuses:*
+• $10 → 200 credits (5.0¢/credit)
+• $20 → 420 credits (4.76¢/credit) +5% bonus
+• $50 → 1,120 credits (4.46¢/credit) +12% bonus
+• $100 → 2,360 credits (4.24¢/credit) +18% bonus
+Bigger packs = better value!
 
 Send any message to get an uncensored AI response!
     """
@@ -349,8 +409,25 @@ def process_update(update):
         # Check for /balance or /credits commands
         if text.lower() == '/balance' or text.lower() == '/credits':
             if DB_AVAILABLE and user:
-                credits = user.credits
-                response = f"💳 Your credit balance: {credits} credits\n\nEach AI message costs 1 credit.\nUse /buy to purchase more credits."
+                from datetime import timedelta
+                
+                # Check if daily credits are expired
+                now = datetime.utcnow()
+                if user.daily_credits_expiry and now > user.daily_credits_expiry:
+                    user.daily_credits = 0
+                    user.daily_credits_expiry = None
+                    db.session.commit()
+                
+                total_credits = user.credits + user.daily_credits
+                
+                if user.daily_credits > 0:
+                    # Show breakdown when there are daily credits
+                    time_until_expiry = user.daily_credits_expiry - now
+                    hours = int(time_until_expiry.total_seconds() // 3600)
+                    response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+                else:
+                    # Show simple balance when no daily credits
+                    response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
             else:
                 response = "💳 Credit system requires database access."
             
@@ -375,21 +452,69 @@ def process_update(update):
             send_message(chat_id, response)
             return
         
+        # Check for /daily command
+        if text.lower() == '/daily':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    from datetime import timedelta
+                    
+                    with current_app.app_context():
+                        now = datetime.utcnow()
+                        
+                        # Check if user can claim (24h cooldown)
+                        if user.last_daily_claim_at:
+                            time_since_last_claim = now - user.last_daily_claim_at
+                            if time_since_last_claim < timedelta(hours=24):
+                                # Calculate time until next claim
+                                time_until_next = timedelta(hours=24) - time_since_last_claim
+                                hours = int(time_until_next.total_seconds() // 3600)
+                                minutes = int((time_until_next.total_seconds() % 3600) // 60)
+                                response = f"⏰ Daily credits already claimed!\n\nYou can claim again in {hours}h {minutes}m."
+                                send_message(chat_id, response)
+                                return
+                        
+                        # Grant 25 daily credits with 48h expiry
+                        user.daily_credits = 25
+                        user.daily_credits_expiry = now + timedelta(hours=48)
+                        user.last_daily_claim_at = now
+                        db.session.commit()
+                        
+                        # Calculate expiry countdown
+                        expiry_time = user.daily_credits_expiry
+                        time_until_expiry = expiry_time - now
+                        hours = int(time_until_expiry.total_seconds() // 3600)
+                        
+                        response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
+                        
+                        logger.info(f"User {telegram_id} claimed daily credits: +25 credits")
+                except Exception as db_error:
+                    logger.error(f"Database error processing /daily: {str(db_error)}")
+                    db.session.rollback()
+                    response = "❌ Error processing daily claim. Please try again."
+            else:
+                response = "💳 Daily credits require database access."
+            
+            # Send response
+            send_message(chat_id, response)
+            return
+        
         # Check for /buy command
         if text.lower() == '/buy':
             # Get domain from environment variables
             domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
             
-            response = f"""💰 Credit Packages
+            response = f"""💰 Credit Packages (Volume Bonuses!)
 
-• 200 credits = $10.00
-• 500 credits = $25.00
-• 1000 credits = $50.00
+• $10 → 200 credits (5.0¢/credit)
+• $20 → 420 credits (4.76¢/credit) +5% bonus
+• $50 → 1,120 credits (4.46¢/credit) +12% bonus  
+• $100 → 2,360 credits (4.24¢/credit) +18% bonus
 
 To purchase credits, visit:
 https://{domain}/buy?telegram_id={telegram_id}
 
-Each AI message costs 1 credit.
+Bigger packs = better value!
 """
             
             # Store command in database if available
@@ -463,15 +588,16 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 5:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 5 credits to generate an image.\n\nUse /buy to purchase more credits."
+                        # Deduct 5 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 5)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 5 credits immediately
-                        user.credits = max(0, user.credits - 5)
                         db.session.commit()
-                        logger.debug(f"5 credits deducted for image. New balance: {user.credits}")
+                        logger.debug(f"5 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -574,15 +700,16 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 3:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 3 credits to generate a Qwen image.\n\nUse /buy to purchase more credits."
+                        # Deduct 3 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 3)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 3 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 3 credits immediately
-                        user.credits = max(0, user.credits - 3)
                         db.session.commit()
-                        logger.debug(f"3 credits deducted for Qwen image. New balance: {user.credits}")
+                        logger.debug(f"3 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -685,15 +812,16 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 4:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 4 credits to generate a Grok image.\n\nUse /buy to purchase more credits."
+                        # Deduct 4 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 4)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 4 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 4 credits immediately
-                        user.credits = max(0, user.credits - 4)
                         db.session.commit()
-                        logger.debug(f"4 credits deducted for Grok image. New balance: {user.credits}")
+                        logger.debug(f"4 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -796,15 +924,16 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 5:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 5 credits to generate a Hunyuan image.\n\nUse /buy to purchase more credits."
+                        # Deduct 5 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 5)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 5 credits immediately
-                        user.credits = max(0, user.credits - 5)
                         db.session.commit()
-                        logger.debug(f"5 credits deducted for Hunyuan image. New balance: {user.credits}")
+                        logger.debug(f"5 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -905,15 +1034,22 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < 10:
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate a video.\n\nUse /buy to purchase more credits."
+                        # VIDEO PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at:
+                            response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct credits immediately
-                        user.credits = max(0, user.credits - 10)
+                        # Deduct 10 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 10)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            send_message(chat_id, response)
+                            return
+                        
                         db.session.commit()
-                        logger.debug(f"10 credits deducted for video generation. New balance: {user.credits}")
+                        logger.debug(f"10 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1029,16 +1165,17 @@ Each AI message costs 1 credit.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
-                        if user.credits < credits_required:
+                        # Deduct credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, credits_required)
+                        if not success:
+                            total = user.credits + user.daily_credits
                             model_display = "Qwen" if use_qwen else "FLUX"
-                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need {credits_required} credits to edit with {model_display}.\n\nUse /buy to purchase more credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits to edit with {model_display}.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct credits immediately
-                        user.credits = max(0, user.credits - credits_required)
                         db.session.commit()
-                        logger.debug(f"{credits_required} credits deducted for {model_name} editing. New balance: {user.credits}")
+                        logger.debug(f"{credits_required} credits deducted for {model_name} editing (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1225,10 +1362,14 @@ Each AI message costs 1 credit.
                 with current_app.app_context():
                     # Fetch user and deduct credit immediately (must be synchronous)
                     user = User.query.get(user_id)
-                    if user and user.credits > 0:
-                        user.credits = max(0, user.credits - 1)
-                        db.session.commit()
-                        logger.debug(f"Credit deducted. New balance: {user.credits}")
+                    if user:
+                        # Deduct 1 credit (daily credits first, then purchased)
+                        success, daily_used, purchased_used = deduct_credits(user, 1)
+                        if success:
+                            db.session.commit()
+                            logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        else:
+                            credits_available = False
                     else:
                         credits_available = False
                     
@@ -1253,7 +1394,7 @@ Each AI message costs 1 credit.
         
         # If no credits, send error and return
         if not credits_available:
-            response = "⚠️ You're out of credits!\n\nTo continue using the bot, please purchase more credits using the /buy command."
+            response = "⚠️ You're out of credits!\n\nTo continue using the bot:\n• Use /daily to claim free credits\n• Or purchase more with /buy"
             send_message(chat_id, response)
             return
         
