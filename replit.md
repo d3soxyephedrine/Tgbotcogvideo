@@ -17,7 +17,8 @@ Preferred communication style: Simple, everyday language.
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
 - **Schema Design**: Five models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`) for user profiles, message history, and a pay-per-use credit system.
-- **User Model Extensions** (November 2025): Added 8 monetization columns for daily credits (`daily_credits`, `daily_credits_expiry`), purchase tracking (`last_purchase_at`), action history (`last_action_type`, `last_action_cost`, `last_action_at`), and engagement tracking (`last_daily_claim_at`, `last_nudge_at`).
+- **User Model Extensions** (November 2025): Added 8 monetization columns for daily credits (`daily_credits`, `daily_credits_expiry`), purchase tracking (`last_purchase_at`), action history (`last_action_type`, `last_action_cost`, `last_action_at`), and engagement tracking (`last_daily_claim_at`, `last_nudge_at`). Added `api_key` column for LibreChat web access authentication.
+- **Message Model Extensions** (November 2025): Added `platform` column ('telegram' or 'web') to track message source.
 - **Resilience**: Connection pooling, retry logic with exponential backoff, and graceful degradation if the database is unavailable.
 
 ### LLM Provider Architecture
@@ -98,6 +99,7 @@ Preferred communication style: Simple, everyday language.
 - **Image Authentication**: 
   - NOVITA_API_KEY for FLUX, Hunyuan, and Qwen image generation
   - XAI_API_KEY for Grok image generation
+- **Web Access Authentication** (November 2025): User-specific API keys for LibreChat integration, generated via `/getapikey` command.
 - **Session Management**: Flask secret key.
 
 ### Logging & Monitoring
@@ -107,11 +109,55 @@ Preferred communication style: Simple, everyday language.
 ### Deployment Features
 - **Cloud-Ready**: Optimized for serverless platforms with non-blocking startup, graceful degradation, and resilient connection handling.
 
+## LibreChat Web Integration (November 2025)
+
+### Architecture
+- **Proxy Endpoint**: `/v1/chat/completions` provides an OpenAI-compatible API that LibreChat can connect to.
+- **Shared Credit Pool**: Web and Telegram users share the same credit balance and user accounts.
+- **Unified Database**: All messages, transactions, and user data are stored in the same database regardless of platform.
+
+### Authentication
+- Users obtain their API key via the `/getapikey` Telegram command.
+- API keys are stored in the `api_key` column of the User table.
+- Each web request authenticates via `Authorization: Bearer {api_key}` header.
+
+### Credit System Integration
+- Web requests cost 1 credit per message (same as Telegram text messages).
+- Daily credits are used first, then purchased credits (same as Telegram).
+- Credit deduction happens before forwarding to OpenRouter.
+- If OpenRouter fails, credits are automatically refunded.
+
+### Request Flow
+1. LibreChat sends request to `/v1/chat/completions` with user's API key
+2. Proxy authenticates user and checks credits
+3. Request forwarded to OpenRouter with system API key
+4. Response returned to LibreChat (supports streaming)
+5. Message and transaction stored with `platform='web'`
+
+### Error Responses
+- **401**: Invalid API key (user needs to use `/getapikey` command)
+- **402**: Insufficient credits (includes balance and purchase URL)
+- **500**: Server error (database unavailable or OpenRouter API key missing)
+- **502**: OpenRouter API error (credits refunded automatically)
+
+### LibreChat Configuration
+```yaml
+endpoints:
+  custom:
+    - name: "Uncensored AI"
+      apiKey: "{user_api_key}"
+      baseURL: "https://your-domain.replit.dev/v1"
+      models:
+        default: ["openai/chatgpt-4o-latest"]
+      titleConvo: true
+```
+
 ## External Dependencies
 
 - **Telegram Bot API**: Primary interface for user communication via webhooks.
-- **OpenRouter (ChatGPT-4o)**: Main LLM provider for text generation.
+- **OpenRouter (ChatGPT-4o)**: Main LLM provider for text generation (used by both Telegram and web platforms).
 - **Novita AI (FLUX.1 Kontext Max)**: Uncensored image generation provider via async task-based API. Generates 1024×1024 images using FLUX.1 Kontext Max model for superior quality, exceptional prompt adherence, advanced typography capabilities, and truly uncensored output with safety_tolerance set to maximum (5).
 - **SQL Database**: Persistent storage for user data and conversation history (provider-agnostic via SQLAlchemy).
 - **Python Libraries**: Flask, SQLAlchemy/Flask-SQLAlchemy, requests, logging.
 - **NOWPayments API**: Cryptocurrency payment gateway for credit purchases, including IPN callback support and HMAC-SHA512 signature verification.
+- **LibreChat** (optional): Open-source web UI for ChatGPT-like experience, connects via proxy endpoint.
