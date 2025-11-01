@@ -6,7 +6,7 @@ import requests
 import json
 import hmac
 import hashlib
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
 from models import db, User, Message, Payment, Transaction, CryptoPayment
@@ -207,6 +207,11 @@ def health_check():
         health_status["database"]["message"] = "Database configured but not available"
     
     return jsonify(health_status), status_code
+
+@app.route('/chat')
+def chat():
+    """Web chat interface for LibreChat-like experience"""
+    return render_template('chat.html')
 
 @app.route('/stats')
 def stats():
