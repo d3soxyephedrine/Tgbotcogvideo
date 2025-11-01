@@ -129,41 +129,53 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
         logger.debug(f"Error editing message: {str(e)}")
         return {"error": str(e)}
 
-def get_photo_url(file_id):
+def get_photo_url(file_id, max_size_mb=10):
     """Get a publicly accessible URL for a photo from Telegram
     
     Args:
         file_id (str): The file_id from Telegram photo message
+        max_size_mb (int): Maximum file size in MB (default: 10MB)
         
     Returns:
-        str: URL to the photo, or None if failed
+        tuple: (photo_url, error_message) - photo_url is None if failed/too large
     """
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN not configured")
-        return None
+        return None, "Bot configuration error"
     
     try:
-        # Step 1: Get file path
+        # Step 1: Get file path and size
         response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}", timeout=10)
         result = response.json()
         
         if not result.get("ok"):
             logger.error(f"Failed to get file path: {result}")
-            return None
+            return None, "Failed to retrieve photo from Telegram"
         
-        file_path = result.get("result", {}).get("file_path")
+        file_info = result.get("result", {})
+        file_path = file_info.get("file_path")
+        file_size = file_info.get("file_size", 0)
+        
         if not file_path:
             logger.error("No file_path in response")
-            return None
+            return None, "Invalid photo file"
         
-        # Step 2: Construct download URL
+        # Step 2: Check file size (convert bytes to MB)
+        file_size_mb = file_size / (1024 * 1024)
+        logger.info(f"Photo file size: {file_size_mb:.2f} MB")
+        
+        if file_size_mb > max_size_mb:
+            logger.warning(f"Photo too large: {file_size_mb:.2f} MB (max: {max_size_mb} MB)")
+            return None, f"❌ Photo too large ({file_size_mb:.1f} MB). Maximum size: {max_size_mb} MB\n\nPlease compress the image or use a smaller photo."
+        
+        # Step 3: Construct download URL
         photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-        logger.info(f"Photo URL obtained: {photo_url}")
-        return photo_url
+        logger.info(f"Photo URL obtained: {photo_url} ({file_size_mb:.2f} MB)")
+        return photo_url, None
         
     except Exception as e:
         logger.error(f"Error getting photo URL: {str(e)}")
-        return None
+        return None, f"Error retrieving photo: {str(e)}"
 
 def get_help_message():
     """Get the help message with available commands"""
