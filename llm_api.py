@@ -21,6 +21,7 @@ OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
 NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
 NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
+NOVITA_HUNYUAN_ENDPOINT = "https://api.novita.ai/v3/async/hunyuan-image-3"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
 
@@ -1048,6 +1049,138 @@ def generate_qwen_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
                 pass
         except Exception as e:
             logger.error(f"Qwen image generation attempt {attempt + 1} failed: {str(e)}")
+            break
+        
+        if attempt < max_retries - 1:
+            sleep_time = 2 ** attempt
+            logger.info(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+    
+    return {"success": False, "error": f"All {max_retries} attempts failed"}
+
+
+def generate_hunyuan_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Generate an image using Novita AI Hunyuan-Image-3 API
+    
+    Args:
+        prompt: Text description of the image to generate
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'image_url' or 'error' keys
+    """
+    
+    if not NOVITA_API_KEY:
+        return {"success": False, "error": "NOVITA_API_KEY not configured"}
+    
+    if not prompt or not prompt.strip():
+        return {"success": False, "error": "Empty prompt"}
+    
+    # Truncate prompt to stay within API limits
+    truncated_prompt = truncate_prompt(prompt)
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {NOVITA_API_KEY}"
+    }
+    
+    # Using Hunyuan-Image-3 - advanced AI image generation model
+    data = {
+        "prompt": truncated_prompt,
+        "width": 1024,
+        "height": 1024
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Hunyuan image generation attempt {attempt + 1} to Novita AI")
+            logger.debug(f"Prompt: {prompt[:100]}...")
+            
+            # Step 1: Submit task to async endpoint
+            response = requests.post(
+                NOVITA_HUNYUAN_ENDPOINT,
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract task ID
+            task_id = result.get("task_id")
+            if not task_id:
+                logger.error(f"No task_id in response: {result}")
+                return {"success": False, "error": "No task ID returned"}
+            
+            logger.info(f"Hunyuan task submitted successfully: {task_id}")
+            
+            # Step 2: Poll for task completion (max 60 seconds)
+            poll_count = 0
+            max_polls = 30  # 30 polls * 2 seconds = 60 seconds max wait
+            
+            while poll_count < max_polls:
+                time.sleep(2)
+                poll_count += 1
+                
+                try:
+                    task_response = requests.get(
+                        f"{NOVITA_TASK_ENDPOINT}?task_id={task_id}",
+                        headers=headers,
+                        timeout=10
+                    )
+                    
+                    task_response.raise_for_status()
+                    task_result = task_response.json()
+                    
+                    task_status = task_result.get("task", {}).get("status")
+                    
+                    if task_status == "TASK_STATUS_SUCCEED":
+                        # Extract image URL
+                        images = task_result.get("images", [])
+                        if images and len(images) > 0:
+                            image_url = images[0].get("image_url")
+                            if image_url:
+                                logger.info(f"Hunyuan image generated successfully: {image_url}")
+                                return {"success": True, "image_url": image_url}
+                        
+                        return {"success": False, "error": "No image URL in completed task"}
+                    
+                    elif task_status == "TASK_STATUS_FAILED":
+                        error_msg = task_result.get("task", {}).get("reason", "Unknown error")
+                        logger.error(f"Hunyuan task failed: {error_msg}")
+                        return {"success": False, "error": f"Generation failed: {error_msg}"}
+                    
+                    elif task_status in ["TASK_STATUS_QUEUED", "TASK_STATUS_PROCESSING"]:
+                        logger.debug(f"Hunyuan task {task_id} still processing... (poll {poll_count}/{max_polls})")
+                        continue
+                    
+                    else:
+                        logger.warning(f"Unknown task status: {task_status}")
+                        continue
+                        
+                except requests.exceptions.RequestException as poll_error:
+                    logger.warning(f"Polling error: {str(poll_error)}")
+                    continue
+            
+            # Timeout waiting for task
+            return {"success": False, "error": "Task timeout - image generation took too long"}
+            
+        except requests.exceptions.Timeout:
+            logger.warning(f"Hunyuan image generation timeout on attempt {attempt + 1}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Hunyuan image generation request failed: {str(e)}")
+            try:
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code == 401:
+                        return {"success": False, "error": "Invalid Novita API key"}
+                    elif e.response.status_code == 400:
+                        error_detail = e.response.json().get("message", "Invalid request")
+                        return {"success": False, "error": f"Invalid prompt or parameters: {error_detail}"}
+            except:
+                pass
+        except Exception as e:
+            logger.error(f"Hunyuan image generation attempt {attempt + 1} failed: {str(e)}")
             break
         
         if attempt < max_retries - 1:
