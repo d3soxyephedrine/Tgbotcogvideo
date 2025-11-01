@@ -460,6 +460,12 @@ def process_update(update):
                     from datetime import timedelta
                     
                     with current_app.app_context():
+                        # Reload user in this context to avoid detached object issues
+                        user = User.query.filter_by(telegram_id=telegram_id).first()
+                        if not user:
+                            send_message(chat_id, "❌ User not found. Please try again.")
+                            return
+                        
                         now = datetime.utcnow()
                         
                         # Check if user can claim (24h cooldown)
