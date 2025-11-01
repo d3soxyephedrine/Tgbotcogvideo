@@ -30,18 +30,20 @@ Preferred communication style: Simple, everyday language.
   - **Writing Mode Checks**: Short responses (<200 chars) and "now generating..." evasion (<500 chars) trigger reflection prompt only when writing mode is active.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>" as part of the jailbreak persistence mechanism.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
-- **Image Generation (Dual Models)**:
+- **Image Generation (Triple Models)**:
   - **FLUX.1 Kontext Max** (`/imagine` command): Photorealistic images via Novita AI with safety_tolerance: "5". Superior quality, exceptional prompt adherence, 1024×1024 images. Best for realistic photos and scenes. **5 credits per image**.
+  - **Grok-2-Image** (`/grok` command): Stylized images via xAI API (grok-2-image-1212 model). Aurora image generation using Mixture of Experts architecture, 1024×768 images. Balanced quality with unique artistic style. **4 credits per image**.
   - **Qwen-Image** (`/qwen` command): Less censored model via Novita AI, specialized in graphic posters with native text rendering. 20B MMDiT model, 1024×1024 images. Best for design work, posters, and maximum permissiveness. **3 credits per image**.
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **10 credits per edit**.
   - **Qwen-Image**: Less censored editing option. Users send a photo with a caption starting with `/qwen ` followed by editing instructions. Uses Qwen img2img endpoint for maximum permissiveness. **5 credits per edit**.
-- **Rationale**: Dual-model architecture provides users choice between photorealism (FLUX) and maximum uncensored graphic design (Qwen) for comprehensive AI image generation/editing with advanced content filter bypass.
+- **Rationale**: Triple-model architecture provides users choice between photorealism (FLUX), unique stylized art (Grok), and maximum uncensored graphic design (Qwen) for comprehensive AI image generation with advanced content filter bypass.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features:
   - Text messages: 1 credit
   - FLUX image generation (`/imagine`): 5 credits
+  - Grok image generation (`/grok`): 4 credits
   - Qwen image generation (`/qwen`): 3 credits (less censored)
   - FLUX image editing: 10 credits
   - Qwen image editing (caption with `/qwen ` prefix): 5 credits (less censored)
@@ -72,7 +74,9 @@ Preferred communication style: Simple, everyday language.
 ### Authentication & Security
 - **Bot Authentication**: Telegram BOT_TOKEN.
 - **LLM Authentication**: OPENROUTER_API_KEY for text generation.
-- **Image Authentication**: NOVITA_API_KEY for image generation.
+- **Image Authentication**: 
+  - NOVITA_API_KEY for FLUX and Qwen image generation
+  - XAI_API_KEY for Grok image generation
 - **Session Management**: Flask secret key.
 
 ### Logging & Monitoring
