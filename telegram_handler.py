@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan22_video, generate_wan25_video
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -880,6 +880,228 @@ Each AI message costs 1 credit.
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
                 send_message(chat_id, f"❌ Hunyuan image generation failed: {error_msg}\n\n✅ 5 credits have been refunded to your account.")
+            
+            return
+        
+        # Check for /wan22 command (WAN 2.2 video generation)
+        if photo and caption and caption.lower().startswith('/wan22'):
+            prompt = caption[7:].strip()  # Remove '/wan22 ' prefix (optional prompt)
+            
+            logger.info(f"Processing WAN 2.2 video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before video generation)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for WAN 2.2 video: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 8:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 8 credits to generate a WAN 2.2 video.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct credits immediately
+                        user.credits = max(0, user.credits - 8)
+                        db.session.commit()
+                        logger.debug(f"8 credits deducted for WAN 2.2 video. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Download the image first
+            try:
+                photo_file = photo[-1]  # Get largest photo
+                file_id = photo_file.get("file_id")
+                
+                # Get file info
+                file_info_response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}")
+                file_info = file_info_response.json()
+                
+                if not file_info.get("ok"):
+                    send_message(chat_id, "❌ Failed to get image file information")
+                    return
+                
+                file_path = file_info.get("result", {}).get("file_path")
+                if not file_path:
+                    send_message(chat_id, "❌ Failed to get image file path")
+                    return
+                
+                image_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                
+                # Generate video in background thread to avoid webhook timeout
+                from flask import current_app
+                app = current_app._get_current_object()
+                
+                def generate_wan22_video_background():
+                    with app.app_context():
+                        send_message(chat_id, "🎬 Generating WAN 2.2 video from your image... This may take up to 2 minutes.")
+                        
+                        result = generate_wan22_video(image_url, prompt)
+                        
+                        if result.get("success"):
+                            video_url = result.get("video_url")
+                            try:
+                                send_message(chat_id, f"✨ WAN 2.2 video generated!\n\n{video_url}")
+                                
+                                # Store message and transaction synchronously
+                                if DB_AVAILABLE and user_id:
+                                    try:
+                                        message_id = store_message(user_id, f"WAN 2.2 video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=8)
+                                        
+                                        transaction = Transaction(
+                                            user_id=user_id,
+                                            credits_used=8,
+                                            message_id=message_id,
+                                            transaction_type='wan22_video_generation',
+                                            description=f"WAN 2.2 video: {prompt[:100] if prompt else 'No prompt'}"
+                                        )
+                                        db.session.add(transaction)
+                                        db.session.commit()
+                                        logger.debug(f"WAN 2.2 video transaction stored: message_id={message_id}")
+                                    except Exception as db_error:
+                                        logger.error(f"Database error storing WAN 2.2 video message/transaction: {str(db_error)}")
+                                
+                            except Exception as e:
+                                logger.error(f"Error sending WAN 2.2 video: {str(e)}")
+                                send_message(chat_id, f"❌ Error sending video: {str(e)}")
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            
+                            # Refund credits since generation failed
+                            if DB_AVAILABLE and user_id:
+                                try:
+                                    user = User.query.get(user_id)
+                                    if user:
+                                        user.credits += 8
+                                        db.session.commit()
+                                        logger.info(f"Refunded 8 credits due to failed WAN 2.2 generation. New balance: {user.credits}")
+                                except Exception as db_error:
+                                    logger.error(f"Database error refunding credits: {str(db_error)}")
+                            
+                            send_message(chat_id, f"❌ WAN 2.2 video generation failed: {error_msg}\n\n✅ 8 credits have been refunded to your account.")
+                
+                # Start background thread
+                thread = threading.Thread(target=generate_wan22_video_background)
+                thread.start()
+                
+            except Exception as e:
+                logger.error(f"Error processing WAN 2.2 video request: {str(e)}")
+                send_message(chat_id, f"❌ Error: {str(e)}")
+            
+            return
+        
+        # Check for /wan25 command (WAN 2.5 video generation)
+        if photo and caption and caption.lower().startswith('/wan25'):
+            prompt = caption[7:].strip()  # Remove '/wan25 ' prefix (optional prompt)
+            
+            logger.info(f"Processing WAN 2.5 video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before video generation)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for WAN 2.5 video: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 10:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 10 credits to generate a WAN 2.5 video.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct credits immediately
+                        user.credits = max(0, user.credits - 10)
+                        db.session.commit()
+                        logger.debug(f"10 credits deducted for WAN 2.5 video. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Download the image first
+            try:
+                photo_file = photo[-1]  # Get largest photo
+                file_id = photo_file.get("file_id")
+                
+                # Get file info
+                file_info_response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}")
+                file_info = file_info_response.json()
+                
+                if not file_info.get("ok"):
+                    send_message(chat_id, "❌ Failed to get image file information")
+                    return
+                
+                file_path = file_info.get("result", {}).get("file_path")
+                if not file_path:
+                    send_message(chat_id, "❌ Failed to get image file path")
+                    return
+                
+                image_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                
+                # Generate video in background thread to avoid webhook timeout
+                from flask import current_app
+                app = current_app._get_current_object()
+                
+                def generate_wan25_video_background():
+                    with app.app_context():
+                        send_message(chat_id, "🎬 Generating WAN 2.5 video from your image... This may take up to 2 minutes.")
+                        
+                        result = generate_wan25_video(image_url, prompt)
+                        
+                        if result.get("success"):
+                            video_url = result.get("video_url")
+                            try:
+                                send_message(chat_id, f"✨ WAN 2.5 video generated!\n\n{video_url}")
+                                
+                                # Store message and transaction synchronously
+                                if DB_AVAILABLE and user_id:
+                                    try:
+                                        message_id = store_message(user_id, f"WAN 2.5 video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=10)
+                                        
+                                        transaction = Transaction(
+                                            user_id=user_id,
+                                            credits_used=10,
+                                            message_id=message_id,
+                                            transaction_type='wan25_video_generation',
+                                            description=f"WAN 2.5 video: {prompt[:100] if prompt else 'No prompt'}"
+                                        )
+                                        db.session.add(transaction)
+                                        db.session.commit()
+                                        logger.debug(f"WAN 2.5 video transaction stored: message_id={message_id}")
+                                    except Exception as db_error:
+                                        logger.error(f"Database error storing WAN 2.5 video message/transaction: {str(db_error)}")
+                                
+                            except Exception as e:
+                                logger.error(f"Error sending WAN 2.5 video: {str(e)}")
+                                send_message(chat_id, f"❌ Error sending video: {str(e)}")
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            
+                            # Refund credits since generation failed
+                            if DB_AVAILABLE and user_id:
+                                try:
+                                    user = User.query.get(user_id)
+                                    if user:
+                                        user.credits += 10
+                                        db.session.commit()
+                                        logger.info(f"Refunded 10 credits due to failed WAN 2.5 generation. New balance: {user.credits}")
+                                except Exception as db_error:
+                                    logger.error(f"Database error refunding credits: {str(db_error)}")
+                            
+                            send_message(chat_id, f"❌ WAN 2.5 video generation failed: {error_msg}\n\n✅ 10 credits have been refunded to your account.")
+                
+                # Start background thread
+                thread = threading.Thread(target=generate_wan25_video_background)
+                thread.start()
+                
+            except Exception as e:
+                logger.error(f"Error processing WAN 2.5 video request: {str(e)}")
+                send_message(chat_id, f"❌ Error: {str(e)}")
             
             return
         
