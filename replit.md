@@ -32,28 +32,26 @@ Preferred communication style: Simple, everyday language.
   - **Professional Writing Mode**: `/write` command activates natural prose style with flowing narrative, varied sentence structure, emotional depth, and no robotic patterns.
 - **Image Generation (Quadruple Models)**:
   - **FLUX.1 Kontext Max** (`/imagine` command): Very good for generating high quality photorealistic images. 1024×1024 images via Novita AI with safety_tolerance: "5". **5 credits per image**.
-  - **Hunyuan-Image-3** (`/hunyuan` command): The fully uncensored model. 1024×1024 images via Novita AI with maximum permissiveness. **5 credits per image**.
+  - **Hunyuan-Image-3** (`/uncensored` command): The fully uncensored model. 1024×1024 images via Novita AI with maximum permissiveness. **5 credits per image**.
   - **Grok-2-Image** (`/grok` command): Grok. 1024×768 images via xAI API (grok-2-image-1212 model). **4 credits per image**.
-  - **Qwen-Image** (`/qwen` command): Very good for image editing. 20B MMDiT model, 1024×1024 images via Novita AI. **3 credits per image**.
+  - **Qwen-Image** (`/edit` command): Very good for image editing. 20B MMDiT model, 1024×1024 images via Novita AI. **3 credits per image**.
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **6 credits per edit**.
-  - **Qwen-Image**: Very good for image editing. Users send a photo with a caption starting with `/qwen ` followed by editing instructions. Uses Qwen img2img endpoint. **5 credits per edit**.
-- **Video Generation (Dual Models - Image-to-Video)**:
-  - **WAN 2.2 I2V**: Users send a photo with caption starting with `/wan22` followed by optional prompt. Converts images to videos via Novita AI WAN 2.2 i2v endpoint with async task-based API pattern (up to 120s processing time). **8 credits per video**.
-  - **WAN 2.5 I2V Preview**: Users send a photo with caption starting with `/wan25` followed by optional prompt. Newer video generation model via Novita AI WAN 2.5 i2v-preview endpoint with async task-based API pattern (up to 120s processing time). **10 credits per video**.
-- **Rationale**: Sextuple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), image editing (Qwen), and dual video generation options (WAN 2.2 and WAN 2.5) for comprehensive AI multimedia generation capabilities.
+  - **Qwen-Image**: Very good for image editing. Users send a photo with a caption starting with `/edit ` followed by editing instructions. Uses Qwen img2img endpoint. **5 credits per edit**.
+- **Video Generation (Single Model - Image-to-Video)**:
+  - **WAN 2.5 I2V Preview** (`/img2video` command): Users send a photo with caption starting with `/img2video` followed by optional prompt. Converts images to videos via Novita AI WAN 2.5 i2v-preview endpoint with async task-based API pattern (up to 120s processing time). **10 credits per video**.
+- **Rationale**: Quintuple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), image editing (Qwen), and video generation (WAN 2.5) for comprehensive AI multimedia generation capabilities.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features:
   - Text messages: 1 credit
   - FLUX image generation (`/imagine`): 5 credits
-  - Hunyuan image generation (`/hunyuan`): 5 credits
+  - Hunyuan image generation (`/uncensored`): 5 credits
   - Grok image generation (`/grok`): 4 credits
-  - Qwen image generation (`/qwen`): 3 credits
-  - FLUX image editing: 6 credits
-  - Qwen image editing (caption with `/qwen ` prefix): 5 credits
-  - WAN 2.2 video generation (caption with `/wan22` prefix): 8 credits
-  - WAN 2.5 video generation (caption with `/wan25` prefix): 10 credits
+  - Qwen image generation (`/edit`): 3 credits
+  - FLUX image editing: 6 credits (max cost for images)
+  - Qwen image editing (caption with `/edit ` prefix): 5 credits
+  - Video generation (`/img2video`): 10 credits
 - **New User Bonus**: 100 free credits upon first interaction.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 
