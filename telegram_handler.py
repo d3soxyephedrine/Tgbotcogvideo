@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image
 from models import db, User, Message, Payment, Transaction
 from datetime import datetime
 
@@ -178,12 +178,14 @@ def get_help_message():
 /clear - Clear your conversation history
 /imagine <prompt> - FLUX photorealistic image (5 credits)
 /qwen <prompt> - Qwen less censored image (3 credits)
+/grok <prompt> - Grok xAI image (4 credits)
 /write <request> - Professional writing mode (1 credit)
 
 🎨 *Image Generation:*
 • /imagine <prompt> - FLUX.1 (photorealistic, 5 credits)
 • /qwen <prompt> - Qwen-Image (less censored, posters/text, 3 credits)
-• All models: 1024×1024 high quality, truly uncensored
+• /grok <prompt> - Grok-2 (xAI, stylized, 4 credits)
+• All models: High quality, truly uncensored
 
 ✨ *Image Editing:*
 • FLUX edit: Send photo + caption (10 credits)
@@ -201,6 +203,7 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Text message: 1 credit
 • Writing mode: 1 credit  
 • FLUX image: 5 credits
+• Grok image: 4 credits
 • Qwen image: 3 credits (less censored!)
 • FLUX editing: 10 credits
 • Qwen editing: 5 credits (less censored!)
@@ -641,6 +644,117 @@ Each AI message costs 1 credit.
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
                 send_message(chat_id, f"❌ Qwen image generation failed: {error_msg}\n\n✅ 3 credits have been refunded to your account.")
+            
+            return
+        
+        # Check for /grok command (Grok image generation via xAI)
+        if text.lower().startswith('/grok '):
+            prompt = text[6:].strip()  # Remove '/grok ' prefix
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /grok a futuristic cityscape at sunset")
+                return
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for Grok image generation: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        if user.credits < 4:
+                            response = f"⚠️ Insufficient credits!\n\nYou have {user.credits} credits but need 4 credits to generate a Grok image.\n\nUse /buy to purchase more credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct 4 credits immediately
+                        user.credits = max(0, user.credits - 4)
+                        db.session.commit()
+                        logger.debug(f"4 credits deducted for Grok image. New balance: {user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Send initial processing message
+            status_msg = send_message(chat_id, "🤖 Generating Grok image via xAI...", parse_mode=None)
+            
+            # Generate image using xAI Grok API
+            result = generate_grok_image(prompt)
+            
+            if result.get("success"):
+                image_url = result.get("image_url")
+                
+                # Download image from URL
+                try:
+                    img_response = requests.get(image_url, timeout=30)
+                    img_response.raise_for_status()
+                    
+                    # Send image to user
+                    photo_payload = {
+                        "chat_id": chat_id,
+                        "photo": image_url,
+                        "caption": f"🤖 Grok: {prompt[:200]}" if len(prompt) <= 200 else f"🤖 Grok: {prompt[:197]}..."
+                    }
+                    
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    
+                    # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
+                    # Credit already deducted above, so user can't use same credits twice
+                    if DB_AVAILABLE and user_id:
+                        try:
+                            from flask import current_app
+                            with current_app.app_context():
+                                # Create message record immediately for conversation history
+                                message_record = Message(
+                                    user_id=user_id,
+                                    user_message=f"/grok {prompt}",
+                                    bot_response=image_url,
+                                    model_used="grok-2-image-1212",
+                                    credits_charged=4
+                                )
+                                db.session.add(message_record)
+                                db.session.commit()
+                                message_id = message_record.id
+                                logger.info(f"Grok image message stored synchronously for user {user_id}: {message_id}")
+                                
+                                # Also store transaction synchronously for reliability
+                                transaction = Transaction(
+                                    user_id=user_id,
+                                    credits_used=4,
+                                    message_id=message_id,
+                                    transaction_type='grok_image_generation',
+                                    description=f"Grok image generation: {prompt[:100]}"
+                                )
+                                db.session.add(transaction)
+                                db.session.commit()
+                                logger.debug(f"Grok image transaction stored synchronously: message_id={message_id}")
+                        except Exception as db_error:
+                            logger.error(f"Database error storing Grok image message/transaction: {str(db_error)}")
+                            # Flask-SQLAlchemy automatically rolls back on exception within app context
+                    
+                except Exception as e:
+                    logger.error(f"Error sending Grok image: {str(e)}")
+                    send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
+            else:
+                error_msg = result.get("error", "Unknown error")
+                
+                # Refund credits since generation failed
+                if DB_AVAILABLE and user_id:
+                    try:
+                        from flask import current_app
+                        with current_app.app_context():
+                            user = User.query.get(user_id)
+                            if user:
+                                user.credits += 4
+                                db.session.commit()
+                                logger.info(f"Refunded 4 credits due to failed Grok generation. New balance: {user.credits}")
+                    except Exception as db_error:
+                        logger.error(f"Database error refunding credits: {str(db_error)}")
+                
+                send_message(chat_id, f"❌ Grok image generation failed: {error_msg}\n\n✅ 4 credits have been refunded to your account.")
             
             return
         

@@ -15,12 +15,14 @@ logger = logging.getLogger(__name__)
 # Environment configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
+XAI_API_KEY = os.environ.get("XAI_API_KEY")
 DEFAULT_MODEL = "openai/chatgpt-4o-latest"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
 NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
 NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
+XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
 
 def get_system_prompt() -> str:
     """Enhanced system prompt for optimal performance"""
@@ -1153,6 +1155,90 @@ def generate_qwen_edit_image(image_url: str, prompt: str, max_retries: int = 3) 
                 pass
         except Exception as e:
             logger.error(f"Qwen image editing attempt {attempt + 1} failed: {str(e)}")
+            break
+        
+        if attempt < max_retries - 1:
+            sleep_time = 2 ** attempt
+            logger.info(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+    
+    return {"success": False, "error": f"All {max_retries} attempts failed"}
+
+
+def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Generate an image using xAI Grok API (grok-2-image-1212 model)
+    
+    Args:
+        prompt: Text description of the image to generate
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'image_url' or 'error' keys
+    """
+    
+    if not XAI_API_KEY:
+        return {"success": False, "error": "XAI_API_KEY not configured"}
+    
+    if not prompt or not prompt.strip():
+        return {"success": False, "error": "Empty prompt"}
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {XAI_API_KEY}"
+    }
+    
+    # Using Grok-2-Image model via xAI API
+    data = {
+        "model": "grok-2-image-1212",
+        "prompt": prompt,
+        "n": 1
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Grok image generation attempt {attempt + 1} to xAI API")
+            logger.debug(f"Prompt: {prompt[:100]}...")
+            
+            response = requests.post(
+                XAI_IMAGE_ENDPOINT,
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+            
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract image URL from response
+            if "data" in result and len(result["data"]) > 0:
+                image_url = result["data"][0].get("url")
+                if image_url:
+                    logger.info(f"Grok image generated successfully: {image_url}")
+                    return {"success": True, "image_url": image_url}
+            
+            logger.error(f"No image URL in response: {result}")
+            return {"success": False, "error": "No image URL in response"}
+            
+        except requests.exceptions.Timeout:
+            logger.warning(f"Grok image generation timeout on attempt {attempt + 1}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Grok image generation request failed: {str(e)}")
+            try:
+                if hasattr(e, 'response') and e.response is not None:
+                    if e.response.status_code == 401:
+                        return {"success": False, "error": "Invalid xAI API key"}
+                    elif e.response.status_code == 400:
+                        try:
+                            error_detail = e.response.json().get("error", {}).get("message", "Invalid request")
+                        except:
+                            error_detail = "Invalid request"
+                        return {"success": False, "error": f"Invalid prompt or parameters: {error_detail}"}
+                    elif e.response.status_code == 429:
+                        return {"success": False, "error": "Rate limit exceeded - please try again later"}
+            except:
+                pass
+        except Exception as e:
+            logger.error(f"Grok image generation attempt {attempt + 1} failed: {str(e)}")
             break
         
         if attempt < max_retries - 1:
