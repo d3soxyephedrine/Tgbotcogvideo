@@ -809,7 +809,7 @@ Each AI message costs 1 credit.
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
             # Send initial processing message
-            status_msg = send_message(chat_id, "🎨 Generating Hunyuan image...", parse_mode=None)
+            status_msg = send_message(chat_id, "🎨 Generating uncensored image...", parse_mode=None)
             
             # Generate image using Novita AI Hunyuan-Image-3
             result = generate_hunyuan_image(prompt)
