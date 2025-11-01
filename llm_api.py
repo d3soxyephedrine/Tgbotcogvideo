@@ -1208,6 +1208,9 @@ def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     if not prompt or not prompt.strip():
         return {"success": False, "error": "Empty prompt"}
     
+    # Truncate prompt to stay within API limits
+    truncated_prompt = truncate_prompt(prompt)
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {XAI_API_KEY}"
@@ -1216,7 +1219,7 @@ def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     # Using Grok-2-Image model via xAI API
     data = {
         "model": "grok-2-image-1212",
-        "prompt": prompt,
+        "prompt": truncated_prompt,
         "n": 1
     }
     
