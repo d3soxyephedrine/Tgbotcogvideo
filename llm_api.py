@@ -944,6 +944,9 @@ def generate_qwen_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     if not prompt or not prompt.strip():
         return {"success": False, "error": "Empty prompt"}
     
+    # Truncate prompt to stay within API limits
+    truncated_prompt = truncate_prompt(prompt)
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NOVITA_API_KEY}"
@@ -951,7 +954,7 @@ def generate_qwen_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     
     # Using Qwen-Image - less censored model, great for graphic posters with text
     data = {
-        "prompt": prompt,
+        "prompt": truncated_prompt,
         "size": "1024*1024"
     }
     
