@@ -1125,7 +1125,7 @@ Each AI message costs 1 credit.
                 status_message = "🎨 Editing with Qwen (less censored)..."
             else:
                 edit_prompt = caption
-                credits_required = 10
+                credits_required = 6
                 model_name = "flux-1-kontext-max-edit"
                 status_message = "🎨 Editing with FLUX..."
             
