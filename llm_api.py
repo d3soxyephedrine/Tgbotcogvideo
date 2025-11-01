@@ -805,6 +805,9 @@ def generate_image(prompt: str, image_url: str = None, max_retries: int = 3) -> 
     if not prompt or not prompt.strip():
         return {"success": False, "error": "Empty prompt"}
     
+    # Truncate prompt to stay within API limits
+    truncated_prompt = truncate_prompt(prompt)
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NOVITA_API_KEY}"
@@ -812,7 +815,7 @@ def generate_image(prompt: str, image_url: str = None, max_retries: int = 3) -> 
     
     # Using FLUX.1 Kontext Max - high quality uncensored model with maximum safety tolerance
     data = {
-        "prompt": prompt,
+        "prompt": truncated_prompt,
         "seed": -1,
         "guidance_scale": 3.5,
         "safety_tolerance": "5",
