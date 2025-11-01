@@ -833,9 +833,11 @@ Each AI message costs 1 credit.
                 """Background function to process image editing without blocking webhook"""
                 try:
                     # Get publicly accessible URL for the photo (in background to avoid webhook timeout)
-                    photo_url = get_photo_url(file_id)
+                    photo_url, photo_error = get_photo_url(file_id)
                     if not photo_url:
-                        send_message(chat_id, "❌ Could not download photo from Telegram")
+                        # Send user-friendly error message (includes size limit info if applicable)
+                        error_msg = photo_error if photo_error else "❌ Could not download photo from Telegram"
+                        send_message(chat_id, error_msg)
                         # Refund credits
                         if DB_AVAILABLE and user_id and flask_app:
                             try:
