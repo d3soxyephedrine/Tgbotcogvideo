@@ -403,6 +403,8 @@ def register_telegram_commands():
             {"command": "clear", "description": "Clear conversation history"},
             {"command": "imagine", "description": "FLUX photorealistic image (5 credits)"},
             {"command": "qwen", "description": "Qwen less censored image (3 credits)"},
+            {"command": "grok", "description": "Grok stylized image (4 credits)"},
+            {"command": "hunyuan", "description": "Hunyuan AI image (5 credits)"},
             {"command": "write", "description": "Professional writing mode (1 credit)"}
         ]
         
