@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
   - **Grok-2-Image** (`/grok` command): Grok. 1024×768 images via xAI API (grok-2-image-1212 model). **4 credits per image**.
   - **Qwen-Image** (`/qwen` command): Very good for image editing. 20B MMDiT model, 1024×1024 images via Novita AI. **3 credits per image**.
 - **Image Editing (Dual Models)**:
-  - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **10 credits per edit**.
+  - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **6 credits per edit**.
   - **Qwen-Image**: Very good for image editing. Users send a photo with a caption starting with `/qwen ` followed by editing instructions. Uses Qwen img2img endpoint. **5 credits per edit**.
 - **Video Generation (Dual Models - Image-to-Video)**:
   - **WAN 2.2 I2V**: Users send a photo with caption starting with `/wan22` followed by optional prompt. Converts images to videos via Novita AI WAN 2.2 i2v endpoint with async task-based API pattern (up to 120s processing time). **8 credits per video**.
@@ -50,7 +50,7 @@ Preferred communication style: Simple, everyday language.
   - Hunyuan image generation (`/hunyuan`): 5 credits
   - Grok image generation (`/grok`): 4 credits
   - Qwen image generation (`/qwen`): 3 credits
-  - FLUX image editing: 10 credits
+  - FLUX image editing: 6 credits
   - Qwen image editing (caption with `/qwen ` prefix): 5 credits
   - WAN 2.2 video generation (caption with `/wan22` prefix): 8 credits
   - WAN 2.5 video generation (caption with `/wan25` prefix): 10 credits
