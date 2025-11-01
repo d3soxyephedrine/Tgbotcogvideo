@@ -17,6 +17,7 @@ Preferred communication style: Simple, everyday language.
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
 - **Schema Design**: Five models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`) for user profiles, message history, and a pay-per-use credit system.
+- **User Model Extensions** (November 2025): Added 8 monetization columns for daily credits (`daily_credits`, `daily_credits_expiry`), purchase tracking (`last_purchase_at`), action history (`last_action_type`, `last_action_cost`, `last_action_at`), and engagement tracking (`last_daily_claim_at`, `last_nudge_at`).
 - **Resilience**: Connection pooling, retry logic with exponential backoff, and graceful degradation if the database is unavailable.
 
 ### LLM Provider Architecture
@@ -42,8 +43,12 @@ Preferred communication style: Simple, everyday language.
   - **WAN 2.5 I2V Preview** (`/img2video` command): Users send a photo with caption starting with `/img2video` followed by optional prompt. Converts images to videos via Novita AI WAN 2.5 i2v-preview endpoint with async task-based API pattern (up to 120s processing time). **10 credits per video**.
 - **Rationale**: Quintuple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), image editing (Qwen), and video generation (WAN 2.5) for comprehensive AI multimedia generation capabilities.
 
-### Pay-Per-Use Credit System
-- **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features:
+### Pay-Per-Use Credit System with Daily Freebies
+- **Credit Types**:
+  - **Daily Credits**: Free credits claimed via `/daily` command (25 credits, 48h expiry, 24h claim cooldown)
+  - **Purchased Credits**: Bought via cryptocurrency with volume bonuses
+  - **Smart Deduction**: Daily credits used first automatically, then purchased credits
+- **Pricing**: Users consume credits for AI features:
   - Text messages: 1 credit
   - FLUX image generation (`/imagine`): 5 credits
   - Hunyuan image generation (`/uncensored`): 5 credits
@@ -51,7 +56,18 @@ Preferred communication style: Simple, everyday language.
   - Qwen image generation (`/edit`): 3 credits
   - FLUX image editing: 6 credits (max cost for images)
   - Qwen image editing (caption with `/edit ` prefix): 5 credits
-  - Video generation (`/img2video`): 10 credits
+  - Video generation (`/img2video`): 10 credits (locked until first purchase)
+- **Daily Free Credits** (November 2025):
+  - `/daily` command grants 25 credits with 48h expiry
+  - Claimable once per 24 hours
+  - Daily credits automatically expire after 48 hours
+  - Used before purchased credits automatically
+- **Volume Bonuses** (November 2025):
+  - $10 → 200 credits (5.0¢/credit)
+  - $20 → 420 credits (4.76¢/credit, +5% bonus)
+  - $50 → 1,120 credits (4.46¢/credit, +12% bonus)
+  - $100 → 2,360 credits (4.24¢/credit, +18% bonus)
+- **Video Paywall**: Video generation locked until first purchase to encourage monetization
 - **New User Bonus**: 100 free credits upon first interaction.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 
