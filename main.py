@@ -213,6 +213,46 @@ def chat():
     """Web chat interface for LibreChat-like experience"""
     return render_template('chat.html')
 
+@app.route('/api/balance', methods=['GET'])
+def get_balance():
+    """Get user's credit balance (authenticated via API key)"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            "error": "Invalid API key"
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            return jsonify({
+                "error": "Invalid API key"
+            }), 401
+        
+        # Calculate total credits with defensive handling for None values
+        daily_credits = user.daily_credits if user.daily_credits is not None else 0
+        purchased_credits = user.credits if user.credits is not None else 0
+        total_credits = daily_credits + purchased_credits
+        
+        return jsonify({
+            "daily_credits": daily_credits,
+            "purchased_credits": purchased_credits,
+            "total_credits": total_credits
+        })
+    except Exception as e:
+        logger.error(f"Error fetching balance: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
 @app.route('/stats')
 def stats():
     """Endpoint to view basic statistics about the bot usage"""

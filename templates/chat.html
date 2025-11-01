@@ -377,8 +377,29 @@
         sendButton.addEventListener('click', sendMessage);
 
         async function updateCreditBalance() {
-            // Try to get credit balance from a test API call
-            // This will be updated after each message
+            if (!apiKey) {
+                creditBadge.textContent = 'Credits: --';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/balance', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    creditBadge.textContent = `Credits: ${data.total_credits}`;
+                } else {
+                    creditBadge.textContent = 'Credits: --';
+                }
+            } catch (error) {
+                console.error('Failed to fetch balance:', error);
+                creditBadge.textContent = 'Credits: --';
+            }
         }
 
         async function sendMessage() {
@@ -495,6 +516,9 @@
                 sendButton.disabled = false;
                 messageInput.focus();
                 typingIndicator.classList.remove('active');
+                
+                // Update credit balance after message
+                updateCreditBalance();
             }
         }
 
