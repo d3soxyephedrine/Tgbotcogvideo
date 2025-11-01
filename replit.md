@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, and a robust credit system with cryptocurrency payment options.
+This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, video generation (image-to-video), and a robust credit system with cryptocurrency payment options.
 
 ## User Preferences
 
@@ -38,7 +38,10 @@ Preferred communication style: Simple, everyday language.
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Users send a photo with a caption containing editing instructions. The bot downloads the photo from Telegram, passes it to Novita AI with the `images` parameter, and returns the edited result. Uses safety_tolerance: "5" for maximum permissiveness. **10 credits per edit**.
   - **Qwen-Image**: Very good for image editing. Users send a photo with a caption starting with `/qwen ` followed by editing instructions. Uses Qwen img2img endpoint. **5 credits per edit**.
-- **Rationale**: Quadruple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), and image editing (Qwen) for comprehensive AI image generation capabilities.
+- **Video Generation (Dual Models - Image-to-Video)**:
+  - **WAN 2.2 I2V**: Users send a photo with caption starting with `/wan22` followed by optional prompt. Converts images to videos via Novita AI WAN 2.2 i2v endpoint with async task-based API pattern (up to 120s processing time). **8 credits per video**.
+  - **WAN 2.5 I2V Preview**: Users send a photo with caption starting with `/wan25` followed by optional prompt. Newer video generation model via Novita AI WAN 2.5 i2v-preview endpoint with async task-based API pattern (up to 120s processing time). **10 credits per video**.
+- **Rationale**: Sextuple-model architecture provides users choice between high quality photorealistic images (FLUX), fully uncensored content (Hunyuan), stylized art (Grok), image editing (Qwen), and dual video generation options (WAN 2.2 and WAN 2.5) for comprehensive AI multimedia generation capabilities.
 
 ### Pay-Per-Use Credit System
 - **Model**: Users purchase credits via cryptocurrency (NOWPayments) and consume them for AI features:
@@ -49,6 +52,8 @@ Preferred communication style: Simple, everyday language.
   - Qwen image generation (`/qwen`): 3 credits
   - FLUX image editing: 10 credits
   - Qwen image editing (caption with `/qwen ` prefix): 5 credits
+  - WAN 2.2 video generation (caption with `/wan22` prefix): 8 credits
+  - WAN 2.5 video generation (caption with `/wan25` prefix): 10 credits
 - **New User Bonus**: 100 free credits upon first interaction.
 - **Purchase Flow**: Integrated web-based purchase page with real-time payment status updates via NOWPayments IPN callbacks.
 
@@ -60,7 +65,7 @@ Preferred communication style: Simple, everyday language.
   - **Optimized History Query**: Subquery pattern for last 10 messages with ascending order (no in-memory reversal)
   - **Synchronous Message Storage**: Messages stored immediately for conversation memory (transactions async)
   - **Upfront Credit Deduction**: Credits deducted before LLM call to prevent double-spending
-  - **Background Image Processing** (October 31, 2025): Image editing operations run in background threads to prevent Telegram webhook timeouts (60s limit). Flask app context is captured before thread launch using `current_app._get_current_object()` to enable database operations (credit refunds, message storage) within the background thread. Webhook returns immediately (~2s) while Novita API processes the image (up to 60s).
+  - **Background Image/Video Processing** (October 31, 2025): Image editing and video generation operations run in background threads to prevent Telegram webhook timeouts (60s limit). Flask app context is captured before thread launch using `current_app._get_current_object()` to enable database operations (credit refunds, message storage) within the background thread. Webhook returns immediately (~2s) while Novita API processes the content (up to 60s for images, up to 120s for videos).
 
 ### Conversation Memory
 - **Feature**: Bot remembers previous messages (last 10 messages) to maintain context in conversations.
