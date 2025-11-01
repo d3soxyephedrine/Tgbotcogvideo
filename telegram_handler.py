@@ -614,6 +614,7 @@ Bigger packs = better value!
                 return
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -632,12 +633,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"5 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -698,6 +698,10 @@ Bigger packs = better value!
                             logger.error(f"Database error storing image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
+                    # Send credit warning after successful generation
+                    if pending_credit_warning:
+                        send_message(chat_id, pending_credit_warning)
+                    
                 except Exception as e:
                     logger.error(f"Error sending image: {str(e)}")
                     send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
@@ -730,6 +734,7 @@ Bigger packs = better value!
                 return
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -748,12 +753,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"3 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -814,6 +818,10 @@ Bigger packs = better value!
                             logger.error(f"Database error storing Qwen image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
+                    # Send credit warning after successful generation
+                    if pending_credit_warning:
+                        send_message(chat_id, pending_credit_warning)
+                    
                 except Exception as e:
                     logger.error(f"Error sending Qwen image: {str(e)}")
                     send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
@@ -846,6 +854,7 @@ Bigger packs = better value!
                 return
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -864,12 +873,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"4 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -930,6 +938,10 @@ Bigger packs = better value!
                             logger.error(f"Database error storing Grok image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
+                    # Send credit warning after successful generation
+                    if pending_credit_warning:
+                        send_message(chat_id, pending_credit_warning)
+                    
                 except Exception as e:
                     logger.error(f"Error sending Grok image: {str(e)}")
                     send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
@@ -962,6 +974,7 @@ Bigger packs = better value!
                 return
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -980,12 +993,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"5 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1046,6 +1058,10 @@ Bigger packs = better value!
                             logger.error(f"Database error storing Hunyuan image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
                     
+                    # Send credit warning after successful generation
+                    if pending_credit_warning:
+                        send_message(chat_id, pending_credit_warning)
+                    
                 except Exception as e:
                     logger.error(f"Error sending Hunyuan image: {str(e)}")
                     send_message(chat_id, f"❌ Error downloading/sending image: {str(e)}")
@@ -1076,6 +1092,7 @@ Bigger packs = better value!
             logger.info(f"Processing video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before video generation)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -1100,12 +1117,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"10 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1162,6 +1178,10 @@ Bigger packs = better value!
                                     except Exception as db_error:
                                         logger.error(f"Database error storing video message/transaction: {str(db_error)}")
                                 
+                                # Send credit warning after successful generation
+                                if pending_credit_warning:
+                                    send_message(chat_id, pending_credit_warning)
+                                
                             except Exception as e:
                                 logger.error(f"Error sending video: {str(e)}")
                                 send_message(chat_id, f"❌ Error sending video: {str(e)}")
@@ -1211,6 +1231,7 @@ Bigger packs = better value!
             logger.info(f"Processing {model_name} image editing request: {edit_prompt[:50]}...")
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before editing)
+            pending_credit_warning = None
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -1230,12 +1251,11 @@ Bigger packs = better value!
                             send_message(chat_id, response)
                             return
                         
+                        # Store warning to send after successful editing
+                        pending_credit_warning = credit_warning
+                        
                         db.session.commit()
                         logger.debug(f"{credits_required} credits deducted for {model_name} editing (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                        
-                        # Send credit warning if needed
-                        if credit_warning:
-                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1335,6 +1355,10 @@ Bigger packs = better value!
                                 except Exception as db_error:
                                     logger.error(f"Database error storing image edit message/transaction: {str(db_error)}")
                                     # Flask-SQLAlchemy automatically rolls back on exception within app context
+                            
+                            # Send credit warning after successful editing
+                            if pending_credit_warning:
+                                send_message(chat_id, pending_credit_warning)
                             
                         except Exception as e:
                             logger.error(f"Error sending edited image: {str(e)}")
