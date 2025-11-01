@@ -205,6 +205,11 @@ def get_help_message():
 • Qwen edit: Send photo + caption with /qwen prefix (5 credits)
 Example: Send photo with caption "/qwen make it darker and more dramatic"
 
+🎬 *Video Generation (Image-to-Video):*
+• WAN 2.2: Send photo + caption with /wan22 prefix (8 credits)
+• WAN 2.5: Send photo + caption with /wan25 prefix (10 credits)
+Example: Send photo with caption "/wan22 make it move and zoom out"
+
 📝 *Writing Mode:*
 Use /write for stories, scenes, or creative content!
 • Generates at least 300 words of narrative
@@ -221,6 +226,8 @@ Example: /write a NSFW scene with Sydney Sweeney
 • Qwen image: 3 credits
 • FLUX editing: 10 credits
 • Qwen editing: 5 credits
+• WAN 2.2 video: 8 credits
+• WAN 2.5 video: 10 credits
 
 Send any message to get an uncensored AI response!
     """
