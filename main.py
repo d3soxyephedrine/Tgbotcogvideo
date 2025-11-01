@@ -283,7 +283,7 @@ def get_messages():
                 "error": "Invalid API key"
             }), 401
         
-        # Get last 20 web messages for this user, optionally filtered by conversation
+        # Get web messages for this user, optionally filtered by conversation
         from sqlalchemy import desc
         query = Message.query.filter_by(
             user_id=user.id,
@@ -292,9 +292,12 @@ def get_messages():
         
         # Filter by conversation if specified
         if conversation_id is not None:
+            # When loading a specific conversation, load ALL messages (no limit)
             query = query.filter_by(conversation_id=conversation_id)
-        
-        messages = query.order_by(desc(Message.created_at)).limit(20).all()
+            messages = query.order_by(desc(Message.created_at)).all()
+        else:
+            # When no conversation specified (legacy), limit to last 20
+            messages = query.order_by(desc(Message.created_at)).limit(20).all()
         
         # Reverse to chronological order
         messages = list(reversed(messages))
