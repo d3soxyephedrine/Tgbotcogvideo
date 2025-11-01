@@ -20,6 +20,32 @@ def set_db_available(available):
     global DB_AVAILABLE
     DB_AVAILABLE = available
 
+def get_low_credit_warning(total_credits, daily_credits):
+    """Generate a warning message when credits are running low
+    
+    Args:
+        total_credits: Total available credits (daily + purchased)
+        daily_credits: Daily credits remaining
+        
+    Returns:
+        Warning message or None if no warning needed
+    """
+    if total_credits == 0:
+        return None  # Handled separately
+    elif total_credits <= 5:
+        if daily_credits > 0:
+            return "\n\n⚠️ LOW CREDITS: You have only 5 credits left! Use /daily tomorrow for free credits or /buy to purchase more."
+        else:
+            return "\n\n⚠️ LOW CREDITS: You have only 5 credits left! Use /daily for free credits or /buy to purchase more."
+    elif total_credits <= 10:
+        if daily_credits > 0:
+            return "\n\n⚠️ Running low on credits! You have 10 or fewer credits remaining. Use /daily tomorrow for free credits or /buy to purchase more."
+        else:
+            return "\n\n⚠️ Running low on credits! You have 10 or fewer credits remaining. Use /daily for free credits or /buy to purchase more."
+    elif total_credits <= 20:
+        return "\n\n💡 Heads up: You're getting low on credits (20 or less). Consider using /daily for free credits or /buy to purchase more."
+    return None
+
 def deduct_credits(user, amount):
     """Smart credit deduction: use daily credits first (check expiry), then purchased credits
     
@@ -28,7 +54,7 @@ def deduct_credits(user, amount):
         amount: Number of credits to deduct
     
     Returns:
-        tuple: (success: bool, daily_used: int, purchased_used: int)
+        tuple: (success: bool, daily_used: int, purchased_used: int, warning: str or None)
     """
     from datetime import timedelta
     
@@ -47,7 +73,7 @@ def deduct_credits(user, amount):
     
     if total_available < amount:
         logger.debug(f"Insufficient credits: need {amount}, have {total_available} (daily: {user.daily_credits}, purchased: {user.credits})")
-        return False, 0, 0
+        return False, 0, 0, None
     
     # Deduct from daily credits first
     if user.daily_credits > 0:
@@ -63,7 +89,11 @@ def deduct_credits(user, amount):
         purchased_used = amount
         logger.debug(f"Deducted {amount} from purchased credits. Remaining purchased: {user.credits}")
     
-    return True, daily_used, purchased_used
+    # Calculate remaining credits and generate warning if needed
+    remaining_total = user.daily_credits + user.credits
+    warning = get_low_credit_warning(remaining_total, user.daily_credits)
+    
+    return True, daily_used, purchased_used, warning
 
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -595,7 +625,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct 5 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 5)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 5)
                         if not success:
                             total = user.credits + user.daily_credits
                             response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
@@ -604,6 +634,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"5 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -707,7 +741,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct 3 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 3)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 3)
                         if not success:
                             total = user.credits + user.daily_credits
                             response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 3 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
@@ -716,6 +750,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"3 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -819,7 +857,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct 4 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 4)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 4)
                         if not success:
                             total = user.credits + user.daily_credits
                             response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 4 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
@@ -828,6 +866,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"4 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -931,7 +973,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct 5 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 5)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 5)
                         if not success:
                             total = user.credits + user.daily_credits
                             response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
@@ -940,6 +982,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"5 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1047,7 +1093,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct 10 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 10)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
                         if not success:
                             total = user.credits + user.daily_credits
                             response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
@@ -1056,6 +1102,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"10 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1172,7 +1222,7 @@ Bigger packs = better value!
                             return
                         
                         # Deduct credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, credits_required)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
                         if not success:
                             total = user.credits + user.daily_credits
                             model_display = "Qwen" if use_qwen else "FLUX"
@@ -1182,6 +1232,10 @@ Bigger packs = better value!
                         
                         db.session.commit()
                         logger.debug(f"{credits_required} credits deducted for {model_name} editing (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        
+                        # Send credit warning if needed
+                        if credit_warning:
+                            send_message(chat_id, credit_warning)
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1370,10 +1424,14 @@ Bigger packs = better value!
                     user = User.query.get(user_id)
                     if user:
                         # Deduct 1 credit (daily credits first, then purchased)
-                        success, daily_used, purchased_used = deduct_credits(user, 1)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 1)
                         if success:
                             db.session.commit()
                             logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                            
+                            # Store credit warning to append to response later
+                            if credit_warning:
+                                user._credit_warning = credit_warning
                         else:
                             credits_available = False
                     else:
@@ -1489,6 +1547,17 @@ Bigger packs = better value!
                 else:
                     # Send new continuation message
                     send_message(chat_id, chunk, parse_mode=None)
+        
+        # Send credit warning if there was one stored during deduction
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    user = User.query.get(user_id)
+                    if user and hasattr(user, '_credit_warning') and user._credit_warning:
+                        send_message(chat_id, user._credit_warning)
+            except Exception as e:
+                logger.debug(f"Error sending credit warning: {e}")
         
         # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
         # Credit already deducted above, so user can't use same credit twice
