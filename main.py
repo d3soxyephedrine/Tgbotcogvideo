@@ -256,7 +256,11 @@ def get_balance():
 
 @app.route('/api/messages', methods=['GET'])
 def get_messages():
-    """Get user's web chat message history (authenticated via API key)"""
+    """Get user's web chat message history (authenticated via API key)
+    
+    Query params:
+        conversation_id (optional): Filter messages by conversation ID
+    """
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
@@ -269,6 +273,7 @@ def get_messages():
         }), 401
     
     api_key = auth_header[7:]
+    conversation_id = request.args.get('conversation_id', type=int)
     
     try:
         user = User.query.filter_by(api_key=api_key).first()
@@ -278,12 +283,18 @@ def get_messages():
                 "error": "Invalid API key"
             }), 401
         
-        # Get last 20 web messages for this user
+        # Get last 20 web messages for this user, optionally filtered by conversation
         from sqlalchemy import desc
-        messages = Message.query.filter_by(
+        query = Message.query.filter_by(
             user_id=user.id,
             platform='web'
-        ).order_by(desc(Message.created_at)).limit(20).all()
+        )
+        
+        # Filter by conversation if specified
+        if conversation_id is not None:
+            query = query.filter_by(conversation_id=conversation_id)
+        
+        messages = query.order_by(desc(Message.created_at)).limit(20).all()
         
         # Reverse to chronological order
         messages = list(reversed(messages))
@@ -883,15 +894,56 @@ def chat_completions_proxy():
         
         logger.info(f"Web user message: {user_message[:100]}...")
         
+        # Get conversation_id from payload, or create/get a default conversation
+        conversation_id = payload.get('conversation_id')
+        
+        if conversation_id:
+            # Verify conversation belongs to user
+            conversation = Conversation.query.filter_by(
+                id=conversation_id,
+                user_id=user.id
+            ).first()
+            
+            if not conversation:
+                logger.warning(f"Invalid conversation_id {conversation_id} for user {user.telegram_id}")
+                return jsonify({
+                    "error": {
+                        "message": "Conversation not found",
+                        "type": "invalid_request_error",
+                        "code": "invalid_conversation"
+                    }
+                }), 404
+        else:
+            # Auto-create or get default conversation for this user
+            conversation = Conversation.query.filter_by(
+                user_id=user.id
+            ).order_by(desc(Conversation.updated_at)).first()
+            
+            if not conversation:
+                # Create first conversation for new user
+                conversation = Conversation(
+                    user_id=user.id,
+                    title='New Chat'
+                )
+                db.session.add(conversation)
+                db.session.commit()
+                logger.info(f"Created first conversation {conversation.id} for user {user.telegram_id}")
+            
+            conversation_id = conversation.id
+        
+        logger.info(f"Using conversation {conversation_id}")
+        
         # Fetch last 10 messages from database for conversation context (same as Telegram)
+        # Now filtered by conversation_id
         from sqlalchemy import desc
         subquery = db.session.query(Message.id).filter(
             Message.user_id == user.id,
-            Message.platform == 'web'
+            Message.platform == 'web',
+            Message.conversation_id == conversation_id
         ).order_by(desc(Message.created_at)).limit(10).subquery()
         
         recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
-        logger.info(f"Loaded {len(recent_messages)} previous web messages for context")
+        logger.info(f"Loaded {len(recent_messages)} previous web messages for context (conversation {conversation_id})")
         
         # Build conversation history (same format as Telegram)
         conversation_history = []
@@ -931,9 +983,10 @@ def chat_completions_proxy():
                 writing_mode=False
             )
             
-            # Store message in database
+            # Store message in database with conversation association
             message_record = Message(
                 user_id=user.id,
+                conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
                 model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
@@ -941,6 +994,10 @@ def chat_completions_proxy():
                 platform='web'
             )
             db.session.add(message_record)
+            
+            # Update conversation's updated_at timestamp
+            conversation.updated_at = datetime.utcnow()
+            
             db.session.commit()
             message_id = message_record.id
             
@@ -1000,9 +1057,10 @@ def chat_completions_proxy():
                 writing_mode=False
             )
             
-            # Store message
+            # Store message with conversation association
             message_record = Message(
                 user_id=user.id,
+                conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
                 model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
@@ -1010,6 +1068,10 @@ def chat_completions_proxy():
                 platform='web'
             )
             db.session.add(message_record)
+            
+            # Update conversation's updated_at timestamp
+            conversation.updated_at = datetime.utcnow()
+            
             db.session.commit()
             
             # Create transaction
