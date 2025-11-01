@@ -1576,13 +1576,21 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
     }
     
     # Using WAN 2.5 I2V Preview - newer image to video generation
+    # API requires nested structure with input and parameters
     data = {
-        "image_url": image_url
+        "input": {
+            "img_url": image_url
+        },
+        "parameters": {
+            "resolution": "720x1280",
+            "duration": 5,
+            "prompt_extend": True
+        }
     }
     
     # Add prompt if provided
     if prompt and prompt.strip():
-        data["prompt"] = truncate_prompt(prompt)
+        data["input"]["prompt"] = truncate_prompt(prompt)
     
     for attempt in range(max_retries):
         try:
