@@ -385,11 +385,14 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
         "X-Title": "LLM API Client"
     }
     
+    last_error = None
+    error_type = "unknown"
+    
     for attempt in range(max_retries):
         try:
             data = create_request_data(user_message, model, conversation_history)
             
-            logger.info(f"API call attempt {attempt + 1} to OpenRouter")
+            logger.info(f"API call attempt {attempt + 1}/{max_retries} to OpenRouter")
             
             # Log full request details for debugging (REDACTED system prompt for security)
             logger.debug(f"=== API REQUEST DEBUG ===")
@@ -419,26 +422,63 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
             
             # If we get a valid non-error response, return it
             if not result.startswith("Error:"):
+                logger.info(f"API call successful: {len(result)} chars")
                 return result
                 
-            # If it's an error but not rate limit, break
+            # Track error type
+            error_type = "api_error"
+            last_error = result
+            
+            # If it's an error but not rate limit or timeout, don't retry
             if "rate limit" not in result.lower() and "timeout" not in result.lower():
+                logger.warning(f"Non-retryable error: {result}")
+                break
+                
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if hasattr(e, 'response') else None
+            logger.warning(f"HTTP error on attempt {attempt + 1}/{max_retries}: {status_code}")
+            error_type = "http_error"
+            last_error = f"HTTP {status_code}"
+            
+            # Don't retry on authentication errors
+            if status_code in [401, 403]:
                 break
                 
         except requests.exceptions.Timeout:
-            logger.warning(f"Timeout on attempt {attempt + 1}")
-        except requests.exceptions.ConnectionError:
-            logger.warning(f"Connection error on attempt {attempt + 1}")
+            logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries} (60s timeout)")
+            error_type = "timeout"
+            last_error = "Request timeout"
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {str(e)}")
+            error_type = "connection"
+            last_error = "Connection failed"
+            
         except Exception as e:
-            logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
+            logger.error(f"Unexpected error on attempt {attempt + 1}/{max_retries}: {type(e).__name__} - {str(e)}")
+            error_type = "unexpected"
+            last_error = str(e)
             break
         
+        # Exponential backoff with jitter
         if attempt < max_retries - 1:
-            sleep_time = 2 ** attempt  # Exponential backoff
-            logger.info(f"Retrying in {sleep_time} seconds...")
+            base_sleep = 2 ** attempt
+            jitter = time.time() % 0.5
+            sleep_time = base_sleep + jitter
+            logger.info(f"Retrying in {sleep_time:.1f} seconds... (attempt {attempt + 2}/{max_retries})")
             time.sleep(sleep_time)
     
-    return f"Error: All {max_retries} attempts failed"
+    # Generate user-friendly error message
+    logger.error(f"All API attempts failed. Error type: {error_type}, Last error: {last_error}")
+    
+    if error_type == "timeout":
+        return "I'm sorry, the AI service is taking too long to respond. Please try again in a moment."
+    elif error_type == "connection":
+        return "I'm having trouble connecting to the AI service. Please try again shortly."
+    elif error_type == "http_error":
+        return "The AI service encountered an error. Please try again in a few moments."
+    else:
+        return "I'm experiencing technical difficulties. Please try again shortly."
 
 
 def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
@@ -466,12 +506,15 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
         "X-Title": "LLM API Client"
     }
     
+    last_error = None
+    error_type = "unknown"
+    
     for attempt in range(max_retries):
         try:
             data = create_request_data(user_message, model, conversation_history)
             data["stream"] = True  # Enable streaming
             
-            logger.info(f"Streaming API call attempt {attempt + 1} to OpenRouter")
+            logger.info(f"Streaming API call attempt {attempt + 1}/{max_retries} to OpenRouter")
             
             response = requests.post(
                 OPENROUTER_ENDPOINT,
@@ -486,6 +529,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
             accumulated_text = ""
             last_update_time = time.time()
             update_interval = 1.0  # Update every 1 second to avoid rate limits
+            chunks_received = 0
             
             for line in response.iter_lines():
                 if not line:
@@ -497,6 +541,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
                     data_str = line[6:]
                     
                     if data_str == '[DONE]':
+                        logger.debug(f"Received [DONE] marker after {chunks_received} chunks")
                         break
                     
                     try:
@@ -509,6 +554,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
                             
                             if content:
                                 accumulated_text += content
+                                chunks_received += 1
                                 
                                 # Progressive update with rate limiting
                                 current_time = time.time()
@@ -516,7 +562,8 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
                                     update_callback(accumulated_text)
                                     last_update_time = current_time
                                     
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"JSON decode error in chunk: {e}")
                         continue
             
             # Final update with complete text
@@ -524,24 +571,63 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
                 update_callback(accumulated_text)
             
             if accumulated_text:
+                logger.info(f"Streaming completed successfully: {len(accumulated_text)} chars, {chunks_received} chunks")
                 return accumulated_text
             else:
-                return "Error: Empty response from API"
+                logger.warning(f"Empty response received after {chunks_received} chunks")
+                error_type = "empty_response"
+                last_error = "API returned empty response"
+                # Don't break, retry for empty responses
+                
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if hasattr(e, 'response') else None
+            logger.warning(f"HTTP error on attempt {attempt + 1}/{max_retries}: {status_code} - {str(e)}")
+            error_type = "http_error"
+            last_error = f"HTTP {status_code}" if status_code else str(e)
+            
+            # Don't retry on authentication errors
+            if status_code in [401, 403]:
+                logger.error("Authentication error - not retrying")
+                break
                 
         except requests.exceptions.Timeout:
-            logger.warning(f"Streaming timeout on attempt {attempt + 1}")
-        except requests.exceptions.ConnectionError:
-            logger.warning(f"Streaming connection error on attempt {attempt + 1}")
+            logger.warning(f"Request timeout on attempt {attempt + 1}/{max_retries} (120s timeout)")
+            error_type = "timeout"
+            last_error = "Request timeout"
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {str(e)}")
+            error_type = "connection"
+            last_error = "Connection failed"
+            
         except Exception as e:
-            logger.error(f"Streaming attempt {attempt + 1} failed: {str(e)}")
+            logger.error(f"Unexpected error on attempt {attempt + 1}/{max_retries}: {type(e).__name__} - {str(e)}")
+            error_type = "unexpected"
+            last_error = str(e)
+            # Don't retry on unexpected errors
             break
         
+        # Exponential backoff with jitter for retries
         if attempt < max_retries - 1:
-            sleep_time = 2 ** attempt
-            logger.info(f"Retrying in {sleep_time} seconds...")
+            base_sleep = 2 ** attempt  # 1, 2, 4 seconds
+            jitter = time.time() % 0.5  # Add up to 0.5s randomness
+            sleep_time = base_sleep + jitter
+            logger.info(f"Retrying in {sleep_time:.1f} seconds... (attempt {attempt + 2}/{max_retries})")
             time.sleep(sleep_time)
     
-    return f"Error: All {max_retries} streaming attempts failed"
+    # Generate user-friendly error message
+    logger.error(f"All streaming attempts failed. Error type: {error_type}, Last error: {last_error}")
+    
+    if error_type == "timeout":
+        return "I'm sorry, the AI service is taking too long to respond. Please try again in a moment."
+    elif error_type == "connection":
+        return "I'm having trouble connecting to the AI service. Please try again shortly."
+    elif error_type == "empty_response":
+        return "The AI service returned an empty response. Please rephrase your message and try again."
+    elif error_type == "http_error":
+        return "The AI service encountered an error. Please try again in a few moments."
+    else:
+        return "I'm experiencing technical difficulties. Please try again shortly."
 
 
 def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
