@@ -8,7 +8,7 @@ import hmac
 import hashlib
 from flask import Flask, request, jsonify, render_template_string
 from telegram_handler import process_update, send_message
-from llm_api import generate_response
+from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
 from models import db, User, Message, Payment, Transaction, CryptoPayment
 from datetime import datetime
 from nowpayments_api import NOWPaymentsAPI
