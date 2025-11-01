@@ -254,6 +254,62 @@ def get_balance():
             "error": "Internal server error"
         }), 500
 
+@app.route('/api/messages', methods=['GET'])
+def get_messages():
+    """Get user's web chat message history (authenticated via API key)"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({
+            "error": "Invalid API key"
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            return jsonify({
+                "error": "Invalid API key"
+            }), 401
+        
+        # Get last 20 web messages for this user
+        from sqlalchemy import desc
+        messages = Message.query.filter_by(
+            user_id=user.id,
+            platform='web'
+        ).order_by(desc(Message.created_at)).limit(20).all()
+        
+        # Reverse to chronological order
+        messages = list(reversed(messages))
+        
+        # Format messages for frontend
+        formatted_messages = []
+        for msg in messages:
+            if msg.user_message:
+                formatted_messages.append({
+                    "role": "user",
+                    "content": msg.user_message
+                })
+            if msg.bot_response:
+                formatted_messages.append({
+                    "role": "assistant",
+                    "content": msg.bot_response
+                })
+        
+        logger.info(f"Loaded {len(formatted_messages)} web messages for user {user.telegram_id}")
+        return jsonify({"messages": formatted_messages})
+    except Exception as e:
+        logger.error(f"Error fetching messages: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
 @app.route('/stats')
 def stats():
     """Endpoint to view basic statistics about the bot usage"""

@@ -31,6 +31,8 @@
             height: 100vh;
             overflow: hidden;
             position: relative;
+            touch-action: manipulation;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* Animated Background */
@@ -43,6 +45,7 @@
             overflow: hidden;
             z-index: 0;
             background: linear-gradient(135deg, #0a0e1a 0%, #1a1f35 100%);
+            pointer-events: none;
         }
 
         .bg-animation::before {
@@ -705,12 +708,13 @@
         const saveApiKeyButton = document.getElementById('save-api-key');
         const creditBadge = document.getElementById('credit-badge');
 
-        // Show/hide API key modal
+        // Show/hide API key modal and load messages
         if (!apiKey) {
             apiKeyModal.style.display = 'flex';
         } else {
             apiKeyModal.style.display = 'none';
             updateCreditBalance();
+            loadMessageHistory();
         }
 
         // Save API key
@@ -721,6 +725,7 @@
                 localStorage.setItem('uncensored_ai_api_key', key);
                 apiKeyModal.style.display = 'none';
                 updateCreditBalance();
+                loadMessageHistory();
             } else {
                 alert('Please enter a valid API key');
             }
@@ -772,6 +777,47 @@
             } catch (error) {
                 console.error('Failed to fetch balance:', error);
                 creditBadge.textContent = 'Credits: --';
+            }
+        }
+
+        async function loadMessageHistory() {
+            if (!apiKey) return;
+
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const messages = data.messages || [];
+                    
+                    // Clear the default welcome message if there are messages to load
+                    if (messages.length > 0) {
+                        chatArea.innerHTML = '';
+                    }
+                    
+                    // Display all messages
+                    messages.forEach(msg => {
+                        addMessage(msg.role, msg.content);
+                    });
+                    
+                    // Populate conversation history for context
+                    conversationHistory = messages;
+                    
+                    console.log(`Loaded ${messages.length} messages from history`);
+                    scrollToBottom();
+                } else if (response.status === 401) {
+                    // Invalid API key
+                    console.error('Invalid API key when loading messages');
+                    localStorage.removeItem('uncensored_ai_api_key');
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Failed to load message history:', error);
             }
         }
 
