@@ -25,6 +25,9 @@ class User(db.Model):
     last_daily_claim_at = db.Column(db.DateTime, nullable=True)
     last_nudge_at = db.Column(db.DateTime, nullable=True)
     
+    # API key for web access (LibreChat integration)
+    api_key = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
@@ -43,6 +46,7 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     model_used = db.Column(db.String(100), nullable=True)
     credits_charged = db.Column(db.Integer, default=1, nullable=False)
+    platform = db.Column(db.String(20), default='telegram', nullable=False)
     
     def __repr__(self):
         return f'<Message {self.id} from user {self.user_id}>'

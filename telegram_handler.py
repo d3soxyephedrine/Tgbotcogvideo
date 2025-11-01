@@ -574,6 +574,71 @@ Bigger packs = better value!
             send_message(chat_id, response, parse_mode=None)
             return
         
+        # Check for /getapikey command
+        if text.lower() == '/getapikey':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    import secrets
+                    
+                    with current_app.app_context():
+                        # Reload user in this context
+                        user = User.query.filter_by(telegram_id=telegram_id).first()
+                        
+                        if not user:
+                            response = "❌ User not found. Please use /start first."
+                        else:
+                            # Generate API key if not exists
+                            if not user.api_key:
+                                user.api_key = secrets.token_urlsafe(48)
+                                db.session.commit()
+                                logger.info(f"Generated new API key for user {telegram_id}")
+                            
+                            # Get domain
+                            domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
+                            
+                            response = f"""🔑 Your LibreChat API Key:
+
+`{user.api_key}`
+
+📋 *Setup Instructions:*
+
+1. Install LibreChat (see librechat.ai)
+2. Add this to your `librechat.yaml`:
+
+```yaml
+endpoints:
+  custom:
+    - name: "Uncensored AI"
+      apiKey: "{user.api_key}"
+      baseURL: "https://{domain}/v1"
+      models:
+        default: ["openai/chatgpt-4o-latest"]
+      titleConvo: true
+```
+
+3. Restart LibreChat
+4. Select "Uncensored AI" from the model dropdown
+
+💳 *Credits:* Uses the SAME credit pool as Telegram!
+• Text: 1 credit/message
+• Balance: {user.credits + user.daily_credits} credits
+
+⚠️ *Keep this key private!* Anyone with this key can use your credits.
+
+Use /buy to purchase more credits or /daily for free credits.
+"""
+                except Exception as db_error:
+                    logger.error(f"Database error getting API key: {str(db_error)}")
+                    db.session.rollback()
+                    response = "❌ Error generating API key. Please try again."
+            else:
+                response = "❌ API key feature requires database access."
+            
+            # Send response with Markdown for code formatting
+            send_message(chat_id, response, parse_mode="Markdown")
+            return
+        
         # Check for /clear command
         if text.lower() == '/clear':
             if DB_AVAILABLE and user_id:

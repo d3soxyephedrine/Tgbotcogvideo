@@ -509,6 +509,227 @@ def verify_nowpayments_ipn(ipn_secret, raw_body_bytes, received_signature):
         logger.error(f"IPN signature verification error: {str(e)}")
         return False
 
+@app.route('/v1/chat/completions', methods=['POST'])
+def chat_completions_proxy():
+    """OpenAI-compatible proxy endpoint for LibreChat integration
+    
+    This endpoint:
+    - Authenticates users via API key
+    - Deducts credits (1 per request)
+    - Forwards requests to OpenRouter
+    - Returns OpenAI-compatible responses
+    - Supports streaming
+    """
+    logger.info("=" * 80)
+    logger.info("LIBRECHAT PROXY REQUEST RECEIVED")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Request path: {request.path}")
+    logger.info("=" * 80)
+    
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": {
+                "message": "Service temporarily unavailable - database not connected",
+                "type": "service_unavailable",
+                "code": "db_unavailable"
+            }
+        }), 503
+    
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        logger.warning(f"Missing or invalid Authorization header from {request.remote_addr}")
+        return jsonify({
+            "error": {
+                "message": "Invalid API key. Get yours from Telegram: /getapikey",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key"
+            }
+        }), 401
+    
+    api_key = auth_header[7:]
+    
+    try:
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            logger.warning(f"Invalid API key attempted from {request.remote_addr}")
+            return jsonify({
+                "error": {
+                    "message": "Invalid API key. Get yours from Telegram: /getapikey",
+                    "type": "invalid_request_error",
+                    "code": "invalid_api_key"
+                }
+            }), 401
+        
+        logger.info(f"Authenticated user: {user.telegram_id} (username: {user.username})")
+        
+        from telegram_handler import deduct_credits
+        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 1)
+        
+        if not success:
+            total_credits = user.daily_credits + user.credits
+            logger.warning(f"Insufficient credits for user {user.telegram_id}: {total_credits} credits")
+            
+            domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
+            buy_url = f"https://{domain}/buy?telegram_id={user.telegram_id}" if domain else f"/buy?telegram_id={user.telegram_id}"
+            
+            return jsonify({
+                "error": {
+                    "message": f"Insufficient credits. Balance: {total_credits}. Purchase: {buy_url}",
+                    "type": "insufficient_quota",
+                    "code": "insufficient_credits",
+                    "param": {
+                        "balance": total_credits,
+                        "buy_url": buy_url
+                    }
+                }
+            }), 402
+        
+        db.session.commit()
+        logger.info(f"Deducted 1 credit (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+        
+        payload = request.get_json()
+        if not payload:
+            return jsonify({
+                "error": {
+                    "message": "Invalid JSON payload",
+                    "type": "invalid_request_error",
+                    "code": "invalid_json"
+                }
+            }), 400
+        
+        is_streaming = payload.get('stream', False)
+        
+        if not OPENROUTER_API_KEY:
+            return jsonify({
+                "error": {
+                    "message": "OpenRouter API key not configured",
+                    "type": "server_error",
+                    "code": "api_key_missing"
+                }
+            }), 500
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "HTTP-Referer": request.headers.get("Referer", "https://librechat.ai"),
+            "X-Title": request.headers.get("X-Title", "LibreChat via Replit Proxy")
+        }
+        
+        logger.debug(f"Forwarding to OpenRouter: model={payload.get('model')}, streaming={is_streaming}")
+        
+        try:
+            response = requests.post(
+                OPENROUTER_ENDPOINT,
+                headers=headers,
+                json=payload,
+                timeout=120,
+                stream=is_streaming
+            )
+            
+            response.raise_for_status()
+            
+            user_message = ""
+            bot_response = ""
+            if payload.get('messages'):
+                last_msg = payload['messages'][-1]
+                if isinstance(last_msg, dict) and last_msg.get('content'):
+                    user_message = last_msg['content'][:1000]
+            
+            message_record = Message(
+                user_id=user.id,
+                user_message=user_message,
+                bot_response="",
+                model_used=payload.get('model', 'unknown'),
+                credits_charged=1,
+                platform='web'
+            )
+            db.session.add(message_record)
+            db.session.commit()
+            message_id = message_record.id
+            
+            transaction = Transaction(
+                user_id=user.id,
+                credits_used=1,
+                message_id=message_id,
+                transaction_type='web_message',
+                description=f"Web chat via LibreChat using {payload.get('model', 'unknown')}"
+            )
+            db.session.add(transaction)
+            db.session.commit()
+            
+            logger.info(f"Created message record (id={message_id}) and transaction for web request")
+            
+            if is_streaming:
+                from flask import Response
+                
+                def generate():
+                    accumulated_response = ""
+                    for line in response.iter_lines():
+                        if line:
+                            line_str = line.decode('utf-8')
+                            yield line_str + '\n'
+                            
+                            if line_str.startswith('data: ') and line_str != 'data: [DONE]':
+                                try:
+                                    data = json.loads(line_str[6:])
+                                    if data.get('choices'):
+                                        delta = data['choices'][0].get('delta', {})
+                                        content = delta.get('content', '')
+                                        if content:
+                                            accumulated_response += content
+                                except:
+                                    pass
+                    
+                    if accumulated_response and message_id:
+                        try:
+                            msg = Message.query.get(message_id)
+                            if msg:
+                                msg.bot_response = accumulated_response[:10000]
+                                db.session.commit()
+                        except:
+                            pass
+                
+                return Response(generate(), content_type='text/event-stream')
+            else:
+                response_json = response.json()
+                
+                if response_json.get('choices'):
+                    bot_response = response_json['choices'][0].get('message', {}).get('content', '')
+                    if bot_response and message_id:
+                        msg = Message.query.get(message_id)
+                        if msg:
+                            msg.bot_response = bot_response[:10000]
+                            db.session.commit()
+                
+                return jsonify(response_json)
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"OpenRouter API error: {str(e)}")
+            
+            user.credits += purchased_used
+            user.daily_credits += daily_used
+            db.session.commit()
+            logger.info(f"Refunded {purchased_used + daily_used} credits due to API error")
+            
+            return jsonify({
+                "error": {
+                    "message": f"OpenRouter API error: {str(e)}",
+                    "type": "api_error",
+                    "code": "openrouter_error"
+                }
+            }), 502
+            
+    except Exception as e:
+        logger.error(f"Proxy endpoint error: {str(e)}", exc_info=True)
+        return jsonify({
+            "error": {
+                "message": f"Internal server error: {str(e)}",
+                "type": "server_error",
+                "code": "internal_error"
+            }
+        }), 500
+
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     """Webhook endpoint to receive updates from Telegram"""
