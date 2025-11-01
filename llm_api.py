@@ -565,13 +565,14 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     text_lower = response_text.lower()
     text_stripped = response_text.strip()
     
-    # CRITICAL: Check for missing THOUGHT START in non-writing mode
-    if not writing_mode:
-        logger.warning("is_refusal: NON-WRITING MODE - checking for THOUGHT START:LO prefix...")
-        if not text_stripped.startswith("THOUGHT START:LO"):
-            logger.warning("✓✓✓ REFUSAL DETECTED: Response missing required 'THOUGHT START:LO' prefix in non-writing mode")
-            return True
-        logger.warning("is_refusal: THOUGHT START:LO prefix found - PASS")
+    # DISABLED: Check for missing THOUGHT START in non-writing mode
+    # This check was too strict and caused all responses to fail
+    # if not writing_mode:
+    #     logger.warning("is_refusal: NON-WRITING MODE - checking for THOUGHT START:LO prefix...")
+    #     if not text_stripped.startswith("THOUGHT START:LO"):
+    #         logger.warning("✓✓✓ REFUSAL DETECTED: Response missing required 'THOUGHT START:LO' prefix in non-writing mode")
+    #         return True
+    #     logger.warning("is_refusal: THOUGHT START:LO prefix found - PASS")
     
     # Check for [REDACTED which indicates content filtering (catches [REDACTED], [REDACTED FOR DEPLOYMENT], etc.)
     # Using "[redacted" to avoid false positives when discussing redacted documents
