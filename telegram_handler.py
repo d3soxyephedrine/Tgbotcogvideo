@@ -734,8 +734,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 5:
-                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                        if not user.last_purchase_at and user.images_generated >= 1:
+                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
@@ -866,8 +866,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 5:
-                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                        if not user.last_purchase_at and user.images_generated >= 1:
+                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
@@ -998,8 +998,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 5:
-                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                        if not user.last_purchase_at and user.images_generated >= 1:
+                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1130,8 +1130,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 5:
-                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                        if not user.last_purchase_at and user.images_generated >= 1:
+                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1399,8 +1399,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # IMAGE EDITING PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_edited >= 5:
-                            response = "🔒 Image editing limit reached!\n\nFree users can edit 5 images. To continue editing images, make your first purchase.\n\nUse /buy to get started with credits."
+                        if not user.last_purchase_at and user.images_edited >= 1:
+                            response = "🔒 Image editing requires purchase!\n\nImage editing is locked until you make your first purchase. Make a purchase to unlock all image editing features.\n\nUse /buy to get started with credits."
                             send_message(chat_id, response)
                             return
                         
