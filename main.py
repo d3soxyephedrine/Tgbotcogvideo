@@ -922,6 +922,132 @@ def chat_completions_proxy():
         
         logger.info(f"Web user message: {user_message[:100]}...")
         
+        # Check for memory commands (! memorize, ! memories, ! forget)
+        from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
+        
+        command_type, command_data = parse_memory_command(user_message)
+        
+        if command_type == 'store':
+            try:
+                memory = store_memory(user.id, command_data, platform='web')
+                response_content = f"✅ Memory saved! (ID: {memory.id})\n\n📝 {command_data}\n\n💡 Use `! memories` to view all saved memories."
+                
+                # Refund credit since this is a command, not an LLM request
+                user.credits += purchased_used
+                user.daily_credits += daily_used
+                db.session.commit()
+                
+                return jsonify({
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": response_content
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Failed to store memory: {e}")
+                return jsonify({
+                    "error": {
+                        "message": "Failed to save memory. Please try again.",
+                        "type": "server_error",
+                        "code": "memory_storage_failed"
+                    }
+                }), 500
+        
+        elif command_type == 'list':
+            try:
+                memories = get_user_memories(user.id)
+                response_content = format_memories_for_display(memories)
+                
+                # Refund credit since this is a command, not an LLM request
+                user.credits += purchased_used
+                user.daily_credits += daily_used
+                db.session.commit()
+                
+                return jsonify({
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": response_content
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Failed to list memories: {e}")
+                return jsonify({
+                    "error": {
+                        "message": "Failed to retrieve memories. Please try again.",
+                        "type": "server_error",
+                        "code": "memory_retrieval_failed"
+                    }
+                }), 500
+        
+        elif command_type == 'forget':
+            try:
+                memory_id = command_data
+                success = delete_memory(user.id, memory_id)
+                if success:
+                    response_content = f"🗑️ Memory [{memory_id}] deleted successfully."
+                else:
+                    response_content = f"❌ Memory [{memory_id}] not found or doesn't belong to you."
+                
+                # Refund credit since this is a command, not an LLM request
+                user.credits += purchased_used
+                user.daily_credits += daily_used
+                db.session.commit()
+                
+                return jsonify({
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": response_content
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Failed to delete memory: {e}")
+                return jsonify({
+                    "error": {
+                        "message": "Failed to delete memory. Please try again.",
+                        "type": "server_error",
+                        "code": "memory_deletion_failed"
+                    }
+                }), 500
+        
         # Get conversation_id from payload, or create/get a default conversation
         conversation_id = payload.get('conversation_id')
         
@@ -1001,13 +1127,14 @@ def chat_completions_proxy():
                 nonlocal accumulated_response
                 accumulated_response += chunk
             
-            # Call generate_response with streaming callback
+            # Call generate_response with streaming callback (include user_id for memory injection)
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
                 use_streaming=True,
                 update_callback=update_callback,
-                writing_mode=False
+                writing_mode=False,
+                user_id=user.id
             )
             
             # Auto-title if first message
@@ -1079,12 +1206,13 @@ def chat_completions_proxy():
             
             return Response(generate_openai_stream(), content_type='text/event-stream')
         else:
-            # Non-streaming response
+            # Non-streaming response (include user_id for memory injection)
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
                 use_streaming=False,
-                writing_mode=False
+                writing_mode=False,
+                user_id=user.id
             )
             
             # Auto-title if first message
