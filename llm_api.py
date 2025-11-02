@@ -374,12 +374,13 @@ def handle_api_response(response: requests.Response) -> str:
 
 
 def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3) -> str:
-    """Make API call to xAI Grok-3 with retry logic (TEMPORARILY using xAI instead of OpenRouter)"""
+    """Make API call to xAI Grok-2-1212 with retry logic (TEMPORARILY using xAI instead of OpenRouter)"""
     
     if not XAI_API_KEY:
         raise ValueError("XAI_API_KEY not configured")
     
-    model = os.environ.get('MODEL', DEFAULT_MODEL)
+    # FORCE use of grok-2-1212 (ignore MODEL env var temporarily)
+    model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
     
     headers = {
         "Content-Type": "application/json",
@@ -393,7 +394,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
         try:
             data = create_request_data(user_message, model, conversation_history)
             
-            logger.info(f"API call attempt {attempt + 1}/{max_retries} to xAI Grok-3")
+            logger.info(f"API call attempt {attempt + 1}/{max_retries} to xAI Grok-2-1212")
             
             # Log full request details for debugging (REDACTED system prompt for security)
             logger.debug(f"=== API REQUEST DEBUG ===")
@@ -483,7 +484,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
 
 
 def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
-    """Make streaming API call to xAI Grok-3 with progressive updates (TEMPORARILY using xAI instead of OpenRouter)
+    """Make streaming API call to xAI Grok-2-1212 with progressive updates (TEMPORARILY using xAI instead of OpenRouter)
     
     Args:
         user_message: The user's message
@@ -498,7 +499,8 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
     if not XAI_API_KEY:
         raise ValueError("XAI_API_KEY not configured")
     
-    model = os.environ.get('MODEL', DEFAULT_MODEL)
+    # FORCE use of grok-2-1212 (ignore MODEL env var temporarily)
+    model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
     
     headers = {
         "Content-Type": "application/json",
@@ -513,7 +515,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
             data = create_request_data(user_message, model, conversation_history)
             data["stream"] = True  # Enable streaming
             
-            logger.info(f"Streaming API call attempt {attempt + 1}/{max_retries} to xAI Grok-3")
+            logger.info(f"Streaming API call attempt {attempt + 1}/{max_retries} to xAI Grok-2-1212")
             
             response = requests.post(
                 XAI_ENDPOINT,
@@ -772,7 +774,8 @@ def generate_response(user_message: str, conversation_history: list = None, use_
         return "Error: Empty user message"
     
     try:
-        model = os.environ.get('MODEL', DEFAULT_MODEL)
+        # FORCE use of grok-2-1212 (ignore MODEL env var temporarily)
+        model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
         logger.info(f"Generating response using xAI with model {model} (TEMPORARY - was OpenRouter)")
         
         # Fetch and inject user memories if user_id provided
