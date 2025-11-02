@@ -722,6 +722,12 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
+                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at and user.images_generated >= 5:
+                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
+                            return
+                        
                         # Deduct 5 credits immediately (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, 5)
                         if not success:
@@ -789,8 +795,14 @@ Use /buy to purchase more credits or /daily for free credits.
                                     description=f"Image generation: {prompt[:100]}"
                                 )
                                 db.session.add(transaction)
+                                
+                                # Increment images_generated counter
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.images_generated += 1
+                                
                                 db.session.commit()
-                                logger.debug(f"Image transaction stored synchronously: message_id={message_id}")
+                                logger.debug(f"Image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -840,6 +852,12 @@ Use /buy to purchase more credits or /daily for free credits.
                         if not user:
                             logger.error(f"User not found for Qwen image generation: {user_id}")
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at and user.images_generated >= 5:
+                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
                             return
                         
                         # Deduct 3 credits immediately (daily credits first, then purchased)
@@ -909,8 +927,14 @@ Use /buy to purchase more credits or /daily for free credits.
                                     description=f"Qwen image generation: {prompt[:100]}"
                                 )
                                 db.session.add(transaction)
+                                
+                                # Increment images_generated counter
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.images_generated += 1
+                                
                                 db.session.commit()
-                                logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}")
+                                logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Qwen image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -960,6 +984,12 @@ Use /buy to purchase more credits or /daily for free credits.
                         if not user:
                             logger.error(f"User not found for Grok image generation: {user_id}")
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at and user.images_generated >= 5:
+                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
                             return
                         
                         # Deduct 4 credits immediately (daily credits first, then purchased)
@@ -1029,8 +1059,14 @@ Use /buy to purchase more credits or /daily for free credits.
                                     description=f"Grok image generation: {prompt[:100]}"
                                 )
                                 db.session.add(transaction)
+                                
+                                # Increment images_generated counter
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.images_generated += 1
+                                
                                 db.session.commit()
-                                logger.debug(f"Grok image transaction stored synchronously: message_id={message_id}")
+                                logger.debug(f"Grok image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Grok image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -1080,6 +1116,12 @@ Use /buy to purchase more credits or /daily for free credits.
                         if not user:
                             logger.error(f"User not found for Hunyuan image generation: {user_id}")
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at and user.images_generated >= 5:
+                            response = "🔒 Image generation limit reached!\n\nFree users can generate 5 images. To continue generating images, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
                             return
                         
                         # Deduct 5 credits immediately (daily credits first, then purchased)
@@ -1149,8 +1191,14 @@ Use /buy to purchase more credits or /daily for free credits.
                                     description=f"Hunyuan image generation: {prompt[:100]}"
                                 )
                                 db.session.add(transaction)
+                                
+                                # Increment images_generated counter
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.images_generated += 1
+                                
                                 db.session.commit()
-                                logger.debug(f"Hunyuan image transaction stored synchronously: message_id={message_id}")
+                                logger.debug(f"Hunyuan image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Hunyuan image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -1339,6 +1387,12 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, "❌ User account not found. Please try /start first.")
                             return
                         
+                        # IMAGE EDITING PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at and user.images_edited >= 5:
+                            response = "🔒 Image editing limit reached!\n\nFree users can edit 5 images. To continue editing images, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
+                            return
+                        
                         # Deduct credits immediately (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
                         if not success:
@@ -1447,8 +1501,14 @@ Use /buy to purchase more credits or /daily for free credits.
                                             description=f"{model_name}: {edit_prompt[:100]}"
                                         )
                                         db.session.add(transaction)
+                                        
+                                        # Increment images_edited counter
+                                        user = User.query.get(user_id)
+                                        if user:
+                                            user.images_edited += 1
+                                        
                                         db.session.commit()
-                                        logger.debug(f"Image edit transaction stored synchronously: message_id={message_id}")
+                                        logger.debug(f"Image edit transaction stored synchronously: message_id={message_id}, images_edited={user.images_edited if user else 'N/A'}")
                                 except Exception as db_error:
                                     logger.error(f"Database error storing image edit message/transaction: {str(db_error)}")
                                     # Flask-SQLAlchemy automatically rolls back on exception within app context
