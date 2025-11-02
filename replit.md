@@ -40,7 +40,8 @@ Preferred communication style: Simple, everyday language.
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
 - **Deduction Logic**: Daily credits used first, then purchased credits.
 - **Pricing**: Text messages (1 credit), image generation (3-5 credits), image editing (5-6 credits), video generation (10 credits).
-- **Monetization Features**: Video generation locked until first purchase. New users receive 100 free credits.
+- **Monetization Features**: Free user limits (5 image generations, 5 image edits, 0 videos before first purchase). Video generation locked until first purchase. New users receive 100 free credits.
+- **Usage Tracking**: `images_generated` and `images_edited` counters track free user limits.
 - **Purchase Flow**: Integrated web-based purchase page with NOWPayments for cryptocurrency payments and IPN callbacks.
 
 ### Message Processing Flow
