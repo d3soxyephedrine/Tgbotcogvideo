@@ -1035,8 +1035,11 @@
             }
         });
 
-        // New chat button
-        newChatBtn.addEventListener('click', createNewConversation);
+        // New chat button - prevent event bubbling on mobile
+        newChatBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            createNewConversation();
+        });
 
         // Mobile menu toggle
         if (menuToggle) {
@@ -1046,11 +1049,18 @@
             });
         }
 
-        // Close sidebar when clicking backdrop
+        // Close sidebar when clicking backdrop (not sidebar content)
         if (sidebarBackdrop) {
             sidebarBackdrop.addEventListener('click', () => {
                 sidebar.classList.remove('active');
                 sidebarBackdrop.classList.remove('active');
+            });
+        }
+        
+        // Prevent sidebar clicks from closing on mobile
+        if (sidebar) {
+            sidebar.addEventListener('click', (e) => {
+                e.stopPropagation();
             });
         }
 
