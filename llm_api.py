@@ -13,14 +13,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Environment configuration
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")  # Kept for future use
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
-
-# TEMPORARILY USING XAI GROK-3-MINI (was: openai/chatgpt-4o-latest)
-DEFAULT_MODEL = "grok-3-mini"
-XAI_ENDPOINT = "https://api.x.ai/v1/chat/completions"
-OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"  # Kept for future use
+DEFAULT_MODEL = "openai/chatgpt-4o-latest"
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
 NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
 NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
@@ -374,17 +371,18 @@ def handle_api_response(response: requests.Response) -> str:
 
 
 def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3) -> str:
-    """Make API call to xAI Grok-3-Mini with retry logic (TEMPORARILY using xAI instead of OpenRouter)"""
+    """Make API call to OpenRouter with retry logic"""
     
-    if not XAI_API_KEY:
-        raise ValueError("XAI_API_KEY not configured")
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not configured")
     
-    # FORCE use of grok-4 (ignore MODEL env var temporarily)
-    model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
+    model = os.environ.get('MODEL', DEFAULT_MODEL)
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {XAI_API_KEY}"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/yourusername/llm-api",
+        "X-Title": "LLM API Client"
     }
     
     last_error = None
@@ -394,11 +392,11 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
         try:
             data = create_request_data(user_message, model, conversation_history)
             
-            logger.info(f"API call attempt {attempt + 1}/{max_retries} to xAI Grok-3-Mini")
+            logger.info(f"API call attempt {attempt + 1}/{max_retries} to OpenRouter")
             
             # Log full request details for debugging (REDACTED system prompt for security)
             logger.debug(f"=== API REQUEST DEBUG ===")
-            logger.debug(f"Endpoint: {XAI_ENDPOINT}")
+            logger.debug(f"Endpoint: {OPENROUTER_ENDPOINT}")
             logger.debug(f"Model: {data.get('model')}")
             logger.debug(f"Temperature: {data.get('temperature')}")
             logger.debug(f"Max tokens: {data.get('max_tokens')}")
@@ -414,7 +412,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
             logger.debug(f"=== END REQUEST DEBUG ===")
             
             response = requests.post(
-                XAI_ENDPOINT, 
+                OPENROUTER_ENDPOINT, 
                 headers=headers, 
                 json=data,
                 timeout=60
@@ -484,7 +482,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
 
 
 def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
-    """Make streaming API call to xAI Grok-3-Mini with progressive updates (TEMPORARILY using xAI instead of OpenRouter)
+    """Make streaming API call to OpenRouter with progressive updates
     
     Args:
         user_message: The user's message
@@ -496,15 +494,16 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
         Complete response text
     """
     
-    if not XAI_API_KEY:
-        raise ValueError("XAI_API_KEY not configured")
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY not configured")
     
-    # FORCE use of grok-4 (ignore MODEL env var temporarily)
-    model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
+    model = os.environ.get('MODEL', DEFAULT_MODEL)
     
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {XAI_API_KEY}"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/yourusername/llm-api",
+        "X-Title": "LLM API Client"
     }
     
     last_error = None
@@ -515,10 +514,10 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
             data = create_request_data(user_message, model, conversation_history)
             data["stream"] = True  # Enable streaming
             
-            logger.info(f"Streaming API call attempt {attempt + 1}/{max_retries} to xAI Grok-3-Mini")
+            logger.info(f"Streaming API call attempt {attempt + 1}/{max_retries} to OpenRouter")
             
             response = requests.post(
-                XAI_ENDPOINT,
+                OPENROUTER_ENDPOINT,
                 headers=headers,
                 json=data,
                 timeout=120,
@@ -774,9 +773,8 @@ def generate_response(user_message: str, conversation_history: list = None, use_
         return "Error: Empty user message"
     
     try:
-        # FORCE use of grok-3-mini (ignore MODEL env var temporarily)
-        model = DEFAULT_MODEL  # Was: os.environ.get('MODEL', DEFAULT_MODEL)
-        logger.info(f"Generating response using xAI with model {model} (TEMPORARY - was OpenRouter)")
+        model = os.environ.get('MODEL', DEFAULT_MODEL)
+        logger.info(f"Generating response using OpenRouter with model {model}")
         
         # Fetch and inject user memories if user_id provided
         if user_id:
