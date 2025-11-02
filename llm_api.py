@@ -17,8 +17,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")  # Kept for future use
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
 
-# TEMPORARILY USING XAI GROK-3 (was: openai/chatgpt-4o-latest)
-DEFAULT_MODEL = "grok-3"
+# TEMPORARILY USING XAI GROK-2-1212 (was: openai/chatgpt-4o-latest)
+DEFAULT_MODEL = "grok-2-1212"
 XAI_ENDPOINT = "https://api.x.ai/v1/chat/completions"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"  # Kept for future use
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
