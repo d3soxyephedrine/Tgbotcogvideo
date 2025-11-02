@@ -1036,15 +1036,8 @@ def chat_completions_proxy():
                 writing_mode=False
             )
             
-            # Check if this is the first message in the conversation - auto-title it
-            message_count = Message.query.filter_by(conversation_id=conversation_id).count()
-            if message_count == 0 and conversation.title == 'New Chat':
-                # Use first 50 characters of user message as title
-                new_title = user_message[:50]
-                if len(user_message) > 50:
-                    new_title += "..."
-                conversation.title = new_title
-                logger.info(f"Auto-titled conversation {conversation_id}: {new_title}")
+            # Auto-title if first message
+            auto_title_conversation_if_first_message(conversation, user_message, conversation_id)
             
             # Store message in database with conversation association
             message_record = Message(
@@ -1120,15 +1113,8 @@ def chat_completions_proxy():
                 writing_mode=False
             )
             
-            # Check if this is the first message in the conversation - auto-title it
-            message_count = Message.query.filter_by(conversation_id=conversation_id).count()
-            if message_count == 0 and conversation.title == 'New Chat':
-                # Use first 50 characters of user message as title
-                new_title = user_message[:50]
-                if len(user_message) > 50:
-                    new_title += "..."
-                conversation.title = new_title
-                logger.info(f"Auto-titled conversation {conversation_id}: {new_title}")
+            # Auto-title if first message
+            auto_title_conversation_if_first_message(conversation, user_message, conversation_id)
             
             # Store message with conversation association
             message_record = Message(
