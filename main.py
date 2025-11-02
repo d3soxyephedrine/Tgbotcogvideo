@@ -296,29 +296,15 @@ def chat():
     return render_template('chat.html')
 
 @app.route('/api/balance', methods=['GET'])
-def get_balance():
+@require_api_key
+def get_balance(user):
     """Get user's credit balance (authenticated via API key)"""
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
     
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({
-            "error": "Invalid API key"
-        }), 401
-    
-    api_key = auth_header[7:]
-    
     try:
-        user = User.query.filter_by(api_key=api_key).first()
-        
-        if not user:
-            return jsonify({
-                "error": "Invalid API key"
-            }), 401
-        
         # Calculate total credits with defensive handling for None values
         daily_credits = user.daily_credits if user.daily_credits is not None else 0
         purchased_credits = user.credits if user.credits is not None else 0
@@ -336,7 +322,8 @@ def get_balance():
         }), 500
 
 @app.route('/api/messages', methods=['GET'])
-def get_messages():
+@require_api_key
+def get_messages(user):
     """Get user's web chat message history (authenticated via API key)
     
     Query params:
@@ -347,23 +334,9 @@ def get_messages():
             "error": "Service temporarily unavailable"
         }), 503
     
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({
-            "error": "Invalid API key"
-        }), 401
-    
-    api_key = auth_header[7:]
     conversation_id = request.args.get('conversation_id', type=int)
     
     try:
-        user = User.query.filter_by(api_key=api_key).first()
-        
-        if not user:
-            return jsonify({
-                "error": "Invalid API key"
-            }), 401
-        
         # Get web messages for this user, optionally filtered by conversation
         from sqlalchemy import desc
         query = Message.query.filter_by(
@@ -406,29 +379,15 @@ def get_messages():
         }), 500
 
 @app.route('/api/conversations', methods=['GET'])
-def get_conversations():
+@require_api_key
+def get_conversations(user):
     """Get all conversations for authenticated user"""
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
     
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({
-            "error": "Invalid API key"
-        }), 401
-    
-    api_key = auth_header[7:]
-    
     try:
-        user = User.query.filter_by(api_key=api_key).first()
-        
-        if not user:
-            return jsonify({
-                "error": "Invalid API key"
-            }), 401
-        
         # Get all conversations with message counts in a single query (eliminates N+1 problem)
         from sqlalchemy import desc, func
         conversations_with_counts = db.session.query(
@@ -460,29 +419,15 @@ def get_conversations():
         }), 500
 
 @app.route('/api/conversations', methods=['POST'])
-def create_conversation():
+@require_api_key
+def create_conversation(user):
     """Create a new conversation for authenticated user"""
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
     
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({
-            "error": "Invalid API key"
-        }), 401
-    
-    api_key = auth_header[7:]
-    
     try:
-        user = User.query.filter_by(api_key=api_key).first()
-        
-        if not user:
-            return jsonify({
-                "error": "Invalid API key"
-            }), 401
-        
         # Get and validate title
         data = request.get_json() or {}
         title = data.get('title', 'New Chat').strip()[:255]  # Max length from schema
@@ -515,29 +460,15 @@ def create_conversation():
         }), 500
 
 @app.route('/api/conversations/<int:conversation_id>', methods=['DELETE'])
-def delete_conversation(conversation_id):
+@require_api_key
+def delete_conversation(conversation_id, user):
     """Delete a conversation and all its messages"""
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
     
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Bearer '):
-        return jsonify({
-            "error": "Invalid API key"
-        }), 401
-    
-    api_key = auth_header[7:]
-    
     try:
-        user = User.query.filter_by(api_key=api_key).first()
-        
-        if not user:
-            return jsonify({
-                "error": "Invalid API key"
-            }), 401
-        
         # Find the conversation
         conversation = Conversation.query.filter_by(
             id=conversation_id,
