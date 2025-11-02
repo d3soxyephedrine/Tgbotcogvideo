@@ -34,6 +34,7 @@ class User(db.Model):
     transactions = db.relationship('Transaction', backref='user', lazy=True)
     crypto_payments = db.relationship('CryptoPayment', backref='user', lazy=True)
     conversations = db.relationship('Conversation', backref='user', lazy=True, cascade='all, delete-orphan')
+    memories = db.relationship('Memory', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def __repr__(self):
         return f'<User {self.telegram_id}>'
@@ -126,3 +127,19 @@ class CryptoPayment(db.Model):
     
     def __repr__(self):
         return f'<CryptoPayment {self.payment_id} for user {self.user_id}>'
+
+class Memory(db.Model):
+    """Memory model to store user-defined persistent memories"""
+    __tablename__ = 'memory'
+    __table_args__ = (
+        db.Index('idx_user_created', 'user_id', 'created_at'),
+    )
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    platform = db.Column(db.String(20), default='telegram', nullable=False)
+    
+    def __repr__(self):
+        return f'<Memory {self.id} for user {self.user_id}>'
