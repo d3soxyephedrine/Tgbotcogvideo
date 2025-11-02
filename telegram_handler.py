@@ -3,7 +3,8 @@ import logging
 import requests
 import threading
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
-from models import db, User, Message, Payment, Transaction
+from models import db, User, Message, Payment, Transaction, Memory
+from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
 from datetime import datetime
 
 DEFAULT_MODEL = "openai/gpt-4o"
@@ -1524,6 +1525,64 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send response
             send_message(chat_id, response, parse_mode=None)
             return
+        
+        # Check for memory commands (! memorize, ! memories, ! forget)
+        command_type, command_data = parse_memory_command(text)
+        
+        if command_type == 'store':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        memory = store_memory(user.id, command_data, platform='telegram')
+                        response = f"✅ Memory saved! (ID: {memory.id})\n\n📝 {command_data}\n\n💡 Use `! memories` to view all saved memories."
+                        send_message(chat_id, response, parse_mode="Markdown")
+                        return
+                except Exception as e:
+                    logger.error(f"Failed to store memory: {e}")
+                    send_message(chat_id, "❌ Failed to save memory. Please try again.")
+                    return
+            else:
+                send_message(chat_id, "❌ Memory system requires database access.")
+                return
+        
+        elif command_type == 'list':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        memories = get_user_memories(user.id)
+                        response = format_memories_for_display(memories)
+                        send_message(chat_id, response, parse_mode="Markdown")
+                        return
+                except Exception as e:
+                    logger.error(f"Failed to list memories: {e}")
+                    send_message(chat_id, "❌ Failed to retrieve memories. Please try again.")
+                    return
+            else:
+                send_message(chat_id, "❌ Memory system requires database access.")
+                return
+        
+        elif command_type == 'forget':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        memory_id = command_data
+                        success = delete_memory(user.id, memory_id)
+                        if success:
+                            response = f"🗑️ Memory [{memory_id}] deleted successfully."
+                        else:
+                            response = f"❌ Memory [{memory_id}] not found or doesn't belong to you."
+                        send_message(chat_id, response)
+                        return
+                except Exception as e:
+                    logger.error(f"Failed to delete memory: {e}")
+                    send_message(chat_id, "❌ Failed to delete memory. Please try again.")
+                    return
+            else:
+                send_message(chat_id, "❌ Memory system requires database access.")
+                return
         
         # Check for /write command (professional writing mode)
         writing_mode = False
