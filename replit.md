@@ -20,7 +20,7 @@ Preferred communication style: Simple, everyday language.
 - **Resilience**: Connection pooling, retry logic, and graceful degradation.
 
 ### LLM Provider Architecture
-- **Text Generation**: **TEMPORARILY using Grok-3 via xAI API** (was: ChatGPT-4o-latest via OpenRouter).
+- **Text Generation**: **TEMPORARILY using Grok-2-1212 via xAI API** (was: ChatGPT-4o-latest via OpenRouter).
   - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing and anti-refusal enforcement. Includes an anti-leak protocol and system prompt with Unicode homoglyph output obfuscation for trigger words.
   - **Refusal/Meta-Commentary Detection**: Automatic detection and reflection prompts to ensure content delivery and prevent evasive responses.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>".
