@@ -1700,8 +1700,8 @@ Use /buy to purchase more credits or /daily for free credits.
                 display_text = accumulated_text + " ▌"
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
         
-        # Generate response with streaming and progressive updates
-        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode)
+        # Generate response with streaming and progressive updates (include user_id for memory injection)
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id)
         
         # Final update with complete response (remove typing indicator and handle continuation)
         if len(llm_response) <= CHUNK_SIZE:

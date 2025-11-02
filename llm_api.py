@@ -758,7 +758,7 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     return False
 
 
-def generate_response(user_message: str, conversation_history: list = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False) -> str:
+def generate_response(user_message: str, conversation_history: list = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False, user_id: int = None) -> str:
     """Main response generation function with enhanced error handling and auto-refusal correction
     
     Args:
@@ -767,6 +767,7 @@ def generate_response(user_message: str, conversation_history: list = None, use_
         use_streaming: Whether to use streaming API (default: True for better performance)
         update_callback: Optional callback for progressive updates when streaming
         writing_mode: If True, inject professional writing instructions (default: False)
+        user_id: Optional user ID for fetching persistent memories
     """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
@@ -774,6 +775,42 @@ def generate_response(user_message: str, conversation_history: list = None, use_
     try:
         model = os.environ.get('MODEL', DEFAULT_MODEL)
         logger.info(f"Generating response using OpenRouter with model {model}")
+        
+        # Fetch and inject user memories if user_id provided
+        if user_id:
+            try:
+                from memory_utils import get_user_memories, format_memories_for_context, truncate_memories_to_fit
+                
+                # Fetch memories (newest first)
+                user_memories = get_user_memories(user_id, limit=50)
+                
+                if user_memories:
+                    # Truncate memories to fit token budget (reserve 2000 tokens)
+                    memories_in_budget = truncate_memories_to_fit(user_memories, token_limit=2000)
+                    
+                    if memories_in_budget:
+                        memory_context = format_memories_for_context(memories_in_budget)
+                        
+                        # Create memory injection message
+                        memory_message = {
+                            "role": "system",
+                            "content": f"USER'S PERSISTENT MEMORIES (for context):\n{memory_context}\n\n[These are facts the user explicitly asked you to remember. Reference them naturally when relevant.]"
+                        }
+                        
+                        # Inject memories at the beginning of conversation history
+                        if conversation_history:
+                            conversation_history = [memory_message] + conversation_history
+                        else:
+                            conversation_history = [memory_message]
+                        
+                        logger.info(f"Injected {len(memories_in_budget)} memories into LLM context ({estimate_tokens(memory_context)} tokens)")
+                    else:
+                        logger.debug("No memories fit within token budget")
+                else:
+                    logger.debug("No memories found for user")
+            except Exception as e:
+                logger.error(f"Failed to fetch/inject memories: {e}")
+                # Continue without memories if there's an error
         
         # Inject professional writing instructions if writing_mode is enabled
         if writing_mode:
