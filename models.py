@@ -28,6 +28,10 @@ class User(db.Model):
     # API key for web access (LibreChat integration)
     api_key = db.Column(db.String(64), unique=True, nullable=True, index=True)
     
+    # Free user limits (paywall counters)
+    images_generated = db.Column(db.Integer, default=0, nullable=False)
+    images_edited = db.Column(db.Integer, default=0, nullable=False)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
