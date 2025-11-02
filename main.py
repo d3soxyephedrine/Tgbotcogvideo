@@ -450,9 +450,11 @@ def create_conversation():
                 "error": "Invalid API key"
             }), 401
         
-        # Get title from request body (optional)
+        # Get and validate title
         data = request.get_json() or {}
-        title = data.get('title', 'New Chat')
+        title = data.get('title', 'New Chat').strip()[:255]  # Max length from schema
+        if not title:
+            title = 'New Chat'
         
         # Create new conversation
         new_conversation = Conversation(
@@ -986,16 +988,15 @@ def chat_completions_proxy():
         
         logger.info(f"Using conversation {conversation_id}")
         
-        # Fetch last 10 messages from database for conversation context (same as Telegram)
-        # Now filtered by conversation_id
-        from sqlalchemy import desc
-        subquery = db.session.query(Message.id).filter(
-            Message.user_id == user.id,
-            Message.platform == 'web',
-            Message.conversation_id == conversation_id
-        ).order_by(desc(Message.created_at)).limit(10).subquery()
+        # Load last 10 messages efficiently (optimized single query)
+        recent_messages = Message.query.filter_by(
+            conversation_id=conversation_id,
+            platform='web'
+        ).order_by(Message.created_at.desc()).limit(10).all()
         
-        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+        # Reverse to get chronological order (oldest first)
+        recent_messages.reverse()
+        
         logger.info(f"Loaded {len(recent_messages)} previous web messages for context (conversation {conversation_id})")
         
         # Build conversation history (same format as Telegram)
