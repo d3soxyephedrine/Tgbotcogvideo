@@ -297,6 +297,7 @@ def get_help_message():
 /balance - Check your credit balance
 /buy - Purchase credits with volume bonuses
 /clear - Clear your conversation history
+/getapikey - Get your API key for web access (private chats only)
 /imagine <prompt> - High quality photorealistic images (5 credits)
 /uncensored <prompt> - Fully uncensored image generation (5 credits)
 /edit <prompt> - Image generation optimized for editing (3 credits)
@@ -333,6 +334,14 @@ Use /write for stories, scenes, or creative content!
 • Starts immediately with the story (no preamble)
 • Fully uncensored creative writing
 Example: /write a NSFW scene with Sydney Sweeney
+
+🧠 *Persistent Memory:*
+The AI can remember important info across sessions!
+• ! memorize <text> - Store a memory (or ! remember)
+• ! memories - View all your saved memories
+• ! forget <id> - Delete a specific memory by ID
+Example: ! memorize I love cats and prefer dark themes
+💡 Memory commands are FREE (0 credits)
 
 💡 *Pricing:*
 • Text message: 1 credit
