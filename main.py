@@ -348,28 +348,30 @@ def get_conversations():
                 "error": "Invalid API key"
             }), 401
         
-        # Get all conversations for this user, ordered by most recent first
-        from sqlalchemy import desc
-        conversations = Conversation.query.filter_by(
-            user_id=user.id
-        ).order_by(desc(Conversation.updated_at)).all()
+        # Get all conversations with message counts in a single query (eliminates N+1 problem)
+        from sqlalchemy import desc, func
+        conversations_with_counts = db.session.query(
+            Conversation,
+            func.count(Message.id).label('message_count')
+        ).outerjoin(Message).filter(
+            Conversation.user_id == user.id
+        ).group_by(Conversation.id).order_by(
+            desc(Conversation.updated_at)
+        ).all()
         
         # Format conversations for frontend
-        formatted_conversations = []
-        for conv in conversations:
-            # Get message count for this conversation
-            message_count = Message.query.filter_by(conversation_id=conv.id).count()
-            
-            formatted_conversations.append({
+        conversation_list = []
+        for conv, msg_count in conversations_with_counts:
+            conversation_list.append({
                 "id": conv.id,
                 "title": conv.title,
                 "created_at": conv.created_at.isoformat(),
                 "updated_at": conv.updated_at.isoformat(),
-                "message_count": message_count
+                "message_count": msg_count
             })
         
-        logger.info(f"Loaded {len(formatted_conversations)} conversations for user {user.telegram_id}")
-        return jsonify({"conversations": formatted_conversations})
+        logger.info(f"Loaded {len(conversation_list)} conversations for user {user.telegram_id}")
+        return jsonify({"conversations": conversation_list})
     except Exception as e:
         logger.error(f"Error fetching conversations: {str(e)}")
         return jsonify({
