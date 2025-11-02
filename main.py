@@ -178,6 +178,54 @@ else:
 # We'll just use localhost since we're pinging ourselves
 KEEPALIVE_URL = "http://localhost:5000"
 
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def auto_title_conversation_if_first_message(conversation, user_message, conversation_id):
+    """Auto-title conversation if this is the first message"""
+    message_count = Message.query.filter_by(conversation_id=conversation_id).count()
+    if message_count == 0 and conversation.title == 'New Chat':
+        new_title = user_message[:50]
+        if len(user_message) > 50:
+            new_title += "..."
+        conversation.title = new_title
+        logger.info(f"Auto-titled conversation {conversation_id}: {new_title}")
+
+def mask_api_key(key):
+    """Mask API key for safe logging"""
+    if not key or len(key) < 8:
+        return "***"
+    return f"{key[:3]}...{key[-3:]}"
+
+from functools import wraps
+
+def require_api_key(f):
+    """Decorator to require and validate API key authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not DB_AVAILABLE:
+            return jsonify({"error": "Service temporarily unavailable"}), 503
+            
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Missing or invalid authorization header"}), 401
+        
+        api_key = auth_header[7:]
+        user = User.query.filter_by(api_key=api_key).first()
+        
+        if not user:
+            logger.warning(f"Invalid API key attempted: {mask_api_key(api_key)}")
+            return jsonify({"error": "Invalid API key"}), 401
+        
+        # Pass user to the route function
+        return f(user=user, *args, **kwargs)
+    return decorated_function
+
+# ============================================================================
+# ROUTES
+# ============================================================================
+
 @app.route('/')
 def home():
     """Health check endpoint that returns a simple message"""
