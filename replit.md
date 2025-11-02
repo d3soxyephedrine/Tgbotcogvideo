@@ -16,7 +16,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
-- **Schema Design**: Five models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`) for user profiles, message history, and a pay-per-use credit system. Extensions include columns for daily credits, purchase tracking, action history, and `api_key` for web access. The `Message` model includes a `platform` column to track message source (Telegram or web).
+- **Schema Design**: Six models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`, `Memory`) for user profiles, message history, pay-per-use credit system, and persistent user memories. Extensions include columns for daily credits, purchase tracking, action history, and `api_key` for web access. The `Message` model includes a `platform` column to track message source (Telegram or web). The `Memory` model stores user-specific memories with platform tracking.
 - **Resilience**: Connection pooling, retry logic, and graceful degradation.
 
 ### LLM Provider Architecture
@@ -50,6 +50,15 @@ Preferred communication style: Simple, everyday language.
 
 ### Conversation Memory
 - The bot remembers the last 10 messages for context, with manual clearing via `/clear`.
+
+### Persistent Memory System
+- **Architecture**: User-specific memory storage that persists across sessions and platforms.
+- **Commands**: `! memorize [text]` stores a memory, `! memories` lists all memories, `! forget [id]` deletes a memory by ID. Commands also support `! remember` as an alias for `! memorize`.
+- **Cross-Platform**: Works on both Telegram and web chat with shared memory pool per user.
+- **LLM Integration**: Memories are automatically fetched and injected into conversation context between the system prompt and conversation history, enabling the AI to remember user preferences, facts, and context across sessions.
+- **Token Budget**: Memories are allocated a 2000-token budget with binary search truncation to prevent context overflow.
+- **Credit System**: Memory commands cost 0 credits (credits are refunded after command execution).
+- **Platform Tracking**: Each memory is tagged with its creation platform (Telegram or web) for analytics.
 
 ### Token Budget Management
 - Ensures system prompt integrity with a 16,000-token input budget, prioritizing system prompt, then user messages, and older history. Max output tokens: 8,000.
