@@ -233,7 +233,9 @@ def home():
 
 @app.route('/health')
 def health_check():
-    """Comprehensive health check endpoint for deployment monitoring"""
+    """Comprehensive health check endpoint with database latency testing"""
+    start_time = time.time()
+    
     health_status = {
         "status": "healthy",
         "environment_valid": env_valid,
@@ -245,6 +247,37 @@ def health_check():
         "bot_token_configured": BOT_TOKEN is not None,
         "timestamp": time.time()
     }
+    
+    # Test database latency if available
+    if DB_AVAILABLE:
+        try:
+            db_start = time.time()
+            # Simple query to test database responsiveness
+            db.session.execute(db.text("SELECT 1"))
+            db_latency_ms = (time.time() - db_start) * 1000
+            
+            health_status["database"]["latency_ms"] = round(db_latency_ms, 2)
+            health_status["database"]["status"] = "responsive"
+            
+            # Get table counts for monitoring
+            user_count = User.query.count()
+            message_count = Message.query.count()
+            conversation_count = Conversation.query.count()
+            
+            health_status["database"]["stats"] = {
+                "users": user_count,
+                "messages": message_count,
+                "conversations": conversation_count
+            }
+        except Exception as e:
+            logger.error(f"Database health check failed: {str(e)}")
+            health_status["database"]["status"] = "error"
+            health_status["database"]["error"] = str(e)
+            health_status["status"] = "degraded"
+    
+    # Calculate total response time
+    total_time_ms = (time.time() - start_time) * 1000
+    health_status["response_time_ms"] = round(total_time_ms, 2)
     
     # Return 503 if critical components are missing
     status_code = 200
@@ -848,6 +881,9 @@ def chat_completions_proxy():
     - Returns OpenAI-compatible streaming responses
     - Stores messages with platform='web'
     """
+    # Start timing for performance monitoring
+    request_start_time = time.time()
+    
     logger.info("=" * 80)
     logger.info("WEB CHAT REQUEST RECEIVED")
     logger.info(f"Request method: {request.method}")
@@ -1145,6 +1181,10 @@ def chat_completions_proxy():
             db.session.add(transaction)
             db.session.commit()
             
+            # Log request timing
+            request_time_ms = (time.time() - request_start_time) * 1000
+            logger.info(f"Web chat request completed in {request_time_ms:.2f}ms (non-streaming)")
+            
             # Return OpenAI-compatible format
             return jsonify({
                 "id": f"chatcmpl-{uuid.uuid4()}",
@@ -1167,7 +1207,9 @@ def chat_completions_proxy():
             })
             
     except Exception as e:
-        logger.error(f"Web chat endpoint error: {str(e)}", exc_info=True)
+        # Log request timing even on error
+        request_time_ms = (time.time() - request_start_time) * 1000
+        logger.error(f"Web chat request failed after {request_time_ms:.2f}ms: {str(e)}", exc_info=True)
         
         # Refund credits on error
         try:
