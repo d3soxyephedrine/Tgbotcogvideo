@@ -131,7 +131,19 @@ def send_message(chat_id, text, parse_mode=None):
                 f"{BASE_URL}/sendMessage",
                 json=payload
             )
-            responses.append(response.json())
+            result = response.json()
+            
+            # Check for Markdown parsing errors and retry without formatting
+            if not result.get("ok") and parse_mode and "can't parse entities" in result.get("description", "").lower():
+                logger.warning(f"Markdown parsing failed for chunk, retrying without formatting: {result.get('description')}")
+                payload.pop("parse_mode", None)
+                response = requests.post(
+                    f"{BASE_URL}/sendMessage",
+                    json=payload
+                )
+                result = response.json()
+            
+            responses.append(result)
         return responses
     
     # Send a normal message
@@ -148,6 +160,16 @@ def send_message(chat_id, text, parse_mode=None):
             json=payload
         )
         result = response.json()
+        
+        # Check for Markdown parsing errors and retry without formatting
+        if not result.get("ok") and parse_mode and "can't parse entities" in result.get("description", "").lower():
+            logger.warning(f"Markdown parsing failed, retrying without formatting: {result.get('description')}")
+            payload.pop("parse_mode", None)
+            response = requests.post(
+                f"{BASE_URL}/sendMessage",
+                json=payload
+            )
+            result = response.json()
         
         # Log errors for debugging
         if not result.get("ok"):
@@ -194,6 +216,16 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
             json=payload
         )
         result = response.json()
+        
+        # Check for Markdown parsing errors and retry without formatting
+        if not result.get("ok") and parse_mode and "can't parse entities" in result.get("description", "").lower():
+            logger.warning(f"Markdown parsing failed during edit, retrying without formatting: {result.get('description')}")
+            payload.pop("parse_mode", None)
+            response = requests.post(
+                f"{BASE_URL}/editMessageText",
+                json=payload
+            )
+            result = response.json()
         
         # Log errors for debugging (except "message not modified" which is expected)
         if not result.get("ok") and "message is not modified" not in result.get("description", "").lower():
@@ -1587,27 +1619,27 @@ Use /buy to purchase more credits or /daily for free credits.
                     
                     if chunk_idx == 0:
                         # Update first message
-                        edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
+                        edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
                     else:
                         # Handle continuation message
                         continuation_idx = chunk_idx - 1
                         
                         if continuation_idx < len(continuation_messages):
                             # Update existing continuation message
-                            edit_message(chat_id, continuation_messages[continuation_idx], display_text, parse_mode=None)
+                            edit_message(chat_id, continuation_messages[continuation_idx], display_text, parse_mode="Markdown")
                         else:
                             # Create new continuation message (without cursor initially)
-                            cont_msg = send_message(chat_id, chunk_text, parse_mode=None)
+                            cont_msg = send_message(chat_id, chunk_text, parse_mode="Markdown")
                             if cont_msg and cont_msg.get("ok"):
                                 cont_id = cont_msg.get("result", {}).get("message_id")
                                 continuation_messages.append(cont_id)
                                 # If this is the last chunk, update it with cursor
                                 if is_last_chunk:
-                                    edit_message(chat_id, cont_id, display_text, parse_mode=None)
+                                    edit_message(chat_id, cont_id, display_text, parse_mode="Markdown")
             else:
                 # Text fits in one message, just update with cursor
                 display_text = accumulated_text + " ▌"
-                edit_message(chat_id, streaming_message_id, display_text, parse_mode=None)
+                edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
         
         # Generate response with streaming and progressive updates
         llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode)
@@ -1616,7 +1648,7 @@ Use /buy to purchase more credits or /daily for free credits.
         if len(llm_response) <= CHUNK_SIZE:
             # Response fits in one message
             if streaming_message_id:
-                edit_message(chat_id, streaming_message_id, llm_response, parse_mode=None)
+                edit_message(chat_id, streaming_message_id, llm_response, parse_mode="Markdown")
         else:
             # Split response across multiple messages
             chunks = []
@@ -1625,16 +1657,16 @@ Use /buy to purchase more credits or /daily for free credits.
             
             # Update first message
             if streaming_message_id:
-                edit_message(chat_id, streaming_message_id, chunks[0], parse_mode=None)
+                edit_message(chat_id, streaming_message_id, chunks[0], parse_mode="Markdown")
             
             # Send or update continuation messages
             for idx, chunk in enumerate(chunks[1:], start=1):
                 if idx - 1 < len(continuation_messages):
                     # Update existing continuation message
-                    edit_message(chat_id, continuation_messages[idx - 1], chunk, parse_mode=None)
+                    edit_message(chat_id, continuation_messages[idx - 1], chunk, parse_mode="Markdown")
                 else:
                     # Send new continuation message
-                    send_message(chat_id, chunk, parse_mode=None)
+                    send_message(chat_id, chunk, parse_mode="Markdown")
         
         # Send credit warning if there was one stored during deduction
         if DB_AVAILABLE and user_id:
