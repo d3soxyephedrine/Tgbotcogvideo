@@ -218,8 +218,9 @@ def require_api_key(f):
             logger.warning(f"Invalid API key attempted: {mask_api_key(api_key)}")
             return jsonify({"error": "Invalid API key"}), 401
         
-        # Pass user to the route function
-        return f(user=user, *args, **kwargs)
+        # Pass user to the route function as keyword argument
+        kwargs['user'] = user
+        return f(*args, **kwargs)
     return decorated_function
 
 # ============================================================================
@@ -297,7 +298,8 @@ def chat():
 
 @app.route('/api/balance', methods=['GET'])
 @require_api_key
-def get_balance(user):
+def get_balance(**kwargs):
+    user = kwargs['user']
     """Get user's credit balance (authenticated via API key)"""
     if not DB_AVAILABLE:
         return jsonify({
@@ -323,7 +325,8 @@ def get_balance(user):
 
 @app.route('/api/messages', methods=['GET'])
 @require_api_key
-def get_messages(user):
+def get_messages(**kwargs):
+    user = kwargs['user']
     """Get user's web chat message history (authenticated via API key)
     
     Query params:
@@ -380,7 +383,8 @@ def get_messages(user):
 
 @app.route('/api/conversations', methods=['GET'])
 @require_api_key
-def get_conversations(user):
+def get_conversations(**kwargs):
+    user = kwargs['user']
     """Get all conversations for authenticated user"""
     if not DB_AVAILABLE:
         return jsonify({
@@ -420,7 +424,8 @@ def get_conversations(user):
 
 @app.route('/api/conversations', methods=['POST'])
 @require_api_key
-def create_conversation(user):
+def create_conversation(**kwargs):
+    user = kwargs['user']
     """Create a new conversation for authenticated user"""
     if not DB_AVAILABLE:
         return jsonify({
@@ -461,7 +466,8 @@ def create_conversation(user):
 
 @app.route('/api/conversations/<int:conversation_id>', methods=['DELETE'])
 @require_api_key
-def delete_conversation(conversation_id, user):
+def delete_conversation(conversation_id, **kwargs):
+    user = kwargs['user']
     """Delete a conversation and all its messages"""
     if not DB_AVAILABLE:
         return jsonify({
