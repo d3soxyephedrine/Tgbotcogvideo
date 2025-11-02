@@ -7,7 +7,7 @@ db = SQLAlchemy()
 class User(db.Model):
     """User model to store Telegram users who interact with the bot"""
     id = db.Column(db.Integer, primary_key=True)
-    telegram_id = db.Column(db.BigInteger, unique=True, nullable=False)
+    telegram_id = db.Column(db.BigInteger, unique=True, nullable=False, index=True)
     username = db.Column(db.String(255), nullable=True)
     first_name = db.Column(db.String(255), nullable=True)
     last_name = db.Column(db.String(255), nullable=True)
@@ -40,6 +40,11 @@ class User(db.Model):
 
 class Conversation(db.Model):
     """Conversation model to organize messages into separate chat threads (web only)"""
+    __tablename__ = 'conversation'
+    __table_args__ = (
+        db.Index('idx_user_updated', 'user_id', 'updated_at'),
+    )
+    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(255), nullable=False, default='New Chat')
@@ -54,15 +59,21 @@ class Conversation(db.Model):
 
 class Message(db.Model):
     """Message model to store user messages and bot responses"""
+    __tablename__ = 'message'
+    __table_args__ = (
+        db.Index('idx_conversation_created', 'conversation_id', 'created_at'),
+        db.Index('idx_conversation_platform', 'conversation_id', 'platform'),
+    )
+    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id', ondelete='CASCADE'), nullable=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey('conversation.id', ondelete='CASCADE'), nullable=True, index=True)
     user_message = db.Column(db.Text, nullable=False)
     bot_response = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     model_used = db.Column(db.String(100), nullable=True)
     credits_charged = db.Column(db.Integer, default=1, nullable=False)
-    platform = db.Column(db.String(20), default='telegram', nullable=False)
+    platform = db.Column(db.String(20), default='telegram', nullable=False, index=True)
     
     def __repr__(self):
         return f'<Message {self.id} from user {self.user_id}>'
