@@ -741,6 +741,94 @@
             text-decoration: underline;
         }
 
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            padding: 16px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            color: var(--text-primary);
+            box-shadow: 0 8px 32px rgba(0, 212, 255, 0.3);
+            z-index: 10000;
+            min-width: 250px;
+            max-width: 400px;
+            animation: toastSlideIn 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.4);
+            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.3);
+        }
+
+        .toast.success {
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+        }
+
+        @keyframes toastSlideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes toastSlideOut {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #send-button.loading span {
+            display: none;
+        }
+
+        #send-button.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            z-index: 2;
+        }
+
         /* Mobile Responsive */
         @media (max-width: 768px) {
             .header {
@@ -917,6 +1005,21 @@
             loadConversations();
         }
 
+        // Toast notification function
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'toastSlideOut 0.3s ease-out';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
+
         // Save API key
         saveApiKeyButton.addEventListener('click', () => {
             const key = apiKeyInput.value.trim();
@@ -926,8 +1029,9 @@
                 apiKeyModal.style.display = 'none';
                 updateCreditBalance();
                 loadConversations();
+                showToast('API key saved successfully!', 'success');
             } else {
-                alert('Please enter a valid API key');
+                showToast('Please enter a valid API key', 'error');
             }
         });
 
@@ -949,6 +1053,23 @@
                 sidebarBackdrop.classList.remove('active');
             });
         }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Escape to close sidebar
+            if (e.key === 'Escape') {
+                if (sidebar.classList.contains('active')) {
+                    sidebar.classList.remove('active');
+                    sidebarBackdrop.classList.remove('active');
+                }
+            }
+            
+            // Ctrl+K for new chat
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                createNewConversation();
+            }
+        });
 
         // Allow Enter to save API key
         apiKeyInput.addEventListener('keypress', (e) => {
@@ -1085,14 +1206,15 @@
                     conversations.unshift(newConv);
                     renderConversations();
                     await switchConversation(newConv.id);
+                    showToast('New chat created!', 'success');
                 } else {
                     const error = await response.json();
                     console.error('Failed to create conversation:', error);
-                    alert('Failed to create new chat: ' + (error.error || 'Unknown error'));
+                    showToast('Failed to create new chat: ' + (error.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
                 console.error('Failed to create conversation:', error);
-                alert('Failed to create new chat. Please try again.');
+                showToast('Failed to create new chat. Please try again.', 'error');
             }
         }
 
@@ -1112,7 +1234,12 @@
         }
 
         async function deleteConversation(conversationId) {
-            if (!confirm('Delete this conversation? This cannot be undone.')) {
+            // Find conversation details for better confirmation
+            const conv = conversations.find(c => c.id === conversationId);
+            const convTitle = conv ? conv.title : 'this conversation';
+            const msgCount = conv ? conv.message_count : 0;
+            
+            if (!confirm(`Delete "${convTitle}" (${msgCount} messages)?\n\nThis cannot be undone.`)) {
                 return;
             }
 
@@ -1125,6 +1252,7 @@
                 });
 
                 if (response.ok) {
+                    showToast('Conversation deleted', 'success');
                     // Remove from local array
                     conversations = conversations.filter(c => c.id !== conversationId);
                     renderConversations();
@@ -1138,9 +1266,12 @@
                             await createNewConversation();
                         }
                     }
+                } else {
+                    showToast('Failed to delete conversation', 'error');
                 }
             } catch (error) {
                 console.error('Failed to delete conversation:', error);
+                showToast('Failed to delete conversation', 'error');
             }
         }
 
@@ -1183,9 +1314,10 @@
             const message = messageInput.value.trim();
             if (!message || !apiKey) return;
 
-            // Disable input
+            // Disable input and show loading state
             messageInput.disabled = true;
             sendButton.disabled = true;
+            sendButton.classList.add('loading');
 
             // Add user message to chat
             addMessage('user', message);
@@ -1289,9 +1421,10 @@
                     addMessage('error', '❌ Error: ' + error.message);
                 }
             } finally {
-                // Re-enable input
+                // Re-enable input and remove loading state
                 messageInput.disabled = false;
                 sendButton.disabled = false;
+                sendButton.classList.remove('loading');
                 messageInput.focus();
                 typingIndicator.classList.remove('active');
                 
