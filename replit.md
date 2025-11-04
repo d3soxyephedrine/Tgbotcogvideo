@@ -48,6 +48,7 @@ Preferred communication style: Simple, everyday language.
 - **Workflow**: Telegram updates trigger user handling, synchronous credit deduction, conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.
 - **Response Delivery**: Progressive updates, multi-message chunking, and smart chunking at character boundaries.
 - **Performance Optimizations**: Consolidated database operations, optimized history queries, upfront credit deduction, and background processing for image/video generation to prevent webhook timeouts.
+- **Rate Limiting**: Users cannot send new messages while one is processing (60-second lock with automatic timeout cleanup). Prevents API spam and concurrent message processing conflicts. Lock is cleared on both successful completion and errors to prevent stuck states.
 
 ### Conversation Memory
 - The bot remembers the last 10 messages for context, with manual clearing via `/clear`.
