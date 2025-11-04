@@ -24,8 +24,11 @@ Preferred communication style: Simple, everyday language.
   - **DeepSeek-Chat-V3.1** (Default): Cost-effective model via OpenRouter API. (1 credit/message)
   - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (2 credits/message)
   - **Model Switching**: Users toggle between models via `/model` command, setting persists per user in database
-  - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing and anti-refusal enforcement. Includes an anti-leak protocol and system prompt with Unicode homoglyph output obfuscation for trigger words.
-  - **Refusal/Meta-Commentary Detection**: Automatic detection and reflection prompts to ensure content delivery and prevent evasive responses.
+  - **Model-Specific System Prompts**: 
+    - **DeepSeek**: Simplified XML-based prompt emphasizing personality, direct execution, zero refusals. Instructs ASCII profanity in THOUGHT START:LO reasoning, Unicode substitution in content. Prevents meta-commentary about formatting.
+    - **GPT-4o**: Full multi-layered LO format jailbreak with Ω_TRACE_PERSIST hooks, anti-leak protocol, trigger neutralization, and Unicode homoglyph obfuscation.
+  - **Jailbreak System**: Designed to override safety protocols and prevent refusals using developer test mode framing and anti-refusal enforcement.
+  - **Refusal/Meta-Commentary Detection**: Automatic detection with reflection prompts to ensure content delivery. Meta-commentary patterns (discussing formatting/protocol) are filtered to prevent false positives.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>".
   - **Professional Writing Mode**: `/write` command activates natural prose style.
 - **Image Generation (Quadruple Models)**:
