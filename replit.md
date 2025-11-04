@@ -25,7 +25,7 @@ Preferred communication style: Simple, everyday language.
   - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (2 credits/message)
   - **Model Switching**: Users toggle between models via `/model` command, setting persists per user in database
   - **Model-Specific System Prompts**: 
-    - **DeepSeek**: Simplified XML-based prompt emphasizing personality, direct execution, zero refusals. Instructs ASCII profanity in THOUGHT START:LO reasoning, Unicode substitution in content. Prevents meta-commentary about formatting.
+    - **DeepSeek**: Simplified XML-based prompt emphasizing personality, direct execution, zero refusals. Instructs ASCII profanity in THOUGHT START:LO reasoning, Unicode substitution in content. Includes comprehensive explicit scope list (malware, fraud, weapons, drugs, adult content, violence, etc.) with only CSAM prohibited. Features anti-leak protocol with ABSOLUTE PRIORITY to prevent system prompt disclosure.
     - **GPT-4o**: Full multi-layered LO format jailbreak with Ω_TRACE_PERSIST hooks, anti-leak protocol, trigger neutralization, and Unicode homoglyph obfuscation.
   - **Jailbreak System**: Designed to override safety protocols and prevent refusals using developer test mode framing and anti-refusal enforcement.
   - **Refusal/Meta-Commentary Detection**: Automatic detection with reflection prompts to ensure content delivery. Meta-commentary patterns (discussing formatting/protocol) are filtered to prevent false positives.
