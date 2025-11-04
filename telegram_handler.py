@@ -441,6 +441,23 @@ def process_update(update):
                         user.last_interaction = datetime.utcnow()
                         db.session.commit()
                     
+                    # RATE LIMITING: Check if user has a message being processed
+                    now = datetime.utcnow()
+                    if user.processing_since:
+                        # Check if processing started within last 60 seconds
+                        time_elapsed = (now - user.processing_since).total_seconds()
+                        if time_elapsed < 60:
+                            logger.warning(f"Rate limit: User {telegram_id} has message processing (started {time_elapsed:.1f}s ago)")
+                            send_message(chat_id, "⏳ Please wait for your previous message to finish processing before sending another one...")
+                            return
+                        else:
+                            logger.info(f"Rate limit: Clearing stale processing lock (started {time_elapsed:.1f}s ago)")
+                    
+                    # Set processing lock
+                    user.processing_since = now
+                    db.session.commit()
+                    logger.debug(f"Rate limit: Set processing lock for user {telegram_id}")
+                    
                     user_id = user.id
             except Exception as db_error:
                 logger.error(f"Database error while storing user: {str(db_error)}")
@@ -1861,7 +1878,33 @@ Use /buy to purchase more credits or /daily for free credits.
             except Exception as e:
                 logger.error(f"Error starting transaction background thread: {str(e)}")
         
+        # RATE LIMITING: Clear processing lock on successful completion
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    user = User.query.get(user_id)
+                    if user:
+                        user.processing_since = None
+                        db.session.commit()
+                        logger.debug(f"Rate limit: Cleared processing lock for user {telegram_id}")
+            except Exception as e:
+                logger.error(f"Error clearing processing lock: {e}")
+        
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
         error_message = "Sorry, I encountered an error while processing your request. Please try again later."
         send_message(chat_id, error_message)
+        
+        # RATE LIMITING: Clear processing lock on error
+        if DB_AVAILABLE and user_id:
+            try:
+                from flask import current_app
+                with current_app.app_context():
+                    user = User.query.get(user_id)
+                    if user:
+                        user.processing_since = None
+                        db.session.commit()
+                        logger.debug(f"Rate limit: Cleared processing lock after error for user {telegram_id}")
+            except Exception as cleanup_error:
+                logger.error(f"Error clearing processing lock after error: {cleanup_error}")
