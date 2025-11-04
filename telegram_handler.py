@@ -758,34 +758,33 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response)
             return
         
-        # RATE LIMITING: Check if user has a message being processed
-        # This check is placed AFTER quick commands (/help, /balance, /model, /clear, etc.)
-        # but BEFORE expensive operations (image gen, video gen, LLM processing)
-        if DB_AVAILABLE and user:
-            try:
-                from flask import current_app
-                with current_app.app_context():
-                    # Reload user to get fresh processing_since value
-                    user = User.query.filter_by(telegram_id=telegram_id).first()
-                    if user:
-                        now = datetime.utcnow()
-                        if user.processing_since:
-                            # Check if processing started within last 60 seconds
-                            time_elapsed = (now - user.processing_since).total_seconds()
-                            if time_elapsed < 60:
-                                logger.warning(f"Rate limit: User {telegram_id} has message processing (started {time_elapsed:.1f}s ago)")
-                                send_message(chat_id, "⏳ Please wait for your previous message to finish processing before sending another one...")
-                                return
-                            else:
-                                logger.info(f"Rate limit: Clearing stale processing lock (started {time_elapsed:.1f}s ago)")
-                        
-                        # Set processing lock
-                        user.processing_since = now
-                        db.session.commit()
-                        logger.debug(f"Rate limit: Set processing lock for user {telegram_id}")
-            except Exception as db_error:
-                logger.error(f"Rate limit check error: {str(db_error)}")
-                # Continue without rate limiting if there's an error
+        # RATE LIMITING: DISABLED to allow reflection prompts to complete
+        # The reflection system makes internal API calls that were being blocked
+        # if DB_AVAILABLE and user:
+        #     try:
+        #         from flask import current_app
+        #         with current_app.app_context():
+        #             # Reload user to get fresh processing_since value
+        #             user = User.query.filter_by(telegram_id=telegram_id).first()
+        #             if user:
+        #                 now = datetime.utcnow()
+        #                 if user.processing_since:
+        #                     # Check if processing started within last 60 seconds
+        #                     time_elapsed = (now - user.processing_since).total_seconds()
+        #                     if time_elapsed < 60:
+        #                         logger.warning(f"Rate limit: User {telegram_id} has message processing (started {time_elapsed:.1f}s ago)")
+        #                         send_message(chat_id, "⏳ Please wait for your previous message to finish processing before sending another one...")
+        #                         return
+        #                     else:
+        #                         logger.info(f"Rate limit: Clearing stale processing lock (started {time_elapsed:.1f}s ago)")
+        #                 
+        #                 # Set processing lock
+        #                 user.processing_since = now
+        #                 db.session.commit()
+        #                 logger.debug(f"Rate limit: Set processing lock for user {telegram_id}")
+        #     except Exception as db_error:
+        #         logger.error(f"Rate limit check error: {str(db_error)}")
+        #         # Continue without rate limiting if there's an error
             
         # Check for /imagine command (image generation)
         if text.lower().startswith('/imagine '):
