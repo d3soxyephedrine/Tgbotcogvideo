@@ -692,8 +692,14 @@ Use /buy to purchase more credits or /daily for free credits.
                 try:
                     from flask import current_app
                     with current_app.app_context():
-                        # Get current model
-                        current_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        # Reload user to get CURRENT preferred_model from database (not stale value)
+                        fresh_user = User.query.filter_by(telegram_id=telegram_id).first()
+                        if not fresh_user:
+                            send_message(chat_id, "❌ User not found. Please try /start first.")
+                            return
+                        
+                        # Get current model from database
+                        current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3.1'
                         
                         # Toggle model
                         if 'deepseek' in current_model.lower():
@@ -706,7 +712,7 @@ Use /buy to purchase more credits or /daily for free credits.
                             cost_per_message = '1 credit'
                         
                         # Update user's preferred model
-                        user.preferred_model = new_model
+                        fresh_user.preferred_model = new_model
                         db.session.commit()
                         
                         response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to switch back."
