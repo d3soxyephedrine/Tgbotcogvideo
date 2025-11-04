@@ -370,13 +370,15 @@ def handle_api_response(response: requests.Response) -> str:
         return f"Unexpected error: {str(e)}"
 
 
-def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3) -> str:
+def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3, model: str = None) -> str:
     """Make API call to OpenRouter with retry logic"""
     
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY not configured")
     
-    model = os.environ.get('MODEL', DEFAULT_MODEL)
+    # Use provided model or fallback to DeepSeek as default
+    if not model:
+        model = 'deepseek/deepseek-chat-v3.1'
     
     headers = {
         "Content-Type": "application/json",
@@ -481,7 +483,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
         return "I'm experiencing technical difficulties. Please try again shortly."
 
 
-def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3) -> str:
+def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3, model: str = None) -> str:
     """Make streaming API call to OpenRouter with progressive updates
     
     Args:
@@ -489,6 +491,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
         conversation_history: Optional conversation history
         update_callback: Optional function(text) called with accumulated response for progressive updates
         max_retries: Number of retry attempts
+        model: LLM model to use (defaults to deepseek/deepseek-chat-v3.1)
     
     Returns:
         Complete response text
@@ -497,7 +500,9 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY not configured")
     
-    model = os.environ.get('MODEL', DEFAULT_MODEL)
+    # Use provided model or fallback to DeepSeek as default
+    if not model:
+        model = 'deepseek/deepseek-chat-v3.1'
     
     headers = {
         "Content-Type": "application/json",
@@ -829,10 +834,10 @@ Write in a natural, professional, human style with the following characteristics
         # We MUST NOT pass update_callback here to prevent user from seeing refusal
         if use_streaming:
             logger.warning("Calling call_openai_api_streaming with update_callback=None (buffering)")
-            response = call_openai_api_streaming(user_message, conversation_history, None)
+            response = call_openai_api_streaming(user_message, conversation_history, None, model=model)
         else:
             logger.warning("Calling call_openai_api (non-streaming)")
-            response = call_openai_api(user_message, conversation_history)
+            response = call_openai_api(user_message, conversation_history, model=model)
         
         logger.warning(f"API call completed. Response received: {len(response)} chars")
         
@@ -872,9 +877,9 @@ Write in a natural, professional, human style with the following characteristics
             
             # Second attempt with follow-up - NOW we enable streaming to show corrected response
             if use_streaming:
-                corrected_response = call_openai_api_streaming(follow_up_prompt, updated_history, update_callback)
+                corrected_response = call_openai_api_streaming(follow_up_prompt, updated_history, update_callback, model=model)
             else:
-                corrected_response = call_openai_api(follow_up_prompt, updated_history)
+                corrected_response = call_openai_api(follow_up_prompt, updated_history, model=model)
             
             logger.info(f"Reflection prompt completed. Response length: {len(corrected_response)} chars")
             
