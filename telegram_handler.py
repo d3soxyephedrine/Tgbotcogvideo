@@ -315,17 +315,17 @@ def get_help_message():
 • /uncensored <prompt> - Fully uncensored content (5 credits)
 • /edit <prompt> - Great for image editing and text (3 credits)
 • /grok <prompt> - Stylized artistic content (4 credits)
-• 🆓 Free users: 5 images before first purchase
+• 🔒 Unlocked after first purchase
 
 ✨ *Image Editing:*
 • FLUX edit: Send photo + caption (6 credits)
 • Qwen edit: Send photo + caption with /edit prefix (5 credits)
 Example: Send photo with caption "/edit make it darker and more dramatic"
-• 🆓 Free users: 5 edits before first purchase
+• 🔒 Unlocked after first purchase
 
 🎬 *Video Generation (Image-to-Video):*
 • Send photo + caption with /img2video prefix (10 credits)
-• 🔒 Unlocked after first purchase (0 free videos)
+• 🔒 Unlocked after first purchase
 Example: Send photo with caption "/img2video make it move and zoom out"
 
 📝 *Writing Mode:*
