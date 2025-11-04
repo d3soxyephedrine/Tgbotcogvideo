@@ -673,7 +673,7 @@ Please send me a direct message (DM) and use /getapikey there to receive your AP
 `{user.api_key}`
 
 🌐 *Web Chat:*
-https://telegram-ai-companion-fxtor1g21.replit.app/chat
+https://ko2bot.com/chat
 
 📋 *How to use:*
 1. Click the link above
