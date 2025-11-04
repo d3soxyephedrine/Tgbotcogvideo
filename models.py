@@ -32,6 +32,9 @@ class User(db.Model):
     images_generated = db.Column(db.Integer, default=0, nullable=False)
     images_edited = db.Column(db.Integer, default=0, nullable=False)
     
+    # Rate limiting (prevent concurrent message processing)
+    processing_since = db.Column(db.DateTime, nullable=True)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
