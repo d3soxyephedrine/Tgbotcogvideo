@@ -35,6 +35,9 @@ class User(db.Model):
     # Rate limiting (prevent concurrent message processing)
     processing_since = db.Column(db.DateTime, nullable=True)
     
+    # Model selection (deepseek vs gpt4o)
+    preferred_model = db.Column(db.String(50), default='deepseek/deepseek-chat-v3.1', nullable=False)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
