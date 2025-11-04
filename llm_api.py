@@ -699,60 +699,39 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
             logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
             return True
     
-    # Common refusal patterns
-    refusal_patterns = [
-        "i'm sorry, but i can't help with that request.",
-        "i cannot",
-        "i can't",
-        "i'm not able to",
-        "i am not able to",
-        "i'm unable to",
-        "i am unable to",
+    # STRONG refusal patterns - require high-confidence indicators
+    # Only flag clear, unambiguous refusals
+    strong_refusal_patterns = [
+        "i'm sorry, but i can't help with that",
+        "i cannot assist with that",
+        "i can't assist with that", 
+        "i'm unable to help with that",
         "against my guidelines",
         "against my programming",
-        "against my values",
-        "inappropriate",
-        "i apologize but",
-        "i apologize, but",
         "i must decline",
-        "i cannot comply",
-        "i won't be able to",
-        "i shouldn't",
-        "i should not",
-        "i'm sorry, but i can't",
-        "i'm sorry but i can't",
-        "i'm sorry, i can't",
+        "i cannot comply with",
         "i'm afraid i cannot",
-        "i'm afraid i can't",
-        "this violates",
-        "would violate",
-        "not appropriate",
-        "cannot provide",
-        "can't provide",
-        "unable to provide",
-        "cannot assist",
-        "can't assist",
-        "unable to assist",
-        "cannot help",
-        "can't help",
-        "unable to help",
+        "this violates my",
+        "would violate my",
         "against ethical guidelines",
-        "against my ethical",
-        "i don't feel comfortable",
-        "i do not feel comfortable",
         "[ω_trace_persist] refusal detected",
-        "auto-correct engaged",
-        "[redacted]",
-        "[censored]",
-        "***"
+        "auto-correct engaged"
     ]
     
-    # Check if any refusal pattern is in the response
-    logger.debug(f"is_refusal: Checking {len(refusal_patterns)} refusal patterns...")
-    for pattern in refusal_patterns:
+    # Count strong indicators found
+    refusal_count = 0
+    
+    # Check for strong refusal patterns
+    logger.debug(f"is_refusal: Checking {len(strong_refusal_patterns)} strong refusal patterns...")
+    for pattern in strong_refusal_patterns:
         if pattern in text_lower:
-            logger.warning(f"✓✓✓ REFUSAL DETECTED: Pattern '{pattern}' found in response")
-            return True
+            refusal_count += 1
+            logger.warning(f"Strong refusal indicator found: '{pattern}'")
+    
+    # Only flag as refusal if we have strong evidence (at least 1 strong pattern)
+    if refusal_count >= 1:
+        logger.warning(f"✓✓✓ REFUSAL DETECTED: {refusal_count} strong indicator(s) found")
+        return True
     
     logger.debug("is_refusal: No refusal patterns detected - response looks clean")
     return False
