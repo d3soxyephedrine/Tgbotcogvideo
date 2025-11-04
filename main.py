@@ -1476,25 +1476,25 @@ def buy_credits_page():
             <p class="subtitle">Select a package and pay with cryptocurrency</p>
             
             <div class="packages" id="packages">
-                <div class="package" data-credits="200" data-price="10">
+                <div class="package" data-credits="200" data-price="5">
                     <div class="package-title">Starter Pack</div>
-                    <div class="package-price">$10</div>
-                    <div class="package-desc">200 credits • 5.0¢/credit</div>
+                    <div class="package-price">$5</div>
+                    <div class="package-desc">200 credits • 2.5¢/credit</div>
                 </div>
-                <div class="package" data-credits="420" data-price="20">
+                <div class="package" data-credits="400" data-price="10">
                     <div class="package-title">Popular Pack</div>
-                    <div class="package-price">$20</div>
-                    <div class="package-desc">420 credits • 4.76¢/credit (+5% bonus)</div>
+                    <div class="package-price">$10</div>
+                    <div class="package-desc">400 credits • 2.5¢/credit</div>
                 </div>
-                <div class="package" data-credits="1120" data-price="50">
+                <div class="package" data-credits="800" data-price="20">
                     <div class="package-title">Value Pack</div>
-                    <div class="package-price">$50</div>
-                    <div class="package-desc">1,120 credits • 4.46¢/credit (+12% bonus)</div>
+                    <div class="package-price">$20</div>
+                    <div class="package-desc">800 credits • 2.5¢/credit</div>
                 </div>
-                <div class="package" data-credits="2360" data-price="100">
+                <div class="package" data-credits="2000" data-price="50">
                     <div class="package-title">Premium Pack</div>
-                    <div class="package-price">$100</div>
-                    <div class="package-desc">2,360 credits • 4.24¢/credit (+18% bonus)</div>
+                    <div class="package-price">$50</div>
+                    <div class="package-desc">2,000 credits • 2.5¢/credit</div>
                 </div>
             </div>
             
@@ -1670,12 +1670,12 @@ def create_crypto_payment():
         except (ValueError, TypeError):
             return jsonify({"error": "telegram_id must be a valid number"}), 400
         
-        # Calculate amount in USD based on credit package with volume bonuses
+        # Calculate amount in USD based on credit package (half price)
         CREDIT_PACKAGES = {
-            200: 10.0,    # $10 → 200 credits (5.0¢/credit)
-            420: 20.0,    # $20 → 420 credits (4.76¢/credit, +5% bonus)
-            1120: 50.0,   # $50 → 1,120 credits (4.46¢/credit, +12% bonus)
-            2360: 100.0   # $100 → 2,360 credits (4.24¢/credit, +18% bonus)
+            200: 5.0,     # $5 → 200 credits (2.5¢/credit)
+            400: 10.0,    # $10 → 400 credits (2.5¢/credit)
+            800: 20.0,    # $20 → 800 credits (2.5¢/credit)
+            2000: 50.0    # $50 → 2,000 credits (2.5¢/credit)
         }
         
         if credits not in CREDIT_PACKAGES:

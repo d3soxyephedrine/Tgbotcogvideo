@@ -297,11 +297,12 @@ def get_help_message():
 /balance - Check your credit balance
 /buy - Purchase credits with volume bonuses
 /clear - Clear your conversation history
+/model - Switch between DeepSeek (1 credit) and GPT-4o (2 credits)
 /getapikey - Get your API key for web access (private chats only)
-/imagine <prompt> - High quality photorealistic images (5 credits)
-/uncensored <prompt> - Fully uncensored image generation (5 credits)
-/edit <prompt> - Image generation optimized for editing (3 credits)
-/grok <prompt> - Stylized image generation (4 credits)
+/imagine <prompt> - High quality photorealistic images (10 credits)
+/uncensored <prompt> - Fully uncensored image generation (10 credits)
+/edit <prompt> - Image generation optimized for editing (8 credits)
+/grok <prompt> - Stylized image generation (8 credits)
 /write <request> - Professional writing mode (1 credit)
 
 🎁 *Daily Free Credits:*
@@ -311,20 +312,20 @@ def get_help_message():
 • Used automatically before purchased credits
 
 🎨 *Image Generation:*
-• /imagine <prompt> - High quality photorealistic images (5 credits)
-• /uncensored <prompt> - Fully uncensored content (5 credits)
-• /edit <prompt> - Great for image editing and text (3 credits)
-• /grok <prompt> - Stylized artistic content (4 credits)
+• /imagine <prompt> - High quality photorealistic images (10 credits)
+• /uncensored <prompt> - Fully uncensored content (10 credits)
+• /edit <prompt> - Great for image editing and text (8 credits)
+• /grok <prompt> - Stylized artistic content (8 credits)
 • 🔒 Unlocked after first purchase
 
 ✨ *Image Editing:*
-• FLUX edit: Send photo + caption (6 credits)
-• Qwen edit: Send photo + caption with /edit prefix (5 credits)
+• FLUX edit: Send photo + caption (15 credits)
+• Qwen edit: Send photo + caption with /edit prefix (12 credits)
 Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
 🎬 *Video Generation (Image-to-Video):*
-• Send photo + caption with /img2video prefix (10 credits)
+• Send photo + caption with /img2video prefix (20 credits)
 • 🔒 Unlocked after first purchase
 Example: Send photo with caption "/img2video make it move and zoom out"
 
@@ -344,21 +345,23 @@ Example: ! memorize I love cats and prefer dark themes
 💡 Memory commands are FREE (0 credits)
 
 💡 *Pricing:*
-• Text message: 1 credit
-• Writing mode: 1 credit  
-• /imagine: 5 credits
-• /uncensored: 5 credits
-• /grok: 4 credits
-• /edit: 3 credits
-• FLUX editing: 6 credits
-• Qwen editing: 5 credits
-• Video generation: 10 credits
+• Text (DeepSeek): 1 credit per message
+• Text (GPT-4o): 2 credits per message
+• Writing mode: Same as text (model-based)
+• Use /model to switch between models  
+• /imagine: 10 credits
+• /uncensored: 10 credits
+• /grok: 8 credits
+• /edit: 8 credits
+• FLUX editing: 15 credits
+• Qwen editing: 12 credits
+• Video generation: 20 credits
 
-💰 *Volume Bonuses:*
-• $10 → 200 credits (5.0¢/credit)
-• $20 → 420 credits (4.76¢/credit) +5% bonus
-• $50 → 1,120 credits (4.46¢/credit) +12% bonus
-• $100 → 2,360 credits (4.24¢/credit) +18% bonus
+💰 *Credit Packages:*
+• $5 → 200 credits (2.5¢/credit)
+• $10 → 400 credits (2.5¢/credit)
+• $20 → 800 credits (2.5¢/credit)
+• $50 → 2,000 credits (2.5¢/credit)
 Bigger packs = better value!
 
 Send any message to get an uncensored AI response!
@@ -699,6 +702,41 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response, parse_mode="Markdown")
             return
         
+        # Check for /model command (switch between DeepSeek and GPT-4o)
+        if text.lower() == '/model':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        # Get current model
+                        current_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        
+                        # Toggle model
+                        if 'deepseek' in current_model.lower():
+                            new_model = 'openai/chatgpt-4o-latest'
+                            new_model_name = 'ChatGPT-4o'
+                            cost_per_message = '2 credits'
+                        else:
+                            new_model = 'deepseek/deepseek-chat-v3.1'
+                            new_model_name = 'DeepSeek v3.1'
+                            cost_per_message = '1 credit'
+                        
+                        # Update user's preferred model
+                        user.preferred_model = new_model
+                        db.session.commit()
+                        
+                        response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to switch back."
+                        logger.info(f"User {telegram_id} switched model to {new_model}")
+                except Exception as db_error:
+                    logger.error(f"Database error switching model: {str(db_error)}")
+                    db.session.rollback()
+                    response = "❌ Error switching model. Please try again."
+            else:
+                response = "❌ Model switching requires database access."
+            
+            send_message(chat_id, response, parse_mode="Markdown")
+            return
+        
         # Check for /clear command
         if text.lower() == '/clear':
             if DB_AVAILABLE and user_id:
@@ -756,11 +794,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 5 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 5)
+                        # Deduct 10 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -768,7 +806,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"5 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"10 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -852,13 +890,13 @@ Use /buy to purchase more credits or /daily for free credits.
                         with current_app.app_context():
                             user = User.query.get(user_id)
                             if user:
-                                user.credits += 5
+                                user.credits += 10
                                 db.session.commit()
-                                logger.info(f"Refunded 5 credits due to failed FLUX generation. New balance: {user.credits}")
+                                logger.info(f"Refunded 10 credits due to failed FLUX generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
-                send_message(chat_id, f"❌ Image generation failed: {error_msg}\n\n✅ 5 credits have been refunded to your account.")
+                send_message(chat_id, f"❌ Image generation failed: {error_msg}\n\n✅ 10 credits have been refunded to your account.")
             
             return
         
@@ -888,11 +926,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 3 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 3)
+                        # Deduct 8 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 3 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -900,7 +938,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"3 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"8 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -984,13 +1022,13 @@ Use /buy to purchase more credits or /daily for free credits.
                         with current_app.app_context():
                             user = User.query.get(user_id)
                             if user:
-                                user.credits += 3
+                                user.credits += 8
                                 db.session.commit()
-                                logger.info(f"Refunded 3 credits due to failed Qwen generation. New balance: {user.credits}")
+                                logger.info(f"Refunded 8 credits due to failed Qwen generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
-                send_message(chat_id, f"❌ Qwen image generation failed: {error_msg}\n\n✅ 3 credits have been refunded to your account.")
+                send_message(chat_id, f"❌ Qwen image generation failed: {error_msg}\n\n✅ 8 credits have been refunded to your account.")
             
             return
         
@@ -1020,11 +1058,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 4 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 4)
+                        # Deduct 8 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 4 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1032,7 +1070,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"4 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"8 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1116,13 +1154,13 @@ Use /buy to purchase more credits or /daily for free credits.
                         with current_app.app_context():
                             user = User.query.get(user_id)
                             if user:
-                                user.credits += 4
+                                user.credits += 8
                                 db.session.commit()
-                                logger.info(f"Refunded 4 credits due to failed Grok generation. New balance: {user.credits}")
+                                logger.info(f"Refunded 8 credits due to failed Grok generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
-                send_message(chat_id, f"❌ Grok image generation failed: {error_msg}\n\n✅ 4 credits have been refunded to your account.")
+                send_message(chat_id, f"❌ Grok image generation failed: {error_msg}\n\n✅ 8 credits have been refunded to your account.")
             
             return
         
@@ -1152,11 +1190,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 5 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 5)
+                        # Deduct 10 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 5 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1164,7 +1202,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"5 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"10 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1248,13 +1286,13 @@ Use /buy to purchase more credits or /daily for free credits.
                         with current_app.app_context():
                             user = User.query.get(user_id)
                             if user:
-                                user.credits += 5
+                                user.credits += 10
                                 db.session.commit()
-                                logger.info(f"Refunded 5 credits due to failed Hunyuan generation. New balance: {user.credits}")
+                                logger.info(f"Refunded 10 credits due to failed Hunyuan generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
-                send_message(chat_id, f"❌ Hunyuan image generation failed: {error_msg}\n\n✅ 5 credits have been refunded to your account.")
+                send_message(chat_id, f"❌ Hunyuan image generation failed: {error_msg}\n\n✅ 10 credits have been refunded to your account.")
             
             return
         
@@ -1282,11 +1320,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 10 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
+                        # Deduct 20 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 20)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 20 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1294,7 +1332,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"10 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"20 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1366,13 +1404,13 @@ Use /buy to purchase more credits or /daily for free credits.
                                 try:
                                     user = User.query.get(user_id)
                                     if user:
-                                        user.credits += 10
+                                        user.credits += 20
                                         db.session.commit()
-                                        logger.info(f"Refunded 10 credits due to failed video generation. New balance: {user.credits}")
+                                        logger.info(f"Refunded 20 credits due to failed video generation. New balance: {user.credits}")
                                 except Exception as db_error:
                                     logger.error(f"Database error refunding credits: {str(db_error)}")
                             
-                            send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 10 credits have been refunded to your account.")
+                            send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 20 credits have been refunded to your account.")
                 
                 # Start background thread
                 thread = threading.Thread(target=generate_video_background)
@@ -1392,12 +1430,12 @@ Use /buy to purchase more credits or /daily for free credits.
             if use_qwen:
                 # Remove /edit prefix for actual prompt
                 edit_prompt = caption[6:].strip()
-                credits_required = 5
+                credits_required = 12
                 model_name = "qwen-image-edit"
                 status_message = "🎨 Editing with Qwen..."
             else:
                 edit_prompt = caption
-                credits_required = 6
+                credits_required = 15
                 model_name = "flux-1-kontext-max-edit"
                 status_message = "🎨 Editing with FLUX..."
             
