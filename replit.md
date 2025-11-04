@@ -16,30 +16,42 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
-- **Schema Design**: Six models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`, `Memory`) for user profiles, message history, pay-per-use credit system, and persistent user memories. Extensions include columns for daily credits, purchase tracking, action history, and `api_key` for web access. The `Message` model includes a `platform` column to track message source (Telegram or web). The `Memory` model stores user-specific memories with platform tracking.
+- **Schema Design**: Six models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`, `Memory`) for user profiles, message history, pay-per-use credit system, and persistent user memories. Extensions include columns for daily credits, purchase tracking, action history, `api_key` for web access, and `preferred_model` for user-specific model selection (DeepSeek or GPT-4o). The `Message` model includes a `platform` column to track message source (Telegram or web). The `Memory` model stores user-specific memories with platform tracking.
 - **Resilience**: Connection pooling, retry logic, and graceful degradation.
 
 ### LLM Provider Architecture
-- **Text Generation**: ChatGPT-4o-latest via OpenRouter API.
+- **Dual Model System for Text Generation**:
+  - **DeepSeek-Chat-V3.1** (Default): Cost-effective model via OpenRouter API. (1 credit/message)
+  - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (2 credits/message)
+  - **Model Switching**: Users toggle between models via `/model` command, setting persists per user in database
   - **Jailbreak System**: Multi-layered LO format jailbreak designed to override safety protocols and prevent refusals, using techniques like developer test mode framing and anti-refusal enforcement. Includes an anti-leak protocol and system prompt with Unicode homoglyph output obfuscation for trigger words.
   - **Refusal/Meta-Commentary Detection**: Automatic detection and reflection prompts to ensure content delivery and prevent evasive responses.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>".
   - **Professional Writing Mode**: `/write` command activates natural prose style.
 - **Image Generation (Quadruple Models)**:
-  - **FLUX.1 Kontext Max** (`/imagine`): High-quality photorealistic images via Novita AI. (5 credits/image)
-  - **Hunyuan-Image-3** (`/uncensored`): Fully uncensored images via Novita AI. (5 credits/image)
-  - **Grok-2-Image** (`/grok`): Stylized images via xAI API. (4 credits/image)
-  - **Qwen-Image** (`/edit`): Image editing capabilities via Novita AI. (3 credits/image)
+  - **FLUX.1 Kontext Max** (`/imagine`): High-quality photorealistic images via Novita AI. (10 credits/image)
+  - **Hunyuan-Image-3** (`/uncensored`): Fully uncensored images via Novita AI. (10 credits/image)
+  - **Grok-2-Image** (`/grok`): Stylized images via xAI API. (8 credits/image)
+  - **Qwen-Image** (`/edit`): Image editing capabilities via Novita AI. (8 credits/image)
 - **Image Editing (Dual Models)**:
-  - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (6 credits/edit)
-  - **Qwen-Image**: Image editing via Novita AI. (5 credits/edit)
+  - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (15 credits/edit)
+  - **Qwen-Image**: Image editing via Novita AI. (12 credits/edit)
 - **Video Generation (Single Model - Image-to-Video)**:
-  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (10 credits/video)
+  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (20 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
 - **Deduction Logic**: Daily credits used first, then purchased credits.
-- **Pricing**: Text messages (1 credit), image generation (3-5 credits), image editing (5-6 credits), video generation (10 credits).
+- **Pricing**: 
+  - Text messages: 1 credit (DeepSeek) or 2 credits (GPT-4o)
+  - Image generation: 8-10 credits
+  - Image editing: 12-15 credits
+  - Video generation: 20 credits
+- **Credit Packages** (50% reduced pricing):
+  - $5 → 200 credits
+  - $10 → 400 credits
+  - $20 → 800 credits
+  - $50 → 2,000 credits
 - **Monetization Features**: Image generation, image editing, and video generation all require first purchase (0 free generations/edits/videos). New users receive 100 free credits for text chat only.
 - **Usage Tracking**: `images_generated` and `images_edited` counters track free user limits.
 - **Purchase Flow**: Integrated web-based purchase page with NOWPayments for cryptocurrency payments and IPN callbacks.
@@ -84,7 +96,7 @@ Preferred communication style: Simple, everyday language.
 - **Jailbreak Integration**: Web chat uses identical jailbreak system as Telegram via `generate_response()` function, including refusal detection, reflection prompts, and token budget management.
 - **Conversation Memory**: Fetches last 10 messages from database (filtered by `platform='web'`) for conversation context, identical to Telegram pattern.
 - **Authentication**: API keys obtained via `/getapikey` Telegram command.
-- **Credit System**: Web requests cost 1 credit/message, same deduction logic as Telegram. Credits are refunded on error.
+- **Credit System**: Web requests cost 1-2 credits/message (based on user's selected model), same deduction logic as Telegram. Credits are refunded on error.
 - **Error Responses**: 401 (Invalid API key), 402 (Insufficient credits), 500 (Server error).
 
 ### Web Chat Interface
@@ -98,7 +110,7 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 - **Telegram Bot API**: User communication.
-- **OpenRouter**: Main LLM provider (ChatGPT-4o).
+- **OpenRouter**: Dual LLM provider (DeepSeek-Chat-V3.1 and ChatGPT-4o).
 - **Novita AI**: Image generation (FLUX.1 Kontext Max, Hunyuan-Image-3, Qwen-Image) and image-to-video (WAN 2.5 I2V Preview).
 - **xAI API**: Grok-2-Image for image generation.
 - **SQL Database**: Persistent data storage.

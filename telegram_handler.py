@@ -293,7 +293,6 @@ def get_help_message():
 /start - Start the bot
 /help - Display this help message
 /daily - Claim 25 free credits (once per 24h, expires in 48h)
-/model - Show current model 
 /balance - Check your credit balance
 /buy - Purchase credits with volume bonuses
 /clear - Clear your conversation history
@@ -344,11 +343,13 @@ The AI can remember important info across sessions!
 Example: ! memorize I love cats and prefer dark themes
 💡 Memory commands are FREE (0 credits)
 
-💡 *Pricing:*
-• Text (DeepSeek): 1 credit per message
-• Text (GPT-4o): 2 credits per message
-• Writing mode: Same as text (model-based)
-• Use /model to switch between models  
+🤖 *AI Models (Toggle with /model):*
+• DeepSeek-Chat (Default): 1 credit per message
+• ChatGPT-4o (Premium): 2 credits per message
+• Your choice persists across all chats
+• Writing mode uses your selected model
+
+💡 *Image & Video Pricing:*
 • /imagine: 10 credits
 • /uncensored: 10 credits
 • /grok: 8 credits
@@ -1626,32 +1627,6 @@ Use /buy to purchase more credits or /daily for free credits.
             
             return
         
-        # Check for model info command
-        if text.lower().startswith('/model'):
-            current_model = os.environ.get('MODEL', DEFAULT_MODEL)
-            response = f"Current model: {current_model}\n\nThis bot uses ChatGPT-4o via OpenRouter for all responses."
-            
-            # Store command in database if available
-            if DB_AVAILABLE and user_id:
-                try:
-                    from flask import current_app
-                    with current_app.app_context():
-                        message_record = Message(
-                            user_id=user_id,
-                            user_message=text,
-                            bot_response=response,
-                            model_used=current_model,
-                            credits_charged=0
-                        )
-                        db.session.add(message_record)
-                        db.session.commit()
-                except Exception as db_error:
-                    logger.error(f"Database error storing model query: {str(db_error)}")
-            
-            # Send response
-            send_message(chat_id, response, parse_mode=None)
-            return
-        
         # Check for memory commands (! memorize, ! memories, ! forget)
         command_type, command_data = parse_memory_command(text)
         
@@ -1720,6 +1695,7 @@ Use /buy to purchase more credits or /daily for free credits.
         # OPTIMIZATION: Consolidate DB operations - fetch user data + conversation history in ONE context
         conversation_history = []
         credits_available = True  # Track if user has credits
+        selected_model = 'deepseek/deepseek-chat-v3.1'  # Default model
         
         if DB_AVAILABLE and user_id:
             try:
@@ -1729,8 +1705,8 @@ Use /buy to purchase more credits or /daily for free credits.
                     user = User.query.get(user_id)
                     if user:
                         # Determine credits to deduct based on model (DeepSeek=1, GPT-4o=2)
-                        current_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
-                        credits_to_deduct = 2 if 'gpt-4o' in current_model.lower() or 'chatgpt' in current_model.lower() else 1
+                        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        credits_to_deduct = 2 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
                         
                         # Deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
@@ -1770,9 +1746,6 @@ Use /buy to purchase more credits or /daily for free credits.
             response = "⚠️ You're out of credits!\n\nTo continue using the bot:\n• Use /daily to claim free credits\n• Or purchase more with /buy"
             send_message(chat_id, response)
             return
-        
-        # Generate response from LLM with conversation context using streaming
-        current_model = os.environ.get('MODEL', DEFAULT_MODEL)
         
         # Send initial message that will be updated with streaming response
         initial_msg = send_message(chat_id, "⏳ Generating response...", parse_mode=None)
@@ -1830,8 +1803,8 @@ Use /buy to purchase more credits or /daily for free credits.
                 display_text = accumulated_text + " ▌"
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
         
-        # Generate response with streaming and progressive updates (include user_id for memory injection)
-        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id)
+        # Generate response with streaming and progressive updates (include user_id for memory injection and model selection)
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model)
         
         # Final update with complete response (remove typing indicator and handle continuation)
         if len(llm_response) <= CHUNK_SIZE:
