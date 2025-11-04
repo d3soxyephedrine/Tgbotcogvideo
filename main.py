@@ -229,8 +229,8 @@ def require_api_key(f):
 
 @app.route('/')
 def home():
-    """Health check endpoint that returns a simple message"""
-    return "I'm alive"
+    """Landing page for Ko2 bot"""
+    return render_template('index.html')
 
 @app.route('/health')
 def health_check():
