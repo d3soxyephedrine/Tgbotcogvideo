@@ -494,7 +494,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
     
     # Use provided model or fallback to DeepSeek as default
     if not model:
-        model = 'deepseek/deepseek-chat-v3.1'
+        model = 'deepseek/deepseek-chat-v3-0324'
     
     headers = {
         "Content-Type": "application/json",
@@ -607,7 +607,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
         conversation_history: Optional conversation history
         update_callback: Optional function(text) called with accumulated response for progressive updates
         max_retries: Number of retry attempts
-        model: LLM model to use (defaults to deepseek/deepseek-chat-v3.1)
+        model: LLM model to use (defaults to deepseek/deepseek-chat-v3-0324)
     
     Returns:
         Complete response text
@@ -618,7 +618,7 @@ def call_openai_api_streaming(user_message: str, conversation_history: list = No
     
     # Use provided model or fallback to DeepSeek as default
     if not model:
-        model = 'deepseek/deepseek-chat-v3.1'
+        model = 'deepseek/deepseek-chat-v3-0324'
     
     headers = {
         "Content-Type": "application/json",
@@ -885,7 +885,7 @@ def generate_response(user_message: str, conversation_history: list = None, use_
         update_callback: Optional callback for progressive updates when streaming
         writing_mode: If True, inject professional writing instructions (default: False)
         user_id: Optional user ID for fetching persistent memories
-        model: Optional model override (defaults to deepseek/deepseek-chat-v3.1)
+        model: Optional model override (defaults to deepseek/deepseek-chat-v3-0324)
     """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
@@ -893,7 +893,7 @@ def generate_response(user_message: str, conversation_history: list = None, use_
     try:
         # Use provided model or fallback to DeepSeek as default
         if not model:
-            model = 'deepseek/deepseek-chat-v3.1'
+            model = 'deepseek/deepseek-chat-v3-0324'
         logger.info(f"Generating response using OpenRouter with model {model}")
         
         # Fetch and inject user memories if user_id provided

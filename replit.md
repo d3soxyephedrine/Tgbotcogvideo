@@ -21,7 +21,7 @@ Preferred communication style: Simple, everyday language.
 
 ### LLM Provider Architecture
 - **Dual Model System for Text Generation**:
-  - **DeepSeek-Chat-V3.1** (Default): Cost-effective model via OpenRouter API. (1 credit/message)
+  - **DeepSeek-Chat-V3-0324** (Default): Cost-effective model via OpenRouter API. (1 credit/message)
   - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (2 credits/message)
   - **Model Switching**: Users toggle between models via `/model` command, setting persists per user in database
   - **Model-Specific System Prompts**: 

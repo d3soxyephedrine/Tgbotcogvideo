@@ -699,7 +699,7 @@ Use /buy to purchase more credits or /daily for free credits.
                             return
                         
                         # Get current model from database
-                        current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
                         
                         # Toggle model
                         if 'deepseek' in current_model.lower():
@@ -707,8 +707,8 @@ Use /buy to purchase more credits or /daily for free credits.
                             new_model_name = 'ChatGPT-4o'
                             cost_per_message = '2 credits'
                         else:
-                            new_model = 'deepseek/deepseek-chat-v3.1'
-                            new_model_name = 'DeepSeek v3.1'
+                            new_model = 'deepseek/deepseek-chat-v3-0324'
+                            new_model_name = 'DeepSeek v3-0324'
                             cost_per_message = '1 credit'
                         
                         # Update user's preferred model
@@ -1712,7 +1712,7 @@ Use /buy to purchase more credits or /daily for free credits.
         # OPTIMIZATION: Consolidate DB operations - fetch user data + conversation history in ONE context
         conversation_history = []
         credits_available = True  # Track if user has credits
-        selected_model = 'deepseek/deepseek-chat-v3.1'  # Default model
+        selected_model = 'deepseek/deepseek-chat-v3-0324'  # Default model
         
         if DB_AVAILABLE and user_id:
             try:
@@ -1722,7 +1722,7 @@ Use /buy to purchase more credits or /daily for free credits.
                     user = User.query.get(user_id)
                     if user:
                         # Determine credits to deduct based on model (DeepSeek=1, GPT-4o=2)
-                        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
                         credits_to_deduct = 2 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
                         
                         # Deduct credits (daily credits first, then purchased)
