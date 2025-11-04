@@ -1728,8 +1728,12 @@ Use /buy to purchase more credits or /daily for free credits.
                     # Fetch user and deduct credit immediately (must be synchronous)
                     user = User.query.get(user_id)
                     if user:
-                        # Deduct 1 credit (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 1)
+                        # Determine credits to deduct based on model (DeepSeek=1, GPT-4o=2)
+                        current_model = user.preferred_model or 'deepseek/deepseek-chat-v3.1'
+                        credits_to_deduct = 2 if 'gpt-4o' in current_model.lower() or 'chatgpt' in current_model.lower() else 1
+                        
+                        # Deduct credits (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
                         if success:
                             db.session.commit()
                             logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
