@@ -1874,7 +1874,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         user_id=user_id,
                         user_message=text,
                         bot_response=llm_response,
-                        model_used=current_model,
+                        model_used=selected_model,
                         credits_charged=1
                     )
                     db.session.add(message_record)
@@ -1900,7 +1900,7 @@ Use /buy to purchase more credits or /daily for free credits.
                                 credits_used=1,
                                 message_id=message_id,
                                 transaction_type='message',
-                                description=f"AI message response using {current_model}"
+                                description=f"AI message response using {selected_model}"
                             )
                             db.session.add(transaction)
                             db.session.commit()
