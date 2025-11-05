@@ -1231,14 +1231,16 @@ def chat_completions_proxy():
                 nonlocal accumulated_response
                 accumulated_response += chunk
             
-            # Call generate_response with streaming callback (include user_id for memory injection)
+            # Call generate_response with streaming callback (include user_id for memory injection and user's preferred model)
+            selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
                 use_streaming=True,
                 update_callback=update_callback,
                 writing_mode=False,
-                user_id=user.id
+                user_id=user.id,
+                model=selected_model
             )
             
             # Auto-title if first message

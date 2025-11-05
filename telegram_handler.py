@@ -7,7 +7,7 @@ from models import db, User, Message, Payment, Transaction, Memory
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
 from datetime import datetime
 
-DEFAULT_MODEL = "openai/gpt-4o"
+DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
