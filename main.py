@@ -517,6 +517,29 @@ def stats():
         message_count = Message.query.count()
         recent_messages = Message.query.order_by(Message.created_at.desc()).limit(5).all()
         
+        # Check for stuck processing locks
+        locked_users_count = User.query.filter(User.processing_since.isnot(None)).count()
+        
+        from datetime import timedelta
+        stuck_threshold = datetime.utcnow() - timedelta(minutes=5)
+        stuck_users = User.query.filter(
+            User.processing_since.isnot(None),
+            User.processing_since < stuck_threshold
+        ).all()
+        
+        stuck_count = len(stuck_users)
+        
+        # Format stuck users info
+        stuck_users_info = []
+        for user in stuck_users[:10]:  # Limit to 10 for display
+            lock_age = datetime.utcnow() - user.processing_since
+            stuck_users_info.append({
+                "telegram_id": user.telegram_id,
+                "username": user.username,
+                "lock_age_minutes": int(lock_age.total_seconds() / 60),
+                "locked_since": user.processing_since.strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
         # Format recent messages for display
         recent_msgs_formatted = []
         for msg in recent_messages:
@@ -534,12 +557,51 @@ def stats():
         return jsonify({
             "stats": {
                 "total_users": user_count,
-                "total_messages": message_count
+                "total_messages": message_count,
+                "users_with_locks": locked_users_count,
+                "stuck_locks": stuck_count
             },
+            "stuck_users": stuck_users_info,
             "recent_messages": recent_msgs_formatted
         })
     except Exception as e:
         logger.error(f"Error generating stats: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/clear_locks', methods=['POST'])
+def admin_clear_locks():
+    """Manually clear all stuck processing locks (ADMIN ONLY)"""
+    admin_token = request.args.get('admin_token') or request.json.get('admin_token') if request.is_json else None
+    expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
+    
+    if not expected_token:
+        return jsonify({
+            "error": "Admin functionality not configured",
+            "message": "Admin token not set in environment"
+        }), 503
+    
+    if not admin_token or admin_token != expected_token:
+        logger.warning(f"Unauthorized lock cleanup attempt from {request.remote_addr}")
+        return jsonify({
+            "error": "Unauthorized",
+            "message": "Valid admin token required"
+        }), 401
+    
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Database not available",
+            "message": "Lock cleanup requires database connection"
+        }), 503
+    
+    try:
+        cleared_count = cleanup_stuck_processing_locks()
+        return jsonify({
+            "success": True,
+            "message": f"Cleared {cleared_count} stuck processing locks",
+            "cleared_count": cleared_count
+        })
+    except Exception as e:
+        logger.error(f"Error in admin lock cleanup: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/export/conversations', methods=['GET'])
@@ -682,6 +744,42 @@ def export_conversations():
         logger.error(f"Error exporting conversations: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+def cleanup_stuck_processing_locks():
+    """Clean up processing locks that are older than 5 minutes (stuck locks)"""
+    if not DB_AVAILABLE:
+        logger.warning("Cannot cleanup stuck locks - database not available")
+        return 0
+    
+    try:
+        from datetime import timedelta
+        threshold = datetime.utcnow() - timedelta(minutes=5)
+        
+        stuck_users = User.query.filter(
+            User.processing_since.isnot(None),
+            User.processing_since < threshold
+        ).all()
+        
+        count = len(stuck_users)
+        
+        if count > 0:
+            logger.warning(f"Found {count} users with stuck processing locks (older than 5 minutes)")
+            
+            for user in stuck_users:
+                lock_age = datetime.utcnow() - user.processing_since
+                logger.info(f"Clearing stuck lock for user {user.telegram_id} ({user.username}) - lock age: {lock_age}")
+                user.processing_since = None
+            
+            db.session.commit()
+            logger.info(f"✓ Cleared {count} stuck processing locks")
+        else:
+            logger.info("No stuck processing locks found")
+        
+        return count
+    except Exception as e:
+        logger.error(f"Error cleaning up stuck locks: {str(e)}")
+        db.session.rollback()
+        return 0
+
 def register_telegram_commands():
     """Register bot commands with Telegram so they appear in the command menu"""
     if not BOT_TOKEN:
@@ -752,6 +850,11 @@ def register_telegram_webhook():
         # Redact BOT_TOKEN from exception message before logging
         error_msg = str(e).replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else str(e)
         logger.error(f"Error registering webhook: {error_msg}")
+
+# Clean up stuck processing locks on startup (within app context)
+if DATABASE_URL and DB_AVAILABLE:
+    with app.app_context():
+        cleanup_stuck_processing_locks()
 
 # Register commands and webhook on startup
 register_telegram_commands()
