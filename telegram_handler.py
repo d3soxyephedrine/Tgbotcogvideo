@@ -302,7 +302,7 @@ def get_help_message():
 /uncensored <prompt> - Fully uncensored image generation (10 credits)
 /edit <prompt> - Image generation optimized for editing (8 credits)
 /grok <prompt> - Stylized image generation (8 credits)
-/write <request> - Professional writing mode (1 credit)
+/write <request> - Professional writing mode (2 credits)
 
 🎁 *Daily Free Credits:*
 • Use /daily to claim 25 free credits
@@ -347,7 +347,7 @@ Example: ! memorize I love cats and prefer dark themes
 • DeepSeek-Chat (Default): 1 credit per message
 • ChatGPT-4o (Premium): 2 credits per message
 • Your choice persists across all chats
-• Writing mode uses your selected model
+• Writing mode always costs 2 credits
 
 💡 *Image & Video Pricing:*
 • /imagine: 10 credits
@@ -1721,9 +1721,13 @@ Use /buy to purchase more credits or /daily for free credits.
                     # Fetch user and deduct credit immediately (must be synchronous)
                     user = User.query.get(user_id)
                     if user:
-                        # Determine credits to deduct based on model (DeepSeek=1, GPT-4o=2)
+                        # Determine credits to deduct based on writing mode or model
                         selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-                        credits_to_deduct = 2 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+                        # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=2)
+                        if writing_mode:
+                            credits_to_deduct = 2
+                        else:
+                            credits_to_deduct = 2 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
                         
                         # Deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)

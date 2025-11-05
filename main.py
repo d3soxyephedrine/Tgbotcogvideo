@@ -692,16 +692,17 @@ def register_telegram_commands():
         commands = [
             {"command": "start", "description": "Start the bot"},
             {"command": "help", "description": "Show help message"},
-            {"command": "model", "description": "Show current model"},
+            {"command": "model", "description": "Switch AI model (DeepSeek/GPT-4o)"},
             {"command": "balance", "description": "Check credit balance"},
+            {"command": "daily", "description": "Claim 25 free daily credits"},
             {"command": "buy", "description": "Purchase more credits"},
-            {"command": "getapikey", "description": "Get API key for LibreChat web access"},
+            {"command": "getapikey", "description": "Get API key for web chat access"},
             {"command": "clear", "description": "Clear conversation history"},
-            {"command": "imagine", "description": "FLUX high quality photorealistic (5 credits)"},
-            {"command": "hunyuan", "description": "Hunyuan fully uncensored (5 credits)"},
-            {"command": "qwen", "description": "Qwen for image editing (3 credits)"},
-            {"command": "grok", "description": "Grok (4 credits)"},
-            {"command": "write", "description": "Professional writing mode (1 credit)"}
+            {"command": "imagine", "description": "Generate photorealistic image (10 credits)"},
+            {"command": "uncensored", "description": "Fully uncensored image generation (10 credits)"},
+            {"command": "grok", "description": "Generate stylized image (8 credits)"},
+            {"command": "edit", "description": "Image generation with text support (8 credits)"},
+            {"command": "write", "description": "Professional writing mode (2 credits)"}
         ]
         
         telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands"
