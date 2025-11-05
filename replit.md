@@ -63,7 +63,12 @@ Preferred communication style: Simple, everyday language.
 - **Workflow**: Telegram updates trigger user handling, synchronous credit deduction, conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.
 - **Response Delivery**: Progressive updates, multi-message chunking, and smart chunking at character boundaries.
 - **Performance Optimizations**: Consolidated database operations, optimized history queries, upfront credit deduction, and background processing for image/video generation to prevent webhook timeouts.
-- **Rate Limiting**: Users cannot send new messages while one is processing (60-second lock with automatic timeout cleanup). Prevents API spam and concurrent message processing conflicts. Lock is cleared on both successful completion and errors to prevent stuck states.
+- **Rate Limiting**: Currently DISABLED to allow reflection prompts to complete. Lock-setting code is commented out (telegram_handler.py line 761-787). Lock cleanup code runs at message completion/error.
+- **Stuck Lock Prevention**: 
+  - **Startup Cleanup**: Automatic cleanup of processing locks older than 5 minutes on app startup (main.py `cleanup_stuck_processing_locks()`)
+  - **Manual Cleanup**: `/admin/clear_locks` endpoint for emergency lock clearing (requires `ADMIN_EXPORT_TOKEN`)
+  - **Monitoring**: `/stats` endpoint tracks `users_with_locks`, `stuck_locks`, and `stuck_users` for real-time monitoring
+  - **Implementation**: Successfully cleared 20 stuck locks (some >17 hours old) on Nov 5, 2025
 
 ### Conversation Memory
 - The bot remembers the last 10 messages for context, with manual clearing via `/clear`.
@@ -89,7 +94,10 @@ Preferred communication style: Simple, everyday language.
 - Flask secret key for session management.
 
 ### Logging & Monitoring
-- DEBUG level logging with system prompt redaction for security. `/health` and `/stats` endpoints.
+- DEBUG level logging with system prompt redaction for security.
+- `/health` endpoint: Comprehensive health check with database latency testing and table counts
+- `/stats` endpoint: Bot statistics including stuck lock monitoring (`users_with_locks`, `stuck_locks`, `stuck_users`), total users/messages, and recent message history
+- `/admin/clear_locks` endpoint: Manual stuck lock cleanup (requires `ADMIN_EXPORT_TOKEN`)
 
 ### Deployment Features
 - Cloud-ready design for serverless platforms.
