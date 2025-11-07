@@ -16,7 +16,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Database Layer
 - **ORM**: SQLAlchemy with Flask-SQLAlchemy.
-- **Schema Design**: Six models (`User`, `Message`, `Payment`, `CryptoPayment`, `Transaction`, `Memory`) for user profiles, message history, pay-per-use credit system, and persistent user memories. Extensions include columns for daily credits, purchase tracking, action history, `api_key` for web access, and `preferred_model` for user-specific model selection (DeepSeek or GPT-4o). The `Message` model includes a `platform` column to track message source (Telegram or web). The `Memory` model stores user-specific memories with platform tracking.
+- **Schema Design**: Seven models (`User`, `Message`, `Payment`, `CryptoPayment`, `TelegramPayment`, `Transaction`, `Memory`) for user profiles, message history, pay-per-use credit system, and persistent user memories. Extensions include columns for daily credits, purchase tracking, action history, `api_key` for web access, and `preferred_model` for user-specific model selection (DeepSeek or GPT-4o). The `Message` model includes a `platform` column to track message source (Telegram or web). The `Memory` model stores user-specific memories with platform tracking. The `TelegramPayment` model tracks Telegram Stars payments with charge IDs for refund support.
 - **Resilience**: Connection pooling, retry logic, and graceful degradation.
 
 ### LLM Provider Architecture
@@ -50,14 +50,18 @@ Preferred communication style: Simple, everyday language.
   - Image generation: 8-10 credits
   - Image editing: 12-15 credits
   - Video generation: 20 credits
-- **Credit Packages** (50% reduced pricing):
-  - $5 → 200 credits
-  - $10 → 400 credits
-  - $20 → 800 credits
-  - $50 → 2,000 credits
+- **Credit Packages**:
+  - **Telegram Stars** (Primary):
+    - 250 Stars → 200 credits ($5 equivalent)
+    - 500 Stars → 400 credits ($10 equivalent)
+    - 1000 Stars → 800 credits ($20 equivalent)
+    - 2500 Stars → 2000 credits ($50 equivalent)
+  - **Cryptocurrency** (Advanced): Same credit amounts via NOWPayments web interface
 - **Monetization Features**: Image generation, image editing, and video generation all require first purchase (0 free generations/edits/videos). New users receive 100 free credits for text chat only.
 - **Usage Tracking**: `images_generated` and `images_edited` counters track free user limits.
-- **Purchase Flow**: Integrated web-based purchase page with NOWPayments for cryptocurrency payments and IPN callbacks.
+- **Purchase Flow**: 
+  - **Telegram Stars**: Native in-app payment using `/buy` command with instant credit delivery via `sendInvoice` API
+  - **Cryptocurrency**: Web-based purchase page with NOWPayments for crypto payments and IPN callbacks
 
 ### Message Processing Flow
 - **Workflow**: Telegram updates trigger user handling, synchronous credit deduction, conversation history retrieval, context formatting, LLM processing, streaming response generation, and synchronous message storage.

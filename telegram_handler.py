@@ -353,9 +353,19 @@ def handle_successful_payment(message):
     # Extract payment details
     telegram_payment_charge_id = successful_payment.get("telegram_payment_charge_id")
     invoice_payload = successful_payment.get("invoice_payload")
-    total_amount = successful_payment.get("total_amount")  # Amount in Stars
+    total_amount = successful_payment.get("total_amount")  # Amount in smallest units (1 Star = 100 units)
     
-    logger.info(f"Processing successful payment: charge_id={telegram_payment_charge_id}, payload={invoice_payload}, amount={total_amount} Stars")
+    # Validate total_amount
+    if total_amount is None or total_amount <= 0:
+        logger.error(f"Invalid total_amount: {total_amount}")
+        send_message(chat_id, "❌ Invalid payment amount. Please contact support.")
+        return
+    
+    # IMPORTANT: Telegram Stars conversion - 1 Star = 100 units
+    # Always divide by 100 to convert smallest units to Stars
+    total_stars = total_amount // 100
+    
+    logger.info(f"Processing successful payment: charge_id={telegram_payment_charge_id}, payload={invoice_payload}, amount={total_stars} Stars ({total_amount} units)")
     
     # Parse invoice payload to get user telegram_id and credits
     # Format: "stars_{telegram_id}_{credits}_{stars}"
@@ -368,9 +378,9 @@ def handle_successful_payment(message):
         credits_purchased = int(parts[2])
         stars_amount = int(parts[3])
         
-        # Verify amount matches
-        if total_amount != stars_amount:
-            logger.error(f"Amount mismatch: expected {stars_amount}, got {total_amount}")
+        # Verify amount matches (convert Telegram's units to Stars)
+        if total_stars != stars_amount:
+            logger.error(f"Amount mismatch: expected {stars_amount} Stars, got {total_stars} Stars ({total_amount} units)")
             send_message(chat_id, "❌ Payment amount mismatch. Please contact support.")
             return
         
