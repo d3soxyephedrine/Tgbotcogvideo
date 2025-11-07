@@ -43,6 +43,7 @@ class User(db.Model):
     payments = db.relationship('Payment', backref='user', lazy=True)
     transactions = db.relationship('Transaction', backref='user', lazy=True)
     crypto_payments = db.relationship('CryptoPayment', backref='user', lazy=True)
+    telegram_payments = db.relationship('TelegramPayment', backref='user', lazy=True)
     conversations = db.relationship('Conversation', backref='user', lazy=True, cascade='all, delete-orphan')
     memories = db.relationship('Memory', backref='user', lazy=True, cascade='all, delete-orphan')
 
@@ -137,6 +138,23 @@ class CryptoPayment(db.Model):
     
     def __repr__(self):
         return f'<CryptoPayment {self.payment_id} for user {self.user_id}>'
+
+class TelegramPayment(db.Model):
+    """TelegramPayment model to track Telegram Stars payments"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    telegram_payment_charge_id = db.Column(db.String(255), unique=True, nullable=False)  # For refunds
+    invoice_payload = db.Column(db.String(255), nullable=False)  # Internal identifier
+    credits_purchased = db.Column(db.Integer, nullable=False)
+    stars_amount = db.Column(db.Integer, nullable=False)  # Amount in Telegram Stars
+    status = db.Column(db.String(50), nullable=False, default='completed')  # completed, refunded
+    credits_added = db.Column(db.Boolean, default=False, nullable=False)  # Idempotency flag
+    processed_at = db.Column(db.DateTime, nullable=True)  # When credits were added
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<TelegramPayment {self.telegram_payment_charge_id} for user {self.user_id}>'
 
 class Memory(db.Model):
     """Memory model to store user-defined persistent memories"""
