@@ -271,6 +271,183 @@ def delete_message(chat_id, message_id):
         logger.debug(f"Error deleting message: {str(e)}")
         return {"error": str(e)}
 
+def send_invoice(chat_id, title, description, payload, prices):
+    """Send a payment invoice to the user (Telegram Stars)
+    
+    Args:
+        chat_id (int): The ID of the chat
+        title (str): Product name
+        description (str): Product description
+        payload (str): Internal identifier for this invoice
+        prices (list): List of dicts with 'label' and 'amount' (in Stars)
+    
+    Returns:
+        dict: The response from Telegram API
+    """
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not configured")
+        return {"error": "Bot token not configured"}
+    
+    try:
+        payload_data = {
+            "chat_id": chat_id,
+            "title": title,
+            "description": description,
+            "payload": payload,
+            "provider_token": "",  # Empty for Telegram Stars
+            "currency": "XTR",  # Telegram Stars
+            "prices": prices
+        }
+        
+        response = requests.post(
+            f"{BASE_URL}/sendInvoice",
+            json=payload_data
+        )
+        result = response.json()
+        
+        if not result.get("ok"):
+            logger.error(f"Failed to send invoice: {result}")
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error sending invoice: {str(e)}")
+        return {"error": str(e)}
+
+def handle_pre_checkout_query(pre_checkout_query):
+    """Handle pre-checkout query to validate payment before processing
+    
+    Args:
+        pre_checkout_query (dict): The pre-checkout query from Telegram
+    """
+    query_id = pre_checkout_query.get("id")
+    
+    # Always approve (we'll validate later in successful_payment)
+    try:
+        response = requests.post(
+            f"{BASE_URL}/answerPreCheckoutQuery",
+            json={
+                "pre_checkout_query_id": query_id,
+                "ok": True
+            }
+        )
+        result = response.json()
+        if result.get("ok"):
+            logger.info(f"Pre-checkout query approved: {query_id}")
+        else:
+            logger.error(f"Failed to answer pre-checkout query: {result}")
+    except Exception as e:
+        logger.error(f"Error answering pre-checkout query: {str(e)}")
+
+def handle_successful_payment(message):
+    """Handle successful Telegram Stars payment
+    
+    Args:
+        message (dict): The message containing successful_payment data
+    """
+    from flask import current_app
+    from models import db, User, TelegramPayment, Transaction
+    
+    chat_id = message.get("chat", {}).get("id")
+    successful_payment = message.get("successful_payment", {})
+    
+    # Extract payment details
+    telegram_payment_charge_id = successful_payment.get("telegram_payment_charge_id")
+    invoice_payload = successful_payment.get("invoice_payload")
+    total_amount = successful_payment.get("total_amount")  # Amount in Stars
+    
+    logger.info(f"Processing successful payment: charge_id={telegram_payment_charge_id}, payload={invoice_payload}, amount={total_amount} Stars")
+    
+    # Parse invoice payload to get user telegram_id and credits
+    # Format: "stars_{telegram_id}_{credits}_{stars}"
+    try:
+        parts = invoice_payload.split("_")
+        if len(parts) != 4 or parts[0] != "stars":
+            raise ValueError(f"Invalid invoice payload format: {invoice_payload}")
+        
+        telegram_id = int(parts[1])
+        credits_purchased = int(parts[2])
+        stars_amount = int(parts[3])
+        
+        # Verify amount matches
+        if total_amount != stars_amount:
+            logger.error(f"Amount mismatch: expected {stars_amount}, got {total_amount}")
+            send_message(chat_id, "❌ Payment amount mismatch. Please contact support.")
+            return
+        
+        if not DB_AVAILABLE:
+            send_message(chat_id, "❌ Database not available. Please try again later.")
+            return
+        
+        with current_app.app_context():
+            # Get user
+            user = User.query.filter_by(telegram_id=telegram_id).first()
+            if not user:
+                logger.error(f"User not found: {telegram_id}")
+                send_message(chat_id, "❌ User not found. Please contact support.")
+                return
+            
+            # Check if payment already processed (idempotency)
+            existing_payment = TelegramPayment.query.filter_by(
+                telegram_payment_charge_id=telegram_payment_charge_id
+            ).first()
+            
+            if existing_payment:
+                if existing_payment.credits_added:
+                    logger.warning(f"Payment already processed: {telegram_payment_charge_id}")
+                    send_message(chat_id, f"✅ Payment already credited! You have {user.credits} credits.")
+                    return
+                else:
+                    # Payment exists but credits not added - add them now
+                    logger.info(f"Completing partially processed payment: {telegram_payment_charge_id}")
+            else:
+                # Create new payment record
+                existing_payment = TelegramPayment(
+                    user_id=user.id,
+                    telegram_payment_charge_id=telegram_payment_charge_id,
+                    invoice_payload=invoice_payload,
+                    credits_purchased=credits_purchased,
+                    stars_amount=stars_amount,
+                    status='completed'
+                )
+                db.session.add(existing_payment)
+            
+            # Add credits to user
+            user.credits += credits_purchased
+            user.last_purchase_at = datetime.utcnow()
+            
+            # Mark payment as processed
+            existing_payment.credits_added = True
+            existing_payment.processed_at = datetime.utcnow()
+            
+            # Create transaction record
+            transaction = Transaction(
+                user_id=user.id,
+                credits_used=-credits_purchased,  # Negative for credit addition
+                transaction_type='telegram_stars_purchase',
+                description=f"Purchased {credits_purchased} credits via Telegram Stars ({stars_amount} ⭐)"
+            )
+            db.session.add(transaction)
+            
+            db.session.commit()
+            
+            logger.info(f"Payment processed successfully: {credits_purchased} credits added to user {telegram_id}")
+            
+            # Send success message
+            response = f"""✅ Payment Successful!
+
+{stars_amount} ⭐ → {credits_purchased} credits
+
+💰 Current Balance: {user.credits} credits
+🎉 Thank you for your purchase!"""
+            
+            send_message(chat_id, response)
+            
+    except Exception as e:
+        logger.error(f"Error processing payment: {str(e)}", exc_info=True)
+        send_message(chat_id, "❌ Error processing payment. Please contact support with your payment ID.")
+        if DB_AVAILABLE:
+            db.session.rollback()
+
 def get_photo_url(file_id, max_size_mb=10):
     """Get a publicly accessible URL for a photo from Telegram
     
@@ -409,6 +586,16 @@ def process_update(update):
     Args:
         update (dict): The update object from Telegram
     """
+    # Handle pre-checkout query (validate payment before processing)
+    if "pre_checkout_query" in update:
+        handle_pre_checkout_query(update["pre_checkout_query"])
+        return
+    
+    # Handle successful payment
+    if "message" in update and "successful_payment" in update["message"]:
+        handle_successful_payment(update["message"])
+        return
+    
     # Check if the update contains a message
     if "message" not in update:
         logger.debug("Update does not contain a message")
@@ -620,21 +807,46 @@ def process_update(update):
         
         # Check for /buy command
         if text.lower() == '/buy':
-            # Get domain from environment variables
-            domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
+            # Define Stars packages
+            STARS_PACKAGES = [
+                {"stars": 250, "credits": 200, "usd": 5},
+                {"stars": 500, "credits": 400, "usd": 10},
+                {"stars": 1000, "credits": 800, "usd": 20},
+                {"stars": 2500, "credits": 2000, "usd": 50}
+            ]
             
-            response = f"""💰 Credit Packages (Volume Bonuses!)
+            # Send Stars invoice buttons
+            response = """⭐ *Purchase Credits with Telegram Stars*
 
-• $10 → 200 credits (5.0¢/credit)
-• $20 → 420 credits (4.76¢/credit) +5% bonus
-• $50 → 1,120 credits (4.46¢/credit) +12% bonus  
-• $100 → 2,360 credits (4.24¢/credit) +18% bonus
+Choose a package to pay instantly in-app:"""
+            
+            send_message(chat_id, response, parse_mode="Markdown")
+            
+            # Send invoice for each package
+            for package in STARS_PACKAGES:
+                stars = package["stars"]
+                credits = package["credits"]
+                usd = package["usd"]
+                
+                title = f"{credits} Credits"
+                description = f"${usd} worth of credits ({stars} ⭐)"
+                payload = f"stars_{telegram_id}_{credits}_{stars}"
+                prices = [{"label": f"{credits} Credits", "amount": stars}]
+                
+                result = send_invoice(chat_id, title, description, payload, prices)
+                if not result.get("ok"):
+                    logger.error(f"Failed to send invoice for {credits} credits: {result}")
+            
+            # Add crypto option link
+            domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
+            crypto_msg = f"""
+🔐 *Advanced: Pay with Cryptocurrency*
 
-To purchase credits, visit:
-https://{domain}/buy?telegram_id={telegram_id}
+Visit: https://{domain}/buy?telegram_id={telegram_id}
 
-Bigger packs = better value!
-"""
+💡 Telegram Stars is instant and easier!"""
+            
+            send_message(chat_id, crypto_msg, parse_mode="Markdown")
             
             # Store command in database if available
             if DB_AVAILABLE and user_id:
@@ -644,7 +856,7 @@ Bigger packs = better value!
                         message_record = Message(
                             user_id=user_id,
                             user_message=text,
-                            bot_response=response,
+                            bot_response=response + crypto_msg,
                             model_used=os.environ.get('MODEL', DEFAULT_MODEL),
                             credits_charged=0
                         )
@@ -653,8 +865,6 @@ Bigger packs = better value!
                 except Exception as db_error:
                     logger.error(f"Database error storing buy command: {str(db_error)}")
             
-            # Send response without Markdown (URL causes parsing issues)
-            send_message(chat_id, response, parse_mode=None)
             return
         
         # Check for /getapikey command
