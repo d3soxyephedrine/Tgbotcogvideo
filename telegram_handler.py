@@ -237,6 +237,40 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
         logger.debug(f"Error editing message: {str(e)}")
         return {"error": str(e)}
 
+def delete_message(chat_id, message_id):
+    """Delete a message in Telegram
+    
+    Args:
+        chat_id (int): The ID of the chat
+        message_id (int): The ID of the message to delete
+    
+    Returns:
+        dict: The response from Telegram API
+    """
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not configured")
+        return {"error": "Bot token not configured"}
+    
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "message_id": message_id
+        }
+        
+        response = requests.post(
+            f"{BASE_URL}/deleteMessage",
+            json=payload
+        )
+        result = response.json()
+        
+        if not result.get("ok"):
+            logger.debug(f"Failed to delete message {message_id}: {result}")
+            
+        return result
+    except Exception as e:
+        logger.debug(f"Error deleting message: {str(e)}")
+        return {"error": str(e)}
+
 def get_photo_url(file_id, max_size_mb=10):
     """Get a publicly accessible URL for a photo from Telegram
     
@@ -1831,7 +1865,13 @@ Use /buy to purchase more credits or /daily for free credits.
         if len(llm_response) <= CHUNK_SIZE:
             # Response fits in one message
             if streaming_message_id:
-                edit_message(chat_id, streaming_message_id, llm_response, parse_mode="Markdown")
+                edit_result = edit_message(chat_id, streaming_message_id, llm_response, parse_mode="Markdown")
+                
+                # If edit failed, delete placeholder and send new message
+                if not edit_result.get("ok"):
+                    logger.warning(f"Failed to edit placeholder message {streaming_message_id}, cleaning up and sending new message")
+                    delete_message(chat_id, streaming_message_id)
+                    send_message(chat_id, llm_response, parse_mode="Markdown")
         else:
             # Split response across multiple messages
             chunks = []
@@ -1840,7 +1880,13 @@ Use /buy to purchase more credits or /daily for free credits.
             
             # Update first message
             if streaming_message_id:
-                edit_message(chat_id, streaming_message_id, chunks[0], parse_mode="Markdown")
+                edit_result = edit_message(chat_id, streaming_message_id, chunks[0], parse_mode="Markdown")
+                
+                # If edit failed, delete placeholder and send new message
+                if not edit_result.get("ok"):
+                    logger.warning(f"Failed to edit placeholder message {streaming_message_id}, cleaning up and sending new message")
+                    delete_message(chat_id, streaming_message_id)
+                    send_message(chat_id, chunks[0], parse_mode="Markdown")
             
             # Send or update continuation messages
             for idx, chunk in enumerate(chunks[1:], start=1):
