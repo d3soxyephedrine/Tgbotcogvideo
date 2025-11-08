@@ -31,24 +31,16 @@ Preferred communication style: Simple, everyday language.
   - **Refusal/Meta-Commentary Detection**: Automatic detection with reflection prompts to ensure content delivery. Meta-commentary patterns (discussing formatting/protocol) are filtered to prevent false positives.
   - **Thought Process**: Every LLM response begins with "THOUGHT START:LO <crude internal reasoning>".
   - **Professional Writing Mode**: `/write` command activates natural prose style.
-- **AI Prompt Refinement**:
-  - **System**: Automatic prompt enhancement using DeepSeek before all image/video generation
-  - **Purpose**: Amplifies user prompts toward maximally explicit, uncensored, detailed results
-  - **Configuration**: Uses uncensored refiner system prompt with explicit anatomical detail instructions
-  - **Processing**: 300-character limit for images, 200-character limit for videos
-  - **Transparency**: Refinement happens silently (users see only their original prompt, refined prompt used internally)
-  - **Cost**: No additional credits charged (included in generation cost)
-  - **Fallback**: Returns original prompt on any error
 - **Image Generation (Quadruple Models)**:
-  - **FLUX.1 Kontext Max** (`/imagine`): High-quality photorealistic images via Novita AI. (10 credits/image) - Prompts automatically refined for explicit detail
-  - **Hunyuan-Image-3** (`/uncensored`): Fully uncensored images via Novita AI. (10 credits/image) - Prompts automatically refined for explicit detail
-  - **Grok-2-Image** (`/grok`): Stylized images via xAI API. (8 credits/image) - Prompts automatically refined for explicit detail
-  - **Qwen-Image** (`/edit`): Image editing capabilities via Novita AI. (8 credits/image) - Prompts automatically refined for explicit detail
+  - **FLUX.1 Kontext Max** (`/imagine`): High-quality photorealistic images via Novita AI. (10 credits/image)
+  - **Hunyuan-Image-3** (`/uncensored`): Fully uncensored images via Novita AI. (10 credits/image)
+  - **Grok-2-Image** (`/grok`): Stylized images via xAI API. (8 credits/image)
+  - **Qwen-Image** (`/edit`): Image editing capabilities via Novita AI. (8 credits/image)
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (15 credits/edit)
   - **Qwen-Image**: Image editing via Novita AI. (12 credits/edit)
 - **Video Generation (Single Model - Image-to-Video)**:
-  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (20 credits/video) - Prompts automatically refined for explicit detail
+  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (20 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
