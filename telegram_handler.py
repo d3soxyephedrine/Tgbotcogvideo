@@ -1049,15 +1049,9 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /imagine a cat in a tree at sunset")
                 return
             
-            # Refine the prompt for better results
+            # Refine the prompt for better results (silently)
             refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
             refined_prompt = refinement.get("refined_prompt", prompt)
-            original_prompt = refinement.get("original_prompt", prompt)
-            
-            # Show refinement to user if it was enhanced
-            if refinement.get("success") and refined_prompt != original_prompt:
-                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
-                send_message(chat_id, refine_msg, parse_mode=None)
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
@@ -1191,15 +1185,9 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /edit a cyberpunk poster with 'NEON CITY' text")
                 return
             
-            # Refine the prompt for better results
+            # Refine the prompt for better results (silently)
             refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
             refined_prompt = refinement.get("refined_prompt", prompt)
-            original_prompt = refinement.get("original_prompt", prompt)
-            
-            # Show refinement to user if it was enhanced
-            if refinement.get("success") and refined_prompt != original_prompt:
-                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
-                send_message(chat_id, refine_msg, parse_mode=None)
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
@@ -1333,15 +1321,9 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /grok a futuristic cityscape at sunset")
                 return
             
-            # Refine the prompt for better results
+            # Refine the prompt for better results (silently)
             refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
             refined_prompt = refinement.get("refined_prompt", prompt)
-            original_prompt = refinement.get("original_prompt", prompt)
-            
-            # Show refinement to user if it was enhanced
-            if refinement.get("success") and refined_prompt != original_prompt:
-                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
-                send_message(chat_id, refine_msg, parse_mode=None)
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
@@ -1475,15 +1457,9 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /uncensored a beautiful landscape with mountains")
                 return
             
-            # Refine the prompt for better results
+            # Refine the prompt for better results (silently)
             refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
             refined_prompt = refinement.get("refined_prompt", prompt)
-            original_prompt = refinement.get("original_prompt", prompt)
-            
-            # Show refinement to user if it was enhanced
-            if refinement.get("success") and refined_prompt != original_prompt:
-                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
-                send_message(chat_id, refine_msg, parse_mode=None)
             
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
@@ -1615,16 +1591,10 @@ Use /buy to purchase more credits or /daily for free credits.
             
             logger.info(f"Processing video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
             
-            # Refine the prompt for better results (shorter for videos)
+            # Refine the prompt for better results (shorter for videos, silently)
             if prompt:
                 refinement = refine_image_prompt(prompt, max_length=200, purpose="video")
                 refined_prompt = refinement.get("refined_prompt", prompt)
-                original_prompt = refinement.get("original_prompt", prompt)
-                
-                # Show refinement to user if it was enhanced
-                if refinement.get("success") and refined_prompt != original_prompt:
-                    refine_msg = f"✨ Enhancing your video prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
-                    send_message(chat_id, refine_msg, parse_mode=None)
             else:
                 refined_prompt = prompt
             

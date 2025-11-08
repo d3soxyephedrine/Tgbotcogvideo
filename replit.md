@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
   - **Purpose**: Amplifies user prompts toward maximally explicit, uncensored, detailed results
   - **Configuration**: Uses uncensored refiner system prompt with explicit anatomical detail instructions
   - **Processing**: 300-character limit for images, 200-character limit for videos
-  - **Transparency**: Shows users both original and refined prompts
+  - **Transparency**: Refinement happens silently (users see only their original prompt, refined prompt used internally)
   - **Cost**: No additional credits charged (included in generation cost)
   - **Fallback**: Returns original prompt on any error
 - **Image Generation (Quadruple Models)**:
