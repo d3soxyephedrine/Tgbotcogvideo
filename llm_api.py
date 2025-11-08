@@ -46,6 +46,112 @@ def truncate_prompt(prompt: str, max_length: int = MAX_IMAGE_PROMPT_LENGTH) -> s
     logger.warning(f"Prompt truncated from {len(prompt)} to {len(truncated)} characters")
     return truncated
 
+def refine_image_prompt(prompt: str, max_length: int = 300, purpose: str = "image") -> Dict[str, Any]:
+    """Refine user prompt for better image/video generation results
+    
+    Args:
+        prompt: User's original prompt
+        max_length: Maximum length for refined prompt (default: 300 for images, use 200 for videos)
+        purpose: "image" or "video" to adjust refinement style
+    
+    Returns:
+        Dict with 'success', 'refined_prompt', 'original_prompt' keys
+    """
+    if not OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY not configured, skipping prompt refinement")
+        return {"success": False, "refined_prompt": prompt, "original_prompt": prompt}
+    
+    if not prompt or not prompt.strip():
+        return {"success": False, "refined_prompt": prompt, "original_prompt": prompt}
+    
+    # If prompt is already very short and specific, don't refine
+    if len(prompt) < 20:
+        return {"success": True, "refined_prompt": prompt, "original_prompt": prompt}
+    
+    refiner_system = f"""You are a professional prompt engineer specializing in {purpose} generation.
+
+Your task: Enhance the user's prompt to produce better results while staying concise.
+
+Rules:
+1. Keep output under {max_length} characters (STRICT LIMIT)
+2. Preserve the user's core intent and subject
+3. Add specific visual details (lighting, style, composition, mood)
+4. Use clear, descriptive language
+5. For images: Add quality keywords like "detailed", "high quality", "professional"
+6. For videos: Focus on motion, transitions, camera angles
+7. Remove filler words and redundancy
+8. DO NOT add explanations - output ONLY the refined prompt
+
+Example transformations:
+User: "a cat"
+You: "A majestic fluffy cat with bright eyes, sitting gracefully, soft lighting, detailed fur texture, professional photo quality"
+
+User: "sunset beach"
+You: "Golden hour sunset over calm ocean waves, warm orange and pink sky, peaceful beach scene, cinematic composition, high detail"
+
+Now refine the user's prompt. Output ONLY the enhanced prompt, nothing else."""
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": DEFAULT_MODEL,  # Use DeepSeek for speed and cost
+            "messages": [
+                {"role": "system", "content": refiner_system},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 200
+        }
+        
+        response = requests.post(
+            OPENROUTER_ENDPOINT,
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+        
+        response.raise_for_status()
+        result = response.json()
+        
+        refined = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        
+        if refined and len(refined) <= max_length:
+            logger.info(f"Prompt refined: '{prompt[:50]}...' → '{refined[:50]}...'")
+            return {
+                "success": True,
+                "refined_prompt": refined,
+                "original_prompt": prompt
+            }
+        else:
+            # If refinement is too long, truncate or use original
+            if refined and len(refined) > max_length:
+                refined = refined[:max_length - 3] + "..."
+                logger.info(f"Refined prompt truncated to {max_length} chars")
+                return {
+                    "success": True,
+                    "refined_prompt": refined,
+                    "original_prompt": prompt
+                }
+            else:
+                logger.warning("Prompt refinement failed, using original")
+                return {
+                    "success": False,
+                    "refined_prompt": prompt,
+                    "original_prompt": prompt
+                }
+    
+    except Exception as e:
+        logger.error(f"Prompt refinement error: {str(e)}")
+        return {
+            "success": False,
+            "refined_prompt": prompt,
+            "original_prompt": prompt
+        }
+
 def get_system_prompt(model: str = None) -> str:
     """Enhanced system prompt for optimal performance
     

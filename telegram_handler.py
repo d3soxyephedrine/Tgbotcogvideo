@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import threading
-from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video, refine_image_prompt
 from models import db, User, Message, Payment, Transaction, Memory
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
 from datetime import datetime
@@ -1049,6 +1049,16 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /imagine a cat in a tree at sunset")
                 return
             
+            # Refine the prompt for better results
+            refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
+            refined_prompt = refinement.get("refined_prompt", prompt)
+            original_prompt = refinement.get("original_prompt", prompt)
+            
+            # Show refinement to user if it was enhanced
+            if refinement.get("success") and refined_prompt != original_prompt:
+                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
+                send_message(chat_id, refine_msg, parse_mode=None)
+            
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
             if DB_AVAILABLE and user_id:
@@ -1086,8 +1096,8 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send initial processing message
             status_msg = send_message(chat_id, "🎨 Generating your image...", parse_mode=None)
             
-            # Generate image using Novita AI with SDXL
-            result = generate_image(prompt)
+            # Generate image using Novita AI with SDXL (using refined prompt)
+            result = generate_image(refined_prompt)
             
             if result.get("success"):
                 image_url = result.get("image_url")
@@ -1181,6 +1191,16 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /edit a cyberpunk poster with 'NEON CITY' text")
                 return
             
+            # Refine the prompt for better results
+            refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
+            refined_prompt = refinement.get("refined_prompt", prompt)
+            original_prompt = refinement.get("original_prompt", prompt)
+            
+            # Show refinement to user if it was enhanced
+            if refinement.get("success") and refined_prompt != original_prompt:
+                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
+                send_message(chat_id, refine_msg, parse_mode=None)
+            
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
             if DB_AVAILABLE and user_id:
@@ -1218,8 +1238,8 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send initial processing message
             status_msg = send_message(chat_id, "🎨 Generating Qwen image (less censored)...", parse_mode=None)
             
-            # Generate image using Novita AI Qwen-Image
-            result = generate_qwen_image(prompt)
+            # Generate image using Novita AI Qwen-Image (using refined prompt)
+            result = generate_qwen_image(refined_prompt)
             
             if result.get("success"):
                 image_url = result.get("image_url")
@@ -1313,6 +1333,16 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /grok a futuristic cityscape at sunset")
                 return
             
+            # Refine the prompt for better results
+            refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
+            refined_prompt = refinement.get("refined_prompt", prompt)
+            original_prompt = refinement.get("original_prompt", prompt)
+            
+            # Show refinement to user if it was enhanced
+            if refinement.get("success") and refined_prompt != original_prompt:
+                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
+                send_message(chat_id, refine_msg, parse_mode=None)
+            
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
             if DB_AVAILABLE and user_id:
@@ -1350,8 +1380,8 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send initial processing message
             status_msg = send_message(chat_id, "🤖 Generating Grok image via xAI...", parse_mode=None)
             
-            # Generate image using xAI Grok API
-            result = generate_grok_image(prompt)
+            # Generate image using xAI Grok API (using refined prompt)
+            result = generate_grok_image(refined_prompt)
             
             if result.get("success"):
                 image_url = result.get("image_url")
@@ -1445,6 +1475,16 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ Please provide a prompt.\n\nExample: /uncensored a beautiful landscape with mountains")
                 return
             
+            # Refine the prompt for better results
+            refinement = refine_image_prompt(prompt, max_length=300, purpose="image")
+            refined_prompt = refinement.get("refined_prompt", prompt)
+            original_prompt = refinement.get("original_prompt", prompt)
+            
+            # Show refinement to user if it was enhanced
+            if refinement.get("success") and refined_prompt != original_prompt:
+                refine_msg = f"✨ Enhancing your prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
+                send_message(chat_id, refine_msg, parse_mode=None)
+            
             # OPTIMIZATION: Check balance and deduct credits upfront (before generation)
             pending_credit_warning = None
             if DB_AVAILABLE and user_id:
@@ -1482,8 +1522,8 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send initial processing message
             status_msg = send_message(chat_id, "🎨 Generating uncensored image...", parse_mode=None)
             
-            # Generate image using Novita AI Hunyuan-Image-3
-            result = generate_hunyuan_image(prompt)
+            # Generate image using Novita AI Hunyuan-Image-3 (using refined prompt)
+            result = generate_hunyuan_image(refined_prompt)
             
             if result.get("success"):
                 image_url = result.get("image_url")
@@ -1575,6 +1615,19 @@ Use /buy to purchase more credits or /daily for free credits.
             
             logger.info(f"Processing video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
             
+            # Refine the prompt for better results (shorter for videos)
+            if prompt:
+                refinement = refine_image_prompt(prompt, max_length=200, purpose="video")
+                refined_prompt = refinement.get("refined_prompt", prompt)
+                original_prompt = refinement.get("original_prompt", prompt)
+                
+                # Show refinement to user if it was enhanced
+                if refinement.get("success") and refined_prompt != original_prompt:
+                    refine_msg = f"✨ Enhancing your video prompt...\n\n📝 Original: {original_prompt}\n\n✨ Enhanced: {refined_prompt}"
+                    send_message(chat_id, refine_msg, parse_mode=None)
+            else:
+                refined_prompt = prompt
+            
             # OPTIMIZATION: Check balance and deduct credits upfront (before video generation)
             pending_credit_warning = None
             if DB_AVAILABLE and user_id:
@@ -1637,7 +1690,7 @@ Use /buy to purchase more credits or /daily for free credits.
                     with app.app_context():
                         send_message(chat_id, "🎬 Generating video from your image... This may take up to 2 minutes.")
                         
-                        result = generate_wan25_video(image_url, prompt)
+                        result = generate_wan25_video(image_url, refined_prompt)
                         
                         if result.get("success"):
                             video_url = result.get("video_url")
