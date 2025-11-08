@@ -841,7 +841,8 @@ Choose a package to pay instantly in-app:"""
                 title = f"{credits} Credits"
                 description = f"${usd} worth of credits ({stars} ⭐)"
                 payload = f"stars_{telegram_id}_{credits}_{stars}"
-                prices = [{"label": f"{credits} Credits", "amount": stars}]
+                # IMPORTANT: Telegram Stars amounts must be in smallest units (1 Star = 100 units)
+                prices = [{"label": f"{credits} Credits", "amount": stars * 100}]
                 
                 result = send_invoice(chat_id, title, description, payload, prices)
                 if not result.get("ok"):
