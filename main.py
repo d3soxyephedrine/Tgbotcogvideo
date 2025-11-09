@@ -868,7 +868,7 @@ def keep_alive():
     while True:
         try:
             logger.info("Pinging server to keep it alive...")
-            requests.get(KEEPALIVE_URL)
+            requests.get(KEEPALIVE_URL, timeout=10)
             logger.info("Ping successful")
         except Exception as e:
             logger.error(f"Error pinging server: {str(e)}")

@@ -100,6 +100,9 @@ def deduct_credits(user, amount):
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+# Timeout for Telegram API requests to prevent worker freezing
+TELEGRAM_TIMEOUT = 30  # seconds
+
 def send_message(chat_id, text, parse_mode=None):
     """Send a message to a specific chat in Telegram
     
@@ -130,7 +133,8 @@ def send_message(chat_id, text, parse_mode=None):
                 
             response = requests.post(
                 f"{BASE_URL}/sendMessage",
-                json=payload
+                json=payload,
+                timeout=TELEGRAM_TIMEOUT
             )
             result = response.json()
             
@@ -140,7 +144,8 @@ def send_message(chat_id, text, parse_mode=None):
                 payload.pop("parse_mode", None)
                 response = requests.post(
                     f"{BASE_URL}/sendMessage",
-                    json=payload
+                    json=payload,
+                    timeout=TELEGRAM_TIMEOUT
                 )
                 result = response.json()
             
@@ -158,7 +163,8 @@ def send_message(chat_id, text, parse_mode=None):
             
         response = requests.post(
             f"{BASE_URL}/sendMessage",
-            json=payload
+            json=payload,
+            timeout=TELEGRAM_TIMEOUT
         )
         result = response.json()
         
@@ -168,7 +174,8 @@ def send_message(chat_id, text, parse_mode=None):
             payload.pop("parse_mode", None)
             response = requests.post(
                 f"{BASE_URL}/sendMessage",
-                json=payload
+                json=payload,
+                timeout=TELEGRAM_TIMEOUT
             )
             result = response.json()
         
@@ -214,7 +221,8 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
             
         response = requests.post(
             f"{BASE_URL}/editMessageText",
-            json=payload
+            json=payload,
+            timeout=TELEGRAM_TIMEOUT
         )
         result = response.json()
         
@@ -224,7 +232,8 @@ def edit_message(chat_id, message_id, text, parse_mode=None):
             payload.pop("parse_mode", None)
             response = requests.post(
                 f"{BASE_URL}/editMessageText",
-                json=payload
+                json=payload,
+                timeout=TELEGRAM_TIMEOUT
             )
             result = response.json()
         
@@ -259,7 +268,8 @@ def delete_message(chat_id, message_id):
         
         response = requests.post(
             f"{BASE_URL}/deleteMessage",
-            json=payload
+            json=payload,
+            timeout=TELEGRAM_TIMEOUT
         )
         result = response.json()
         
@@ -301,7 +311,8 @@ def send_invoice(chat_id, title, description, payload, prices):
         
         response = requests.post(
             f"{BASE_URL}/sendInvoice",
-            json=payload_data
+            json=payload_data,
+            timeout=TELEGRAM_TIMEOUT
         )
         result = response.json()
         
@@ -328,7 +339,8 @@ def handle_pre_checkout_query(pre_checkout_query):
             json={
                 "pre_checkout_query_id": query_id,
                 "ok": True
-            }
+            },
+            timeout=TELEGRAM_TIMEOUT
         )
         result = response.json()
         if result.get("ok"):
@@ -1109,7 +1121,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         "caption": f"🎨 {prompt[:200]}" if len(prompt) <= 200 else f"🎨 {prompt[:197]}..."
                     }
                     
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                     
                     # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
@@ -1241,7 +1253,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         "caption": f"🖼️ {prompt[:200]}" if len(prompt) <= 200 else f"🖼️ {prompt[:197]}..."
                     }
                     
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                     
                     # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
@@ -1373,7 +1385,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         "caption": f"🖼️ {prompt[:200]}" if len(prompt) <= 200 else f"🖼️ {prompt[:197]}..."
                     }
                     
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                     
                     # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
@@ -1505,7 +1517,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         "caption": f"🤖 Grok: {prompt[:200]}" if len(prompt) <= 200 else f"🤖 Grok: {prompt[:197]}..."
                     }
                     
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                     
                     # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
@@ -1637,7 +1649,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         "caption": f"🎨 Hunyuan: {prompt[:200]}" if len(prompt) <= 200 else f"🎨 Hunyuan: {prompt[:197]}..."
                     }
                     
-                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                    requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                     
                     # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                     # Credit already deducted above, so user can't use same credits twice
@@ -1752,7 +1764,7 @@ Use /buy to purchase more credits or /daily for free credits.
                 file_id = photo_file.get("file_id")
                 
                 # Get file info
-                file_info_response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}")
+                file_info_response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}", timeout=TELEGRAM_TIMEOUT)
                 file_info = file_info_response.json()
                 
                 if not file_info.get("ok"):
@@ -1987,7 +1999,7 @@ Use /buy to purchase more credits or /daily for free credits.
                                 "caption": f"✨ Edited: {edit_prompt[:180]}" if len(edit_prompt) <= 180 else f"✨ Edited: {edit_prompt[:177]}..."
                             }
                             
-                            requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload)
+                            requests.post(f"{BASE_URL}/sendPhoto", json=photo_payload, timeout=TELEGRAM_TIMEOUT)
                             
                             # CRITICAL: Store message AND transaction SYNCHRONOUSLY for reliability
                             # Credit already deducted above, so user can't use same credits twice
