@@ -1439,10 +1439,11 @@ def webhook():
     # and always return 200 OK to Telegram immediately
     def process_in_background():
         try:
-            # Process the update
-            logger.info("Calling process_update()...")
-            process_update(update)
-            logger.info("process_update() completed successfully")
+            # CRITICAL: Wrap with app context for database operations
+            with app.app_context():
+                logger.info("Calling process_update()...")
+                process_update(update)
+                logger.info("process_update() completed successfully")
             
         except Exception as e:
             logger.error(f"Error processing webhook in background: {str(e)}", exc_info=True)
