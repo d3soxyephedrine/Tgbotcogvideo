@@ -1771,56 +1771,96 @@ Use /buy to purchase more credits or /daily for free credits.
                 app = current_app._get_current_object()
                 
                 def generate_video_background():
-                    with app.app_context():
-                        send_message(chat_id, "🎬 Generating video from your image... This may take up to 2 minutes.")
-                        
-                        result = generate_wan25_video(image_url, prompt)
-                        
-                        if result.get("success"):
-                            video_url = result.get("video_url")
+                    """Background video generation with comprehensive error handling
+                    
+                    CRITICAL: This function MUST ensure users always get feedback,
+                    even if errors occur. Never fail silently.
+                    """
+                    try:
+                        with app.app_context():
                             try:
-                                send_message(chat_id, f"✨ Video generated successfully!\n\n{video_url}")
+                                send_message(chat_id, "🎬 Generating video from your image... This may take up to 2 minutes.")
+                            except Exception as msg_error:
+                                logger.error(f"Failed to send initial video generation message: {str(msg_error)}")
+                                # Continue anyway - the generation might still work
+                            
+                            result = generate_wan25_video(image_url, prompt)
+                            
+                            if result.get("success"):
+                                video_url = result.get("video_url")
+                                try:
+                                    send_message(chat_id, f"✨ Video generated successfully!\n\n{video_url}")
+                                    
+                                    # Store message and transaction synchronously
+                                    if DB_AVAILABLE and user_id:
+                                        try:
+                                            message_id = store_message(user_id, f"Video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=50)
+                                            
+                                            transaction = Transaction(
+                                                user_id=user_id,
+                                                credits_used=50,
+                                                message_id=message_id,
+                                                transaction_type='video_generation',
+                                                description=f"Video: {prompt[:100] if prompt else 'No prompt'}"
+                                            )
+                                            db.session.add(transaction)
+                                            db.session.commit()
+                                            logger.debug(f"Video transaction stored: message_id={message_id}")
+                                        except Exception as db_error:
+                                            logger.error(f"Database error storing video message/transaction: {str(db_error)}")
+                                    
+                                    # Send credit warning after successful generation
+                                    if pending_credit_warning:
+                                        try:
+                                            send_message(chat_id, pending_credit_warning)
+                                        except:
+                                            pass
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error sending video: {str(e)}")
+                                    try:
+                                        send_message(chat_id, f"❌ Error sending video: {str(e)}")
+                                    except:
+                                        logger.error("Could not send error message to user")
+                            else:
+                                error_msg = result.get("error", "Unknown error")
                                 
-                                # Store message and transaction synchronously
+                                # Refund credits since generation failed
                                 if DB_AVAILABLE and user_id:
                                     try:
-                                        message_id = store_message(user_id, f"Video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=50)
-                                        
-                                        transaction = Transaction(
-                                            user_id=user_id,
-                                            credits_used=50,
-                                            message_id=message_id,
-                                            transaction_type='video_generation',
-                                            description=f"Video: {prompt[:100] if prompt else 'No prompt'}"
-                                        )
-                                        db.session.add(transaction)
-                                        db.session.commit()
-                                        logger.debug(f"Video transaction stored: message_id={message_id}")
+                                        user = User.query.get(user_id)
+                                        if user:
+                                            user.credits += 50
+                                            db.session.commit()
+                                            logger.info(f"Refunded 50 credits due to failed video generation. New balance: {user.credits}")
                                     except Exception as db_error:
-                                        logger.error(f"Database error storing video message/transaction: {str(db_error)}")
+                                        logger.error(f"Database error refunding credits: {str(db_error)}")
                                 
-                                # Send credit warning after successful generation
-                                if pending_credit_warning:
-                                    send_message(chat_id, pending_credit_warning)
-                                
-                            except Exception as e:
-                                logger.error(f"Error sending video: {str(e)}")
-                                send_message(chat_id, f"❌ Error sending video: {str(e)}")
-                        else:
-                            error_msg = result.get("error", "Unknown error")
-                            
-                            # Refund credits since generation failed
-                            if DB_AVAILABLE and user_id:
                                 try:
-                                    user = User.query.get(user_id)
-                                    if user:
-                                        user.credits += 50
-                                        db.session.commit()
-                                        logger.info(f"Refunded 50 credits due to failed video generation. New balance: {user.credits}")
-                                except Exception as db_error:
-                                    logger.error(f"Database error refunding credits: {str(db_error)}")
-                            
-                            send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 50 credits have been refunded to your account.")
+                                    send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 50 credits have been refunded to your account.")
+                                except:
+                                    logger.error("Could not send failure message to user")
+                    
+                    except Exception as e:
+                        # CRITICAL: Catch-all error handler to ensure users always get feedback
+                        logger.error(f"CRITICAL: Video generation background thread crashed: {str(e)}", exc_info=True)
+                        
+                        # Try to refund credits
+                        if DB_AVAILABLE and user_id:
+                            try:
+                                user = User.query.get(user_id)
+                                if user:
+                                    user.credits += 50
+                                    db.session.commit()
+                                    logger.info(f"Refunded 50 credits after background thread crash")
+                            except:
+                                logger.error("Could not refund credits after crash")
+                        
+                        # Always try to notify user
+                        try:
+                            send_message(chat_id, f"❌ An unexpected error occurred during video generation.\n\n✅ 50 credits have been refunded.\n\nError: {str(e)[:100]}\n\nPlease try again or contact support.")
+                        except:
+                            logger.error("Could not send crash notification to user")
                 
                 # Start background thread
                 thread = threading.Thread(target=generate_video_background)
