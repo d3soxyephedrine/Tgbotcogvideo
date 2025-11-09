@@ -1579,28 +1579,28 @@ def buy_credits_page():
     <body>
         <div class="container">
             <h1>💎 Buy Credits</h1>
-            <p class="subtitle">Select a package and pay with cryptocurrency</p>
+            <p class="subtitle">💰 Save 35% with crypto - no Telegram fees! Direct payment = better prices.</p>
             
             <div class="packages" id="packages">
                 <div class="package" data-credits="200" data-price="5">
-                    <div class="package-title">Starter Pack</div>
+                    <div class="package-title">Starter Pack 🔥</div>
                     <div class="package-price">$5</div>
-                    <div class="package-desc">200 credits • 2.5¢/credit</div>
+                    <div class="package-desc">200 credits • 35% cheaper than Telegram Stars</div>
                 </div>
                 <div class="package" data-credits="400" data-price="10">
-                    <div class="package-title">Popular Pack</div>
+                    <div class="package-title">Popular Pack 🔥</div>
                     <div class="package-price">$10</div>
-                    <div class="package-desc">400 credits • 2.5¢/credit</div>
+                    <div class="package-desc">400 credits • 35% cheaper than Telegram Stars</div>
                 </div>
                 <div class="package" data-credits="800" data-price="20">
-                    <div class="package-title">Value Pack</div>
+                    <div class="package-title">Value Pack 🔥</div>
                     <div class="package-price">$20</div>
-                    <div class="package-desc">800 credits • 2.5¢/credit</div>
+                    <div class="package-desc">800 credits • 35% cheaper than Telegram Stars</div>
                 </div>
                 <div class="package" data-credits="2000" data-price="50">
-                    <div class="package-title">Premium Pack</div>
+                    <div class="package-title">Premium Pack 🔥</div>
                     <div class="package-price">$50</div>
-                    <div class="package-desc">2,000 credits • 2.5¢/credit</div>
+                    <div class="package-desc">2,000 credits • 35% cheaper than Telegram Stars</div>
                 </div>
             </div>
             

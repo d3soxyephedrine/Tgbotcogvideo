@@ -819,18 +819,18 @@ def process_update(update):
         
         # Check for /buy command
         if text.lower() == '/buy':
-            # Define Stars packages
+            # Define Stars packages (adjusted for Telegram's ~35% revenue share)
             STARS_PACKAGES = [
-                {"stars": 250, "credits": 200, "usd": 5},
-                {"stars": 500, "credits": 400, "usd": 10},
-                {"stars": 1000, "credits": 800, "usd": 20},
-                {"stars": 2500, "credits": 2000, "usd": 50}
+                {"stars": 385, "credits": 200, "usd": 5},
+                {"stars": 770, "credits": 400, "usd": 10},
+                {"stars": 1540, "credits": 800, "usd": 20},
+                {"stars": 3850, "credits": 2000, "usd": 50}
             ]
             
             # Send Stars invoice buttons
             response = """⭐ *Purchase Credits with Telegram Stars*
 
-Choose a package to pay instantly in-app:"""
+Choose a package to pay instantly in-app (easiest option):"""
             
             send_message(chat_id, response, parse_mode="Markdown")
             
@@ -854,11 +854,13 @@ Choose a package to pay instantly in-app:"""
             # Add crypto option link
             domain = os.environ.get('REPLIT_DOMAINS', '').split(',')[0] if os.environ.get('REPLIT_DOMAINS') else os.environ.get('REPLIT_DEV_DOMAIN') or 'your-app.replit.app'
             crypto_msg = f"""
-🔐 *Advanced: Pay with Cryptocurrency*
+🔐 *Advanced: Pay with Cryptocurrency (35% Discount!)*
+
+Save money by paying directly with crypto - no Telegram fees!
 
 Visit: https://{domain}/buy?telegram_id={telegram_id}
 
-💡 Telegram Stars is instant and easier!"""
+💡 Telegram Stars is instant but costs more due to processing fees."""
             
             send_message(chat_id, crypto_msg, parse_mode="Markdown")
             

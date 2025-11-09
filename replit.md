@@ -51,12 +51,17 @@ Preferred communication style: Simple, everyday language.
   - Image editing: 12-15 credits
   - Video generation: 20 credits
 - **Credit Packages**:
-  - **Telegram Stars** (Primary):
-    - 250 Stars → 200 credits ($5 equivalent)
-    - 500 Stars → 400 credits ($10 equivalent)
-    - 1000 Stars → 800 credits ($20 equivalent)
-    - 2500 Stars → 2000 credits ($50 equivalent)
-  - **Cryptocurrency** (Advanced): Same credit amounts via NOWPayments web interface
+  - **Telegram Stars** (Primary - Instant but includes Telegram's ~35% fee):
+    - 385 Stars → 200 credits (~$5 revenue)
+    - 770 Stars → 400 credits (~$10 revenue)
+    - 1540 Stars → 800 credits (~$20 revenue)
+    - 3850 Stars → 2000 credits (~$50 revenue)
+  - **Cryptocurrency** (Advanced - 35% Discount, no Telegram fees):
+    - $5 → 200 credits
+    - $10 → 400 credits
+    - $20 → 800 credits
+    - $50 → 2000 credits
+  - **Pricing Strategy**: Telegram Stars prices adjusted to cover Telegram's revenue share (~35%), making crypto the discount option for users who want direct payment
 - **Monetization Features**: Image generation, image editing, and video generation all require first purchase (0 free generations/edits/videos). New users receive 100 free credits for text chat only.
 - **Usage Tracking**: `images_generated` and `images_edited` counters track free user limits.
 - **Purchase Flow**: 
