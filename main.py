@@ -917,7 +917,7 @@ def chat_completions_proxy():
     - Authenticates users via API key
     - Fetches last 10 messages for conversation context
     - Injects jailbreak system prompt
-    - Deducts credits (1 per request)
+    - Deducts credits (1-3 per request based on user's model preference)
     - Uses generate_response() with refusal detection
     - Returns OpenAI-compatible streaming responses
     - Stores messages with platform='web'
@@ -968,8 +968,12 @@ def chat_completions_proxy():
         
         logger.info(f"Authenticated web user: {user.telegram_id} (username: {user.username})")
         
+        # Calculate credit cost based on user's preferred model (DeepSeek=1, GPT-4o=3)
+        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+        credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+        
         from telegram_handler import deduct_credits
-        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 1)
+        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
         
         if not success:
             total_credits = user.daily_credits + user.credits
@@ -991,7 +995,7 @@ def chat_completions_proxy():
             }), 402
         
         db.session.commit()
-        logger.info(f"Deducted 1 credit (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+        logger.info(f"Deducted {credits_to_deduct} credit(s) (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
         
         payload = request.get_json()
         if not payload:
