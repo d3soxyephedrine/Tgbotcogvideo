@@ -49,7 +49,7 @@ Preferred communication style: Simple, everyday language.
   - Text messages: 1 credit (DeepSeek) or 2 credits (GPT-4o)
   - Image generation: 8-10 credits
   - Image editing: 12-15 credits
-  - Video generation: 20 credits
+  - Video generation: 50 credits
 - **Credit Packages**:
   - **Telegram Stars** (Primary - Instant but includes Telegram's ~35% fee):
     - 385 Stars → 200 credits (~$5 revenue)

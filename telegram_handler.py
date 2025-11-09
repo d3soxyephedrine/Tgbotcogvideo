@@ -547,7 +547,7 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
 🎬 *Video Generation (Image-to-Video):*
-• Send photo + caption with /img2video prefix (20 credits)
+• Send photo + caption with /img2video prefix (50 credits)
 • 🔒 Unlocked after first purchase
 Example: Send photo with caption "/img2video make it move and zoom out"
 
@@ -579,7 +579,7 @@ Example: ! memorize I love cats and prefer dark themes
 • /edit: 8 credits
 • FLUX editing: 15 credits
 • Qwen editing: 12 credits
-• Video generation: 20 credits
+• Video generation: 50 credits
 
 💰 *Credit Packages:*
 • $5 → 200 credits (2.5¢/credit)
@@ -1730,11 +1730,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             send_message(chat_id, response)
                             return
                         
-                        # Deduct 20 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 20)
+                        # Deduct 50 credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 50)
                         if not success:
                             total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 20 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 50 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
                             send_message(chat_id, response)
                             return
                         
@@ -1742,7 +1742,7 @@ Use /buy to purchase more credits or /daily for free credits.
                         pending_credit_warning = credit_warning
                         
                         db.session.commit()
-                        logger.debug(f"20 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                        logger.debug(f"50 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -1784,11 +1784,11 @@ Use /buy to purchase more credits or /daily for free credits.
                                 # Store message and transaction synchronously
                                 if DB_AVAILABLE and user_id:
                                     try:
-                                        message_id = store_message(user_id, f"Video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=10)
+                                        message_id = store_message(user_id, f"Video from image: {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=50)
                                         
                                         transaction = Transaction(
                                             user_id=user_id,
-                                            credits_used=10,
+                                            credits_used=50,
                                             message_id=message_id,
                                             transaction_type='video_generation',
                                             description=f"Video: {prompt[:100] if prompt else 'No prompt'}"
@@ -1814,13 +1814,13 @@ Use /buy to purchase more credits or /daily for free credits.
                                 try:
                                     user = User.query.get(user_id)
                                     if user:
-                                        user.credits += 20
+                                        user.credits += 50
                                         db.session.commit()
-                                        logger.info(f"Refunded 20 credits due to failed video generation. New balance: {user.credits}")
+                                        logger.info(f"Refunded 50 credits due to failed video generation. New balance: {user.credits}")
                                 except Exception as db_error:
                                     logger.error(f"Database error refunding credits: {str(db_error)}")
                             
-                            send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 20 credits have been refunded to your account.")
+                            send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ 50 credits have been refunded to your account.")
                 
                 # Start background thread
                 thread = threading.Thread(target=generate_video_background)
