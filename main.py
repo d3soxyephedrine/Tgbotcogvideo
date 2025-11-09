@@ -856,9 +856,8 @@ if DATABASE_URL and DB_AVAILABLE:
     with app.app_context():
         cleanup_stuck_processing_locks()
 
-# Register commands and webhook on startup
-register_telegram_commands()
-register_telegram_webhook()
+# Note: Webhook and commands registration moved to gunicorn.conf.py
+# to avoid multiple workers registering simultaneously (rate limiting)
 
 # Keepalive function
 def keep_alive():

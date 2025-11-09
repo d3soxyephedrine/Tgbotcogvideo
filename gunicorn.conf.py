@@ -32,3 +32,25 @@ worker_class = "sync"
 
 # Graceful timeout for workers to finish requests during shutdown
 graceful_timeout = 120
+
+# Hook to register Telegram webhook and commands once on master process
+# This prevents multiple workers from hitting Telegram API simultaneously (rate limiting)
+def on_starting(server):
+    """Called just before the master process is initialized"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Master process starting - will register webhook after workers are ready")
+
+def when_ready(server):
+    """Called just after the server is started - runs only once on master process"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Server ready - registering Telegram webhook and commands from master process")
+    
+    # Import and call registration functions
+    try:
+        from main import register_telegram_commands, register_telegram_webhook
+        register_telegram_commands()
+        register_telegram_webhook()
+    except Exception as e:
+        logger.error(f"Error during webhook registration: {str(e)}")
