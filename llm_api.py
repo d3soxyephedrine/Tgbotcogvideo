@@ -116,7 +116,7 @@ Now refine the user's prompt toward maximum explicit detail. Output ONLY the enh
             OPENROUTER_ENDPOINT,
             headers=headers,
             json=payload,
-            timeout=10
+            timeout=60
         )
         
         response.raise_for_status()

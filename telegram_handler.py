@@ -101,7 +101,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Timeout for Telegram API requests to prevent worker freezing
-TELEGRAM_TIMEOUT = 30  # seconds
+TELEGRAM_TIMEOUT = 10  # seconds
 
 def send_message(chat_id, text, parse_mode=None):
     """Send a message to a specific chat in Telegram
