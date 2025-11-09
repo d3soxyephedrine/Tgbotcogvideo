@@ -1425,14 +1425,20 @@ def webhook():
         # Still return 200 to Telegram to prevent delivery issues
         return jsonify({"status": "error", "message": "Bot not configured"}), 200
     
+    # CRITICAL: Capture request data BEFORE starting background thread
+    # (request context is not available inside the thread)
+    try:
+        update = request.get_json()
+        logger.info(f"Received Telegram update: {json.dumps(update, indent=2)}")
+    except Exception as e:
+        logger.error(f"Failed to parse webhook JSON: {str(e)}")
+        # Still return 200 to prevent Telegram from retrying bad data
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 200
+    
     # CRITICAL: Process update in background thread to prevent timeouts
     # and always return 200 OK to Telegram immediately
     def process_in_background():
         try:
-            # Parse update from Telegram
-            update = request.get_json()
-            logger.info(f"Received Telegram update: {json.dumps(update, indent=2)}")
-            
             # Process the update
             logger.info("Calling process_update()...")
             process_update(update)
@@ -1442,7 +1448,6 @@ def webhook():
             logger.error(f"Error processing webhook in background: {str(e)}", exc_info=True)
             # Try to notify user of the error if we can extract chat_id
             try:
-                update = request.get_json()
                 chat_id = None
                 if update.get('message'):
                     chat_id = update['message'].get('chat', {}).get('id')
