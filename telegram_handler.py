@@ -353,7 +353,7 @@ def handle_successful_payment(message):
     # Extract payment details
     telegram_payment_charge_id = successful_payment.get("telegram_payment_charge_id")
     invoice_payload = successful_payment.get("invoice_payload")
-    total_amount = successful_payment.get("total_amount")  # Amount in smallest units (1 Star = 100 units)
+    total_amount = successful_payment.get("total_amount")  # For XTR (Telegram Stars), amount is in Stars directly
     
     # Validate total_amount
     if total_amount is None or total_amount <= 0:
@@ -361,11 +361,11 @@ def handle_successful_payment(message):
         send_message(chat_id, "❌ Invalid payment amount. Please contact support.")
         return
     
-    # IMPORTANT: Telegram Stars conversion - 1 Star = 100 units
-    # Always divide by 100 to convert smallest units to Stars
-    total_stars = total_amount // 100
+    # IMPORTANT: For XTR currency (Telegram Stars), total_amount is already in Stars (1 Star = 1 unit)
+    # This differs from fiat currencies like USD where total_amount is in smallest units (cents)
+    total_stars = total_amount
     
-    logger.info(f"Processing successful payment: charge_id={telegram_payment_charge_id}, payload={invoice_payload}, amount={total_stars} Stars ({total_amount} units)")
+    logger.info(f"Processing successful payment: charge_id={telegram_payment_charge_id}, payload={invoice_payload}, amount={total_stars} Stars")
     
     # Parse invoice payload to get user telegram_id and credits
     # Format: "stars_{telegram_id}_{credits}_{stars}"
@@ -378,9 +378,9 @@ def handle_successful_payment(message):
         credits_purchased = int(parts[2])
         stars_amount = int(parts[3])
         
-        # Verify amount matches (convert Telegram's units to Stars)
+        # Verify amount matches
         if total_stars != stars_amount:
-            logger.error(f"Amount mismatch: expected {stars_amount} Stars, got {total_stars} Stars ({total_amount} units)")
+            logger.error(f"Amount mismatch: expected {stars_amount} Stars, got {total_stars} Stars")
             send_message(chat_id, "❌ Payment amount mismatch. Please contact support.")
             return
         
@@ -843,8 +843,9 @@ Choose a package to pay instantly in-app:"""
                 title = f"{credits} Credits"
                 description = f"${usd} worth of credits ({stars} ⭐)"
                 payload = f"stars_{telegram_id}_{credits}_{stars}"
-                # IMPORTANT: Telegram Stars amounts must be in smallest units (1 Star = 100 units)
-                prices = [{"label": f"{credits} Credits", "amount": stars * 100}]
+                # IMPORTANT: For XTR currency (Telegram Stars), amount is in Stars directly (1 Star = 1 unit)
+                # This differs from fiat currencies like USD where amount is in smallest units (cents)
+                prices = [{"label": f"{credits} Credits", "amount": stars}]
                 
                 result = send_invoice(chat_id, title, description, payload, prices)
                 if not result.get("ok"):
