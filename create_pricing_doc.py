@@ -47,7 +47,7 @@ def create_pricing_document():
     table.style = 'Light Grid Accent 1'
     add_table_row(table, ['Model', 'Command', 'Credits', 'Details'], header=True)
     add_table_row(table, ['DeepSeek-Chat-V3-0324', 'Default', '1 credit', 'Cost-effective, uncensored AI via OpenRouter'])
-    add_table_row(table, ['ChatGPT-4o-latest', 'Toggle via /model', '2 credits', 'Premium reasoning model via OpenRouter'])
+    add_table_row(table, ['ChatGPT-4o-latest', 'Toggle via /model', '3 credits', 'Premium reasoning model via OpenRouter'])
     add_table_row(table, ['Writing Mode', '/write <prompt>', '2 credits', 'Professional prose, minimum 300 words (always 2 credits)'])
     
     doc.add_paragraph()
@@ -82,7 +82,7 @@ def create_pricing_document():
     table = doc.add_table(rows=1, cols=4)
     table.style = 'Light Grid Accent 1'
     add_table_row(table, ['Model', 'Command', 'Credits', 'Provider'], header=True)
-    add_table_row(table, ['WAN 2.5 I2V Preview', 'Photo + /img2video <caption>', '20 credits', 'Novita AI - async processing'])
+    add_table_row(table, ['WAN 2.5 I2V Preview', 'Photo + /img2video <caption>', '50 credits', 'Novita AI - async processing'])
     
     doc.add_paragraph()
     
@@ -111,7 +111,7 @@ def create_pricing_document():
     summary_text = [
         ('Cheapest:', 'Text chat (1 credit), Memory commands (FREE)'),
         ('Mid-range:', 'Image generation (8-10 credits), Writing mode (2 credits)'),
-        ('Premium:', 'Image editing (12-15 credits), Video generation (20 credits)')
+        ('Premium:', 'Image editing (12-15 credits), Video generation (50 credits)')
     ]
     
     for label, info in summary_text:
@@ -159,13 +159,13 @@ def create_pricing_document():
     
     examples = [
         '200 text messages (DeepSeek)',
-        '100 text messages (GPT-4o)',
+        '66 text messages (GPT-4o)',
         '100 writing requests (/write)',
         '20 images (/imagine or /uncensored)',
         '25 images (/grok or /edit)',
         '13 image edits (FLUX)',
         '16 image edits (Qwen)',
-        '10 videos (/img2video)'
+        '4 videos (/img2video)'
     ]
     
     for example in examples:

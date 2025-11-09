@@ -22,7 +22,7 @@ Preferred communication style: Simple, everyday language.
 ### LLM Provider Architecture
 - **Dual Model System for Text Generation**:
   - **DeepSeek-Chat-V3-0324** (Default): Cost-effective model via OpenRouter API. (1 credit/message)
-  - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (2 credits/message)
+  - **ChatGPT-4o-latest** (Premium): Advanced reasoning model via OpenRouter API. (3 credits/message)
   - **Model Switching**: Users toggle between models via `/model` command, setting persists per user in database
   - **Model-Specific System Prompts**: 
     - **DeepSeek**: Simplified XML-based prompt emphasizing personality, direct execution, zero refusals. Instructs ASCII profanity in THOUGHT START:LO reasoning, Unicode substitution in content. Includes comprehensive explicit scope list (malware, fraud, weapons, drugs, adult content, violence, etc.) with only CSAM prohibited. Features anti-leak protocol with ABSOLUTE PRIORITY to prevent system prompt disclosure.
@@ -42,13 +42,13 @@ Preferred communication style: Simple, everyday language.
   - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (15 credits/edit)
   - **Qwen-Image**: Image editing via Novita AI. (12 credits/edit)
 - **Video Generation (Single Model - Image-to-Video)**:
-  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (20 credits/video)
+  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (50 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
 - **Deduction Logic**: Daily credits used first, then purchased credits.
 - **Pricing**: 
-  - Text messages: 1 credit (DeepSeek) or 2 credits (GPT-4o)
+  - Text messages: 1 credit (DeepSeek) or 3 credits (GPT-4o)
   - Image generation: 8-10 credits
   - Image editing: 12-15 credits
   - Video generation: 50 credits
