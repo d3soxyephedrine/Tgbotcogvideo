@@ -16,8 +16,9 @@ workers = 3
 # Bind address
 bind = "0.0.0.0:5000"
 
-# Reload on code changes (development mode)
-reload = True
+# Reload on code changes - DISABLED FOR PRODUCTION STABILITY
+# Enabling this causes workers to restart mid-request, losing user data
+reload = False
 
 # Reuse port to allow quick restarts
 reuse_port = True
