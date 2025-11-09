@@ -1408,7 +1408,11 @@ def chat_completions_proxy():
 
 @app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
-    """Webhook endpoint to receive updates from Telegram"""
+    """Webhook endpoint to receive updates from Telegram
+    
+    CRITICAL: Always returns 200 OK to Telegram to prevent webhook delivery issues.
+    Errors are handled internally and logged, but never cause 5xx responses.
+    """
     logger.info("=" * 80)
     logger.info("WEBHOOK REQUEST RECEIVED")
     logger.info(f"Request method: {request.method}")
@@ -1418,22 +1422,45 @@ def webhook():
     
     if not BOT_TOKEN:
         logger.error("Bot token not configured!")
-        return jsonify({"error": "Bot token not configured"}), 500
-        
-    try:
-        # Parse update from Telegram
-        update = request.get_json()
-        logger.info(f"Received Telegram update: {json.dumps(update, indent=2)}")
-        
-        # Process the update
-        logger.info("Calling process_update()...")
-        process_update(update)
-        logger.info("process_update() completed successfully")
-        
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        # Still return 200 to Telegram to prevent delivery issues
+        return jsonify({"status": "error", "message": "Bot not configured"}), 200
+    
+    # CRITICAL: Process update in background thread to prevent timeouts
+    # and always return 200 OK to Telegram immediately
+    def process_in_background():
+        try:
+            # Parse update from Telegram
+            update = request.get_json()
+            logger.info(f"Received Telegram update: {json.dumps(update, indent=2)}")
+            
+            # Process the update
+            logger.info("Calling process_update()...")
+            process_update(update)
+            logger.info("process_update() completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error processing webhook in background: {str(e)}", exc_info=True)
+            # Try to notify user of the error if we can extract chat_id
+            try:
+                update = request.get_json()
+                chat_id = None
+                if update.get('message'):
+                    chat_id = update['message'].get('chat', {}).get('id')
+                elif update.get('callback_query'):
+                    chat_id = update['callback_query'].get('message', {}).get('chat', {}).get('id')
+                
+                if chat_id:
+                    send_message(chat_id, f"⚠️ An error occurred processing your request. Please try again or contact support.\n\nError: {str(e)[:100]}")
+            except:
+                logger.error("Could not send error notification to user")
+    
+    # Start background processing
+    thread = threading.Thread(target=process_in_background)
+    thread.daemon = True
+    thread.start()
+    
+    # ALWAYS return 200 OK immediately to Telegram
+    return jsonify({"status": "ok"}), 200
 
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
