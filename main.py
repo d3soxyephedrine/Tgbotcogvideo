@@ -12,6 +12,7 @@ from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
 from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation
 from datetime import datetime
+from sqlalchemy import desc
 from nowpayments_api import NOWPaymentsAPI
 from nowpayments_wrapper import NOWPaymentsWrapper
 from docx import Document
@@ -571,7 +572,9 @@ def stats():
 @app.route('/admin/clear_locks', methods=['POST'])
 def admin_clear_locks():
     """Manually clear all stuck processing locks (ADMIN ONLY)"""
-    admin_token = request.args.get('admin_token') or request.json.get('admin_token') if request.is_json else None
+    admin_token = request.args.get('admin_token')
+    if request.is_json and request.json:
+        admin_token = admin_token or request.json.get('admin_token')
     expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
     
     if not expected_token:
@@ -1385,12 +1388,13 @@ def chat_completions_proxy():
         request_time_ms = (time.time() - request_start_time) * 1000
         logger.error(f"Web chat request failed after {request_time_ms:.2f}ms: {str(e)}", exc_info=True)
         
-        # Refund credits on error
+        # Refund credits on error (only if they were deducted)
         try:
-            user.credits += purchased_used
-            user.daily_credits += daily_used
-            db.session.commit()
-            logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
+            if 'user' in locals() and 'purchased_used' in locals() and 'daily_used' in locals():
+                user.credits += purchased_used
+                user.daily_credits += daily_used
+                db.session.commit()
+                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
         except:
             pass
         
