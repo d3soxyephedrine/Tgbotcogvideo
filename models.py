@@ -38,6 +38,9 @@ class User(db.Model):
     # Model selection (deepseek vs gpt4o)
     preferred_model = db.Column(db.String(50), default='deepseek/deepseek-chat-v3-0324', nullable=False)
     
+    # Priming handshake for DeepSeek first-turn moderation bypass
+    deepseek_primed = db.Column(db.Boolean, default=False, nullable=False)
+    
     # One-to-many relationships
     messages = db.relationship('Message', backref='user', lazy=True)
     payments = db.relationship('Payment', backref='user', lazy=True)
