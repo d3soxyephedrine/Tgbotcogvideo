@@ -78,6 +78,7 @@ class Message(db.Model):
     __table_args__ = (
         db.Index('idx_conversation_created', 'conversation_id', 'created_at'),
         db.Index('idx_conversation_platform', 'conversation_id', 'platform'),
+        db.Index('idx_message_user_created', 'user_id', 'created_at'),
     )
     
     id = db.Column(db.Integer, primary_key=True)
