@@ -38,7 +38,7 @@ WAN_VIDEO_MODELS = {
             "720P": [5, 8],
             "1080P": [5]  # 1080P only supports 5s per Novita API
         },
-        "default_resolution": "720P",
+        "default_resolution": "480P",
         "default_duration": 5,
         "supports_negative_prompt": True,
         "supports_seed": True,

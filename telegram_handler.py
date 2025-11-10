@@ -563,7 +563,7 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
   - 480P/720P: 5s or 8s
   - 1080P: 5s only
   - Example: Send photo with "/vid 720P 8s make it zoom dramatically"
-  - Default: 720P, 5s (60 credits)
+  - Default: 480P, 5s (50 credits)
 • **/img2video**: WAN 2.5 - Quick 720P 5s videos (50 credits)
   - Example: Send photo with "/img2video make it move"
 • 🔒 Unlocked after first purchase
