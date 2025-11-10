@@ -34,6 +34,15 @@ worker_class = "sync"
 # Graceful timeout for workers to finish requests during shutdown
 graceful_timeout = 120
 
+# WORKER AUTO-RESTART - Prevents memory leaks and stuck workers
+# Restart workers after handling this many requests (prevents memory leaks)
+max_requests = 1000
+# Add randomness to prevent all workers restarting at once
+max_requests_jitter = 100
+
+# Use RAM for worker tmp files (faster than disk)
+worker_tmp_dir = "/dev/shm"
+
 # Hook to register Telegram webhook and commands once on master process
 # This prevents multiple workers from hitting Telegram API simultaneously (rate limiting)
 def on_starting(server):
@@ -55,3 +64,34 @@ def when_ready(server):
         register_telegram_webhook()
     except Exception as e:
         logger.error(f"Error during webhook registration: {str(e)}")
+
+# Worker lifecycle hooks for monitoring
+def worker_int(worker):
+    """Called when worker receives INT or QUIT signal"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Worker {worker.pid} received INT/QUIT signal - shutting down gracefully")
+
+def worker_abort(worker):
+    """Called when worker is aborted (timeout or crash)"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"⚠️ WORKER ABORT: Worker {worker.pid} aborted/timed out - will be restarted")
+
+def post_worker_init(worker):
+    """Called after a worker has been forked"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"✓ Worker {worker.pid} initialized successfully")
+
+def worker_exit(server, worker):
+    """Called when a worker exits"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Worker {worker.pid} exited (normal shutdown)")
+
+def on_exit(server):
+    """Called when gunicorn is shutting down"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Gunicorn master process shutting down")

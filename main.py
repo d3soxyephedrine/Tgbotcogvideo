@@ -235,7 +235,9 @@ def home():
 
 @app.route('/health')
 def health_check():
-    """Comprehensive health check endpoint with database latency testing"""
+    """Comprehensive health check endpoint with database latency testing and memory monitoring"""
+    import os
+    import psutil
     start_time = time.time()
     
     health_status = {
@@ -249,6 +251,24 @@ def health_check():
         "bot_token_configured": BOT_TOKEN is not None,
         "timestamp": time.time()
     }
+    
+    # Memory monitoring
+    try:
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        health_status["memory"] = {
+            "rss_mb": round(memory_info.rss / 1024 / 1024, 2),  # Resident Set Size
+            "vms_mb": round(memory_info.vms / 1024 / 1024, 2),  # Virtual Memory Size
+            "percent": round(process.memory_percent(), 2)
+        }
+        
+        # Warn if memory usage is high (>400MB per worker)
+        if memory_info.rss > 400 * 1024 * 1024:
+            health_status["memory"]["warning"] = "High memory usage"
+            health_status["status"] = "warning"
+    except Exception as e:
+        logger.warning(f"Memory monitoring failed: {str(e)}")
+        health_status["memory"] = {"error": "Unable to get memory stats"}
     
     # Test database latency if available
     if DB_AVAILABLE:
@@ -271,6 +291,10 @@ def health_check():
                 "messages": message_count,
                 "conversations": conversation_count
             }
+            
+            # Warn if database latency is high
+            if db_latency_ms > 100:
+                health_status["database"]["warning"] = "High latency"
         except Exception as e:
             logger.error(f"Database health check failed: {str(e)}")
             health_status["database"]["status"] = "error"
@@ -2305,6 +2329,41 @@ def broadcast_message():
     except Exception as e:
         logger.error(f"Error broadcasting message: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+# ============================================================================
+# ERROR HANDLERS - Catch all uncaught exceptions
+# ============================================================================
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global exception handler - catches all uncaught exceptions while preserving HTTP semantics"""
+    import traceback
+    from werkzeug.exceptions import HTTPException
+    
+    # Re-raise HTTPExceptions to preserve proper status codes (401, 404, etc.)
+    if isinstance(e, HTTPException):
+        return e
+    
+    # Only log and handle actual unexpected exceptions
+    logger.error(f"⚠️ UNCAUGHT EXCEPTION: {str(e)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Return 500 for unexpected exceptions
+    return jsonify({
+        "error": "Internal server error",
+        "message": str(e)
+    }), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    """Handle 404 errors"""
+    return jsonify({"error": "Not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    """Handle 500 errors"""
+    logger.error(f"Internal server error: {str(e)}")
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
     # Run the Flask application
