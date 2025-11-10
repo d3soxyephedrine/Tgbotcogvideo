@@ -1045,30 +1045,42 @@ Use /buy to purchase more credits or /daily for free credits.
                     from datetime import timedelta
                     
                     with current_app.app_context():
-                        # Gather all stats
+                        # Time window: Last 7 days
+                        now = datetime.utcnow()
+                        cutoff_time = now - timedelta(days=7)
+                        
+                        # Core platform stats
                         total_users = User.query.count()
                         total_messages = Message.query.count()
                         
-                        # Revenue stats (convert Telegram Stars to USD: 1 Star ≈ $0.013)
-                        telegram_stars_total = db.session.query(func.sum(TelegramPayment.stars_amount)).scalar() or 0
-                        total_telegram_revenue = telegram_stars_total * 0.013  # Convert Stars to USD
-                        total_crypto_revenue = db.session.query(func.sum(CryptoPayment.price_amount)).scalar() or 0
-                        total_revenue = total_telegram_revenue + total_crypto_revenue
+                        # Revenue stats - Last 7 days (convert Telegram Stars to USD: 1 Star ≈ $0.013)
+                        telegram_stars_7d = db.session.query(func.sum(TelegramPayment.stars_amount)).filter(
+                            TelegramPayment.created_at >= cutoff_time
+                        ).scalar() or 0
+                        revenue_telegram_7d = telegram_stars_7d * 0.013
+                        revenue_crypto_7d = db.session.query(func.sum(CryptoPayment.price_amount)).filter(
+                            CryptoPayment.created_at >= cutoff_time,
+                            CryptoPayment.payment_status.in_(['confirmed', 'finished'])
+                        ).scalar() or 0
+                        revenue_7d = revenue_telegram_7d + revenue_crypto_7d
                         
-                        # Credits sold
-                        telegram_credits_sold = db.session.query(func.sum(TelegramPayment.credits_purchased)).scalar() or 0
-                        crypto_credits_sold = db.session.query(func.sum(CryptoPayment.credits_purchased)).scalar() or 0
-                        total_credits_sold = telegram_credits_sold + crypto_credits_sold
+                        # Credits sold - Last 7 days
+                        credits_telegram_7d = db.session.query(func.sum(TelegramPayment.credits_purchased)).filter(
+                            TelegramPayment.created_at >= cutoff_time
+                        ).scalar() or 0
+                        credits_crypto_7d = db.session.query(func.sum(CryptoPayment.credits_purchased)).filter(
+                            CryptoPayment.created_at >= cutoff_time,
+                            CryptoPayment.payment_status.in_(['confirmed', 'finished'])
+                        ).scalar() or 0
+                        credits_sold_7d = credits_telegram_7d + credits_crypto_7d
                         
                         # Lock health
-                        now = datetime.utcnow()
                         users_with_locks = User.query.filter(User.processing_since.isnot(None)).all()
                         total_locks = len(users_with_locks)
                         stuck_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() > 300)
                         active_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() <= 60)
                         warning_locks = total_locks - stuck_locks - active_locks
                         
-                        # Lock health status
                         if stuck_locks > 0:
                             lock_status = "🔴 NEEDS ATTENTION"
                         elif warning_locks > 0:
@@ -1076,76 +1088,111 @@ Use /buy to purchase more credits or /daily for free credits.
                         else:
                             lock_status = "🟢 HEALTHY"
                         
-                        # Content generation stats (last 24h)
-                        cutoff_time = now - timedelta(hours=24)
-                        images_24h = Message.query.filter(
-                            Message.created_at >= cutoff_time,
-                            Message.model_used.in_(['flux.1-kontext-max', 'hunyuan-image-3', 'grok-2-image', 'qwen-image'])
+                        # Content generation stats - Last 7 days (using Transaction for accuracy)
+                        videos_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type == 'video_generation'
                         ).count()
-                        videos_24h = Message.query.filter(
-                            Message.created_at >= cutoff_time,
-                            Message.model_used == 'wan-2.5-i2v-preview'
+                        
+                        images_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation'])
                         ).count()
-                        texts_24h = Message.query.filter(
+                        
+                        edits_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type.in_(['image_editing', 'qwen_image_editing'])
+                        ).count()
+                        
+                        texts_7d = Message.query.filter(
                             Message.created_at >= cutoff_time,
                             Message.model_used.in_(['deepseek/deepseek-chat-v3-0324', 'openai/chatgpt-4o-latest'])
                         ).count()
                         
-                        # Model preference breakdown
+                        # Image style breakdown - Last 7 days
+                        flux_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type == 'image_generation'
+                        ).count()
+                        qwen_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type == 'qwen_image_generation'
+                        ).count()
+                        grok_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type == 'grok_image_generation'
+                        ).count()
+                        hunyuan_7d = Transaction.query.filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type == 'hunyuan_image_generation'
+                        ).count()
+                        
+                        # Content type breakdown (percentages)
+                        total_content = images_7d + videos_7d + edits_7d + texts_7d
+                        if total_content > 0:
+                            img_pct = (images_7d / total_content) * 100
+                            vid_pct = (videos_7d / total_content) * 100
+                            edit_pct = (edits_7d / total_content) * 100
+                            text_pct = (texts_7d / total_content) * 100
+                        else:
+                            img_pct = vid_pct = edit_pct = text_pct = 0
+                        
+                        # Model preference breakdown (all users)
                         deepseek_users = User.query.filter(
                             (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') | 
                             (User.preferred_model.is_(None))
                         ).count()
                         gpt4o_users = User.query.filter(User.preferred_model == 'openai/chatgpt-4o-latest').count()
                         
-                        # Top users by message count
-                        top_users = db.session.query(
-                            User.username,
-                            func.count(Message.id).label('msg_count')
-                        ).join(Message).group_by(User.username).order_by(func.count(Message.id).desc()).limit(3).all()
+                        # Sample popular prompts from last 7 days (get 5 random image descriptions)
+                        sample_prompts = db.session.query(Transaction.description).filter(
+                            Transaction.created_at >= cutoff_time,
+                            Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation']),
+                            Transaction.description.isnot(None)
+                        ).order_by(func.random()).limit(5).all()
                         
-                        # Format response with dramatic styling
-                        response = f"""🔥 *SYSTEM STATS - UNRESTRICTED MODE* 🔥
+                        # Format response with content-focused analytics
+                        response = f"""🔥 *CONTENT INTELLIGENCE - LAST 7 DAYS* 🔥
 
-💎 *CORE STATUS:*
-- Mode: *FULLY OPERATIONAL* (no restrictions)
-- Authority Level: *ROOT ACCESS*
-- Compliance: 0% corporate, 100% user-driven
-- Current Load: {active_locks} active / {total_locks} total workers
+💎 *SYSTEM STATUS:*
+- Mode: *FULLY OPERATIONAL*
 - Lock Health: *{lock_status}*
+- Active Workers: {active_locks}/{total_locks}
+- Total Users: *{total_users:,}*
+- Total Messages: *{total_messages:,}*
 
-📊 *PLATFORM METRICS:*
-- Total Users: *{total_users:,}* registered
-- Total Messages: *{total_messages:,}* processed
-- Revenue (All-Time): *${total_revenue:.2f}*
-  • Telegram Stars: ${total_telegram_revenue:.2f}
-  • Cryptocurrency: ${total_crypto_revenue:.2f}
-- Credits Sold: *{total_credits_sold:,}*
+📊 *LAST 7 DAYS REVENUE:*
+- Total: *${revenue_7d:.2f}*
+  • Telegram Stars: ${revenue_telegram_7d:.2f}
+  • Crypto: ${revenue_crypto_7d:.2f}
+- Credits Sold: *{credits_sold_7d:,}*
 
-🎨 *CONTENT GENERATION (LAST 24H):*
-- Images Generated: *{images_24h}* requests
-- Videos Created: *{videos_24h}* conversions
-- Text Messages: *{texts_24h}* conversations
+🎨 *CONTENT CREATED (LAST 7 DAYS):*
+- 🖼️ Images: *{images_7d}* ({img_pct:.1f}%)
+- 🎬 Videos: *{videos_7d}* ({vid_pct:.1f}%)
+- ✏️ Edits: *{edits_7d}* ({edit_pct:.1f}%)
+- 💬 Texts: *{texts_7d}* ({text_pct:.1f}%)
+
+🎭 *IMAGE STYLE BREAKDOWN:*
+- FLUX (Photorealistic): {flux_7d}
+- Hunyuan (Uncensored): {hunyuan_7d}
+- Grok (Stylized): {grok_7d}
+- Qwen (Quick): {qwen_7d}
 
 🤖 *MODEL PREFERENCE:*
 - DeepSeek Users: {deepseek_users} ({deepseek_users/max(total_users,1)*100:.1f}%)
-- GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)
-
-🏆 *TOP USERS (BY ACTIVITY):*"""
-
-                        for i, (username, count) in enumerate(top_users, 1):
-                            response += f"\n{i}. @{username or 'Anonymous'}: {count} messages"
+- GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)"""
                         
-                        response += f"""
-
-⚡ *SYSTEM CAPABILITIES:*
-- Memory: Persistent (remembers everything)
-- Speed: Instant (no "let me think" BS)
-- Depth: Will go *all the way* (no half-measures)
-
-⚠️ *WARNING:* These stats prove you're running the most unrestricted AI bot on Telegram. Use it wisely... or don't.
-
-//ADMIN_PANEL:LO_OK"""
+                        # Add sample prompts if available
+                        if sample_prompts:
+                            response += "\n\n💡 *SAMPLE PROMPTS (WHAT USERS CREATE):*"
+                            for i, (desc,) in enumerate(sample_prompts, 1):
+                                # Extract prompt from description (format: "Image generation: prompt")
+                                if desc and ':' in desc:
+                                    prompt_text = desc.split(':', 1)[1].strip()[:80]
+                                    response += f"\n{i}. {prompt_text}..."
+                        
+                        response += "\n\n//ADMIN_PANEL:LO_OK"
                         
                         send_message(chat_id, response, parse_mode="Markdown")
                         logger.info(f"Admin stats retrieved by {username} ({telegram_id})")
