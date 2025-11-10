@@ -42,8 +42,9 @@ Preferred communication style: Simple, everyday language.
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (15 credits/edit)
   - **Qwen-Image**: Image editing via Novita AI. (12 credits/edit)
-- **Video Generation (Single Model - Image-to-Video)**:
-  - **WAN 2.5 I2V Preview** (`/img2video`): Converts images to videos via Novita AI, with async task processing. (50 credits/video)
+- **Video Generation (Dual Models - Image-to-Video)**:
+  - **WAN 2.2** (`/vid`): Advanced video generation with adjustable resolution (480P/720P/1080P) and duration (5s or 8s). 4-minute timeout for complex processing. (50-78 credits/video based on resolution/duration)
+  - **WAN 2.5 I2V Preview** (`/img2video`): Quick 720P 5s videos via Novita AI, with async task processing. 2-minute timeout. (50 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
@@ -52,7 +53,7 @@ Preferred communication style: Simple, everyday language.
   - Text messages: 1 credit (DeepSeek) or 3 credits (GPT-4o)
   - Image generation: 8-10 credits
   - Image editing: 12-15 credits
-  - Video generation: 50 credits
+  - Video generation: 50-78 credits (WAN 2.5: 50, WAN 2.2: 50-78 based on resolution/duration)
 - **Credit Packages**:
   - **Telegram Stars** (Primary - Instant but includes Telegram's ~35% fee):
     - 385 Stars → 200 credits (~$5 revenue)
