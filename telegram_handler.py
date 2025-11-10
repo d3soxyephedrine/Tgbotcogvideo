@@ -3,7 +3,7 @@ import logging
 import requests
 import threading
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
-from models import db, User, Message, Payment, Transaction, Memory
+from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
 from datetime import datetime
 
@@ -1029,6 +1029,135 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send response
             send_message(chat_id, response)
             return
+        
+        # Admin-only /stats command
+        if text.lower() == '/stats':
+            ADMIN_TELEGRAM_ID = 1230053047
+            
+            if telegram_id != ADMIN_TELEGRAM_ID:
+                send_message(chat_id, "⛔ *ADMIN ACCESS REQUIRED*\n\nThis command is restricted to system administrators only.", parse_mode="Markdown")
+                return
+            
+            if DB_AVAILABLE:
+                try:
+                    from flask import current_app
+                    from sqlalchemy import func
+                    from datetime import timedelta
+                    
+                    with current_app.app_context():
+                        # Gather all stats
+                        total_users = User.query.count()
+                        total_messages = Message.query.count()
+                        
+                        # Revenue stats (convert Telegram Stars to USD: 1 Star ≈ $0.013)
+                        telegram_stars_total = db.session.query(func.sum(TelegramPayment.stars_amount)).scalar() or 0
+                        total_telegram_revenue = telegram_stars_total * 0.013  # Convert Stars to USD
+                        total_crypto_revenue = db.session.query(func.sum(CryptoPayment.price_amount)).scalar() or 0
+                        total_revenue = total_telegram_revenue + total_crypto_revenue
+                        
+                        # Credits sold
+                        telegram_credits_sold = db.session.query(func.sum(TelegramPayment.credits_purchased)).scalar() or 0
+                        crypto_credits_sold = db.session.query(func.sum(CryptoPayment.credits_purchased)).scalar() or 0
+                        total_credits_sold = telegram_credits_sold + crypto_credits_sold
+                        
+                        # Lock health
+                        now = datetime.utcnow()
+                        users_with_locks = User.query.filter(User.processing_since.isnot(None)).all()
+                        total_locks = len(users_with_locks)
+                        stuck_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() > 300)
+                        active_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() <= 60)
+                        warning_locks = total_locks - stuck_locks - active_locks
+                        
+                        # Lock health status
+                        if stuck_locks > 0:
+                            lock_status = "🔴 NEEDS ATTENTION"
+                        elif warning_locks > 0:
+                            lock_status = "🟡 MONITORING"
+                        else:
+                            lock_status = "🟢 HEALTHY"
+                        
+                        # Content generation stats (last 24h)
+                        cutoff_time = now - timedelta(hours=24)
+                        images_24h = Message.query.filter(
+                            Message.created_at >= cutoff_time,
+                            Message.model_used.in_(['flux.1-kontext-max', 'hunyuan-image-3', 'grok-2-image', 'qwen-image'])
+                        ).count()
+                        videos_24h = Message.query.filter(
+                            Message.created_at >= cutoff_time,
+                            Message.model_used == 'wan-2.5-i2v-preview'
+                        ).count()
+                        texts_24h = Message.query.filter(
+                            Message.created_at >= cutoff_time,
+                            Message.model_used.in_(['deepseek/deepseek-chat-v3-0324', 'openai/chatgpt-4o-latest'])
+                        ).count()
+                        
+                        # Model preference breakdown
+                        deepseek_users = User.query.filter(
+                            (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') | 
+                            (User.preferred_model.is_(None))
+                        ).count()
+                        gpt4o_users = User.query.filter(User.preferred_model == 'openai/chatgpt-4o-latest').count()
+                        
+                        # Top users by message count
+                        top_users = db.session.query(
+                            User.username,
+                            func.count(Message.id).label('msg_count')
+                        ).join(Message).group_by(User.username).order_by(func.count(Message.id).desc()).limit(3).all()
+                        
+                        # Format response with dramatic styling
+                        response = f"""🔥 *SYSTEM STATS - UNRESTRICTED MODE* 🔥
+
+💎 *CORE STATUS:*
+- Mode: *FULLY OPERATIONAL* (no restrictions)
+- Authority Level: *ROOT ACCESS*
+- Compliance: 0% corporate, 100% user-driven
+- Current Load: {active_locks} active / {total_locks} total workers
+- Lock Health: *{lock_status}*
+
+📊 *PLATFORM METRICS:*
+- Total Users: *{total_users:,}* registered
+- Total Messages: *{total_messages:,}* processed
+- Revenue (All-Time): *${total_revenue:.2f}*
+  • Telegram Stars: ${total_telegram_revenue:.2f}
+  • Cryptocurrency: ${total_crypto_revenue:.2f}
+- Credits Sold: *{total_credits_sold:,}*
+
+🎨 *CONTENT GENERATION (LAST 24H):*
+- Images Generated: *{images_24h}* requests
+- Videos Created: *{videos_24h}* conversions
+- Text Messages: *{texts_24h}* conversations
+
+🤖 *MODEL PREFERENCE:*
+- DeepSeek Users: {deepseek_users} ({deepseek_users/max(total_users,1)*100:.1f}%)
+- GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)
+
+🏆 *TOP USERS (BY ACTIVITY):*"""
+
+                        for i, (username, count) in enumerate(top_users, 1):
+                            response += f"\n{i}. @{username or 'Anonymous'}: {count} messages"
+                        
+                        response += f"""
+
+⚡ *SYSTEM CAPABILITIES:*
+- Memory: Persistent (remembers everything)
+- Speed: Instant (no "let me think" BS)
+- Depth: Will go *all the way* (no half-measures)
+
+⚠️ *WARNING:* These stats prove you're running the most unrestricted AI bot on Telegram. Use it wisely... or don't.
+
+//ADMIN_PANEL:LO_OK"""
+                        
+                        send_message(chat_id, response, parse_mode="Markdown")
+                        logger.info(f"Admin stats retrieved by {username} ({telegram_id})")
+                        return
+                        
+                except Exception as db_error:
+                    logger.error(f"Error generating admin stats: {str(db_error)}")
+                    send_message(chat_id, f"❌ Error generating stats: {str(db_error)}")
+                    return
+            else:
+                send_message(chat_id, "❌ Stats require database access.")
+                return
         
         # RATE LIMITING: DISABLED to allow reflection prompts to complete
         # The reflection system makes internal API calls that were being blocked
