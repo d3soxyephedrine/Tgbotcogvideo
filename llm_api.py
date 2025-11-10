@@ -23,8 +23,58 @@ NOVITA_QWEN_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-txt2img"
 NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
 NOVITA_HUNYUAN_ENDPOINT = "https://api.novita.ai/v3/async/hunyuan-image-3"
 NOVITA_WAN25_I2V_ENDPOINT = "https://api.novita.ai/v3/async/wan-2.5-i2v-preview"
+NOVITA_WAN22_I2V_ENDPOINT = "https://api.novita.ai/v3/async/wan-2.2-i2v"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
+
+# Video generation model configurations
+WAN_VIDEO_MODELS = {
+    "wan2.2": {
+        "endpoint": NOVITA_WAN22_I2V_ENDPOINT,
+        "name": "WAN 2.2",
+        "resolutions": ["480P", "720P", "1080P"],
+        "durations": {
+            "480P": [5, 8],
+            "720P": [5, 8],
+            "1080P": [5]  # 1080P only supports 5s per Novita API
+        },
+        "default_resolution": "720P",
+        "default_duration": 5,
+        "supports_negative_prompt": True,
+        "supports_seed": True,
+        "supports_loras": True,
+        "base_credits": 50,
+        "resolution_multiplier": {
+            "480P": 1.0,
+            "720P": 1.2,
+            "1080P": 1.5
+        },
+        "duration_multiplier": {
+            5: 1.0,
+            8: 1.3
+        }
+    },
+    "wan2.5": {
+        "endpoint": NOVITA_WAN25_I2V_ENDPOINT,
+        "name": "WAN 2.5 Preview",
+        "resolutions": ["720P"],
+        "durations": {
+            "720P": [5]
+        },
+        "default_resolution": "720P",
+        "default_duration": 5,
+        "supports_negative_prompt": False,
+        "supports_seed": False,
+        "supports_loras": False,
+        "base_credits": 50,
+        "resolution_multiplier": {
+            "720P": 1.0
+        },
+        "duration_multiplier": {
+            5: 1.0
+        }
+    }
+}
 
 # Image generation prompt limits
 MAX_IMAGE_PROMPT_LENGTH = 1000  # Safe limit for image generation APIs (typically 1000-4000 chars)
@@ -1871,56 +1921,35 @@ def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     return {"success": False, "error": f"All {max_retries} attempts failed"}
 
 
-def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3) -> Dict[str, Any]:
-    """Generate a video from an image using Novita AI WAN 2.5 I2V Preview API
+def _submit_novita_video_task(endpoint: str, payload: Dict[str, Any], model_name: str, max_retries: int = 3) -> Dict[str, Any]:
+    """Shared helper to submit and poll Novita async video generation tasks
     
     Args:
-        image_url: URL of the image to convert to video
-        prompt: Optional text prompt to guide video generation
+        endpoint: Novita API endpoint URL
+        payload: Request payload (input + parameters)
+        model_name: Model name for logging
         max_retries: Number of retry attempts
     
     Returns:
         Dict with 'success', 'video_url' or 'error' keys
     """
-    
     if not NOVITA_API_KEY:
         return {"success": False, "error": "NOVITA_API_KEY not configured"}
-    
-    if not image_url or not image_url.strip():
-        return {"success": False, "error": "Empty image URL"}
     
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {NOVITA_API_KEY}"
     }
     
-    # Using WAN 2.5 I2V Preview - newer image to video generation
-    # API requires nested structure with input and parameters
-    data = {
-        "input": {
-            "img_url": image_url
-        },
-        "parameters": {
-            "resolution": "720P",
-            "duration": 5,
-            "prompt_extend": True
-        }
-    }
-    
-    # Add prompt if provided
-    if prompt and prompt.strip():
-        data["input"]["prompt"] = truncate_prompt(prompt)
-    
     for attempt in range(max_retries):
         try:
-            logger.info(f"WAN 2.5 video generation attempt {attempt + 1} to Novita AI")
-            logger.debug(f"Image URL: {image_url[:100]}...")
+            logger.info(f"{model_name} video generation attempt {attempt + 1} to Novita AI")
             
             # Step 1: Submit task to async endpoint
             response = requests.post(
-                NOVITA_WAN25_I2V_ENDPOINT,
+                endpoint,
                 headers=headers,
-                json=data,
+                json=payload,
                 timeout=30
             )
             
@@ -1933,7 +1962,7 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
                 logger.error(f"No task_id in response: {result}")
                 return {"success": False, "error": "No task ID returned"}
             
-            logger.info(f"WAN 2.5 task submitted successfully: {task_id}")
+            logger.info(f"{model_name} task submitted successfully: {task_id}")
             
             # Step 2: Poll for task completion (max 120 seconds for video)
             poll_count = 0
@@ -1958,7 +1987,7 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
                     if task_status == "TASK_STATUS_SUCCEED":
                         video_url = task_result.get("videos", [{}])[0].get("video_url")
                         if video_url:
-                            logger.info(f"WAN 2.5 video generated successfully: {video_url}")
+                            logger.info(f"{model_name} video generated successfully: {video_url}")
                             return {"success": True, "video_url": video_url}
                         else:
                             logger.error(f"No video URL in success response: {task_result}")
@@ -1966,11 +1995,11 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
                     
                     elif task_status == "TASK_STATUS_FAILED":
                         error_msg = task_result.get("task", {}).get("reason", "Unknown error")
-                        logger.error(f"WAN 2.5 task failed: {error_msg}")
+                        logger.error(f"{model_name} task failed: {error_msg}")
                         return {"success": False, "error": f"Video generation failed: {error_msg}"}
                     
                     elif task_status in ["TASK_STATUS_QUEUED", "TASK_STATUS_PROCESSING"]:
-                        logger.debug(f"WAN 2.5 task {task_id} still processing... (poll {poll_count}/{max_polls})")
+                        logger.debug(f"{model_name} task {task_id} still processing... (poll {poll_count}/{max_polls})")
                         continue
                     
                     else:
@@ -1985,9 +2014,9 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
             return {"success": False, "error": "Task timeout - video generation took too long"}
             
         except requests.exceptions.Timeout:
-            logger.warning(f"WAN 2.5 video generation timeout on attempt {attempt + 1}")
+            logger.warning(f"{model_name} video generation timeout on attempt {attempt + 1}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"WAN 2.5 video generation request failed: {str(e)}")
+            logger.error(f"{model_name} video generation request failed: {str(e)}")
             try:
                 if hasattr(e, 'response') and e.response is not None:
                     if e.response.status_code == 401:
@@ -1998,7 +2027,7 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
             except:
                 pass
         except Exception as e:
-            logger.error(f"WAN 2.5 video generation attempt {attempt + 1} failed: {str(e)}")
+            logger.error(f"{model_name} video generation attempt {attempt + 1} failed: {str(e)}")
             break
         
         if attempt < max_retries - 1:
@@ -2007,6 +2036,138 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
             time.sleep(sleep_time)
     
     return {"success": False, "error": f"All {max_retries} attempts failed"}
+
+
+def calculate_video_credits(model_key: str, resolution: str, duration: int) -> int:
+    """Calculate credit cost for video generation based on model, resolution, and duration
+    
+    Args:
+        model_key: Model key from WAN_VIDEO_MODELS
+        resolution: Video resolution (480P, 720P, 1080P)
+        duration: Video duration in seconds
+    
+    Returns:
+        Credit cost as integer
+    """
+    if model_key not in WAN_VIDEO_MODELS:
+        return 50  # Default fallback
+    
+    config = WAN_VIDEO_MODELS[model_key]
+    base_credits = config["base_credits"]
+    res_multiplier = config["resolution_multiplier"].get(resolution, 1.0)
+    dur_multiplier = config["duration_multiplier"].get(duration, 1.0)
+    
+    return int(base_credits * res_multiplier * dur_multiplier)
+
+
+def generate_wan_video(
+    model_key: str,
+    image_url: str,
+    prompt: str = "",
+    negative_prompt: str = "",
+    resolution: str = None,
+    duration: int = None,
+    seed: int = None,
+    max_retries: int = 3
+) -> Dict[str, Any]:
+    """Generate video from image using specified WAN model
+    
+    Args:
+        model_key: Model key from WAN_VIDEO_MODELS ('wan2.2' or 'wan2.5')
+        image_url: URL of the image to convert to video
+        prompt: Optional text prompt to guide video generation
+        negative_prompt: Optional negative prompt (WAN 2.2 only)
+        resolution: Video resolution (defaults to model's default)
+        duration: Video duration in seconds (defaults to model's default)
+        seed: Random seed for reproducibility (WAN 2.2 only)
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'video_url', 'credits' or 'error' keys
+    """
+    if model_key not in WAN_VIDEO_MODELS:
+        return {"success": False, "error": f"Unknown model: {model_key}"}
+    
+    if not image_url or not image_url.strip():
+        return {"success": False, "error": "Empty image URL"}
+    
+    config = WAN_VIDEO_MODELS[model_key]
+    
+    # Use defaults if not specified
+    resolution = resolution or config["default_resolution"]
+    duration = duration or config["default_duration"]
+    
+    # Validate resolution
+    if resolution not in config["resolutions"]:
+        return {"success": False, "error": f"Invalid resolution for {config['name']}: {resolution}"}
+    
+    # Validate duration for resolution
+    valid_durations = config["durations"].get(resolution, [])
+    if duration not in valid_durations:
+        return {"success": False, "error": f"Invalid duration for {resolution}: {duration}s (valid: {valid_durations})"}
+    
+    # Build payload
+    payload = {
+        "input": {
+            "img_url": image_url
+        },
+        "parameters": {
+            "resolution": resolution,
+            "duration": duration,
+            "prompt_extend": True
+        }
+    }
+    
+    # Add prompt if provided
+    if prompt and prompt.strip():
+        payload["input"]["prompt"] = truncate_prompt(prompt)
+    
+    # Add model-specific parameters
+    if config["supports_negative_prompt"] and negative_prompt and negative_prompt.strip():
+        payload["input"]["negative_prompt"] = truncate_prompt(negative_prompt, max_length=500)
+    
+    if config["supports_seed"] and seed is not None:
+        payload["parameters"]["seed"] = seed
+    
+    # Calculate credits
+    credits = calculate_video_credits(model_key, resolution, duration)
+    
+    # Submit task
+    result = _submit_novita_video_task(
+        endpoint=config["endpoint"],
+        payload=payload,
+        model_name=config["name"],
+        max_retries=max_retries
+    )
+    
+    # Add credits to response
+    if result.get("success"):
+        result["credits"] = credits
+    
+    return result
+
+
+def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3) -> Dict[str, Any]:
+    """Generate a video from an image using Novita AI WAN 2.5 I2V Preview API
+    
+    DEPRECATED: Use generate_wan_video() with model_key='wan2.5' instead
+    
+    This function is kept for backward compatibility with existing code.
+    
+    Args:
+        image_url: URL of the image to convert to video
+        prompt: Optional text prompt to guide video generation
+        max_retries: Number of retry attempts
+    
+    Returns:
+        Dict with 'success', 'video_url' or 'error' keys
+    """
+    return generate_wan_video(
+        model_key="wan2.5",
+        image_url=image_url,
+        prompt=prompt,
+        max_retries=max_retries
+    )
 
 
 def check_api_health() -> Dict[str, bool]:

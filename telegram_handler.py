@@ -559,9 +559,14 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
 🎬 *Video Generation (Image-to-Video):*
-• Send photo + caption with /img2video prefix (50 credits)
+• **/vid**: WAN 2.2 - Adjustable resolution/duration (50-78 credits)
+  - 480P/720P: 5s or 8s
+  - 1080P: 5s only
+  - Example: Send photo with "/vid 720P 8s make it zoom dramatically"
+  - Default: 720P, 5s (60 credits)
+• **/img2video**: WAN 2.5 - Quick 720P 5s videos (50 credits)
+  - Example: Send photo with "/img2video make it move"
 • 🔒 Unlocked after first purchase
-Example: Send photo with caption "/img2video make it move and zoom out"
 
 📝 *Writing Mode:*
 Use /write for stories, scenes, or creative content!
@@ -1891,6 +1896,222 @@ Use /buy to purchase more credits or /daily for free credits.
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
                 send_message(chat_id, f"❌ Hunyuan image generation failed: {error_msg}\n\n✅ 10 credits have been refunded to your account.")
+            
+            return
+        
+        # Check for /vid command (WAN 2.2 video generation - NEW!)
+        if photo and caption and caption.lower().startswith('/vid'):
+            from llm_api import generate_wan_video, calculate_video_credits
+            
+            prompt = caption[5:].strip()  # Remove '/vid ' prefix (optional prompt)
+            
+            logger.info(f"Processing WAN 2.2 video generation request with prompt: {prompt[:50] if prompt else 'No prompt'}...")
+            
+            # Parse optional parameters from prompt (resolution, duration)
+            # Format: /vid 1080P 8s <prompt>  or /vid 8s <prompt> or just /vid <prompt>
+            resolution = "720P"  # Default
+            duration = 5  # Default
+            
+            parts = prompt.split(maxsplit=2)
+            
+            # Check for resolution in first position
+            if len(parts) >= 1 and parts[0].upper() in ["480P", "720P", "1080P"]:
+                resolution = parts[0].upper()
+                parts = parts[1:]  # Remove resolution from parts
+                prompt = " ".join(parts)
+            
+            # Check for duration in first position (after removing resolution if present)
+            if len(parts) >= 1 and parts[0].endswith("s") and parts[0][:-1].isdigit():
+                duration = int(parts[0][:-1])
+                parts = parts[1:]  # Remove duration from parts
+                prompt = " ".join(parts)
+            
+            # Validate resolution/duration combination
+            from llm_api import WAN_VIDEO_MODELS
+            valid_durations = WAN_VIDEO_MODELS["wan2.2"]["durations"].get(resolution, [])
+            if duration not in valid_durations:
+                # Format valid durations as human-readable text
+                if len(valid_durations) == 1:
+                    durations_text = f"{valid_durations[0]}s"
+                else:
+                    durations_text = " or ".join([f"{d}s" for d in valid_durations])
+                
+                error_msg = f"❌ Invalid combination: {resolution} only supports {durations_text} duration.\n\n"
+                if resolution == "1080P":
+                    error_msg += "💡 Tip: 1080P only supports 5s. Use 720P or 480P for 8s videos."
+                send_message(chat_id, error_msg)
+                return
+            
+            # Calculate credits based on resolution and duration
+            try:
+                credits_required = calculate_video_credits("wan2.2", resolution, duration)
+            except Exception as calc_error:
+                logger.error(f"Credit calculation error: {str(calc_error)}")
+                send_message(chat_id, f"❌ Invalid video parameters: {resolution}, {duration}s")
+                return
+            
+            logger.info(f"Video params: resolution={resolution}, duration={duration}s, credits={credits_required}")
+            
+            # OPTIMIZATION: Check balance and deduct credits upfront (before video generation)
+            pending_credit_warning = None
+            if DB_AVAILABLE and user_id:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        user = User.query.get(user_id)
+                        if not user:
+                            logger.error(f"User not found for video generation: {user_id}")
+                            send_message(chat_id, "❌ User account not found. Please try /start first.")
+                            return
+                        
+                        # VIDEO PAYWALL: Check if user has ever purchased
+                        if not user.last_purchase_at:
+                            response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Deduct credits immediately (daily credits first, then purchased)
+                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
+                        if not success:
+                            total = user.credits + user.daily_credits
+                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits for video generation ({resolution}, {duration}s).\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                            send_message(chat_id, response)
+                            return
+                        
+                        # Store warning to send after successful generation
+                        pending_credit_warning = credit_warning
+                        
+                        db.session.commit()
+                        logger.debug(f"{credits_required} credits deducted for WAN 2.2 video (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                except Exception as db_error:
+                    logger.error(f"Database error checking/deducting credits: {str(db_error)}")
+            
+            # Download the image first
+            try:
+                photo_file = photo[-1]  # Get largest photo
+                file_id = photo_file.get("file_id")
+                
+                # Get file info
+                file_info_response = requests.get(f"{BASE_URL}/getFile?file_id={file_id}", timeout=TELEGRAM_TIMEOUT)
+                file_info = file_info_response.json()
+                
+                if not file_info.get("ok"):
+                    send_message(chat_id, "❌ Failed to get image file information")
+                    return
+                
+                file_path = file_info.get("result", {}).get("file_path")
+                if not file_path:
+                    send_message(chat_id, "❌ Failed to get image file path")
+                    return
+                
+                image_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+                
+                # Generate video in background thread to avoid webhook timeout
+                from flask import current_app
+                app = current_app._get_current_object()
+                
+                def generate_video_background():
+                    """Background video generation with comprehensive error handling"""
+                    # Send initial message OUTSIDE app context to avoid DB connection issues
+                    try:
+                        send_message(chat_id, f"🎬 Generating {resolution} {duration}s video from your image... This may take up to 2 minutes.")
+                    except Exception as msg_error:
+                        logger.error(f"Failed to send initial video generation message: {str(msg_error)}")
+                    
+                    try:
+                        # Call WAN 2.2 video generation API
+                        result = generate_wan_video(
+                            model_key="wan2.2",
+                            image_url=image_url,
+                            prompt=prompt,
+                            resolution=resolution,
+                            duration=duration
+                        )
+                        
+                        if result.get("success"):
+                            video_url = result.get("video_url")
+                            
+                            # PRIORITY 1: Send video to user FIRST
+                            try:
+                                send_message(chat_id, f"✨ Video generated successfully!\n📹 {resolution}, {duration}s\n\n{video_url}")
+                            except Exception as e:
+                                logger.error(f"Error sending video message: {str(e)}")
+                            
+                            # PRIORITY 2: Store to database
+                            if DB_AVAILABLE and user_id:
+                                try:
+                                    with app.app_context():
+                                        message_id = store_message(user_id, f"Video ({resolution}, {duration}s): {prompt[:100] if prompt else 'No prompt'}", f"Video: {video_url}", credits_cost=credits_required)
+                                        
+                                        transaction = Transaction(
+                                            user_id=user_id,
+                                            credits_used=credits_required,
+                                            message_id=message_id,
+                                            transaction_type='video_generation',
+                                            description=f"WAN 2.2 {resolution} {duration}s: {prompt[:100] if prompt else 'No prompt'}"
+                                        )
+                                        db.session.add(transaction)
+                                        db.session.commit()
+                                        logger.debug(f"WAN 2.2 video transaction stored: message_id={message_id}")
+                                except Exception as db_error:
+                                    logger.error(f"Database error storing video message/transaction (non-critical): {str(db_error)}")
+                            
+                            # PRIORITY 3: Send credit warning if needed
+                            if pending_credit_warning:
+                                try:
+                                    send_message(chat_id, pending_credit_warning)
+                                except:
+                                    pass
+                        
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            
+                            # PRIORITY 1: Send error message to user FIRST
+                            try:
+                                send_message(chat_id, f"❌ Video generation failed: {error_msg}\n\n✅ {credits_required} credits have been refunded to your account.")
+                            except Exception as msg_err:
+                                logger.error(f"Could not send failure message to user: {str(msg_err)}")
+                            
+                            # PRIORITY 2: Refund credits
+                            if DB_AVAILABLE and user_id:
+                                try:
+                                    with app.app_context():
+                                        user = User.query.get(user_id)
+                                        if user:
+                                            user.credits += credits_required
+                                            db.session.commit()
+                                            logger.info(f"Refunded {credits_required} credits due to failed video generation")
+                                except Exception as db_error:
+                                    logger.error(f"Database error refunding credits (CRITICAL): {str(db_error)}")
+                    
+                    except Exception as e:
+                        # CRITICAL: Catch-all error handler
+                        logger.error(f"CRITICAL: WAN 2.2 video generation background thread crashed: {str(e)}", exc_info=True)
+                        
+                        try:
+                            send_message(chat_id, f"❌ An unexpected error occurred during video generation.\n\n✅ {credits_required} credits have been refunded.\n\nError: {str(e)[:100]}")
+                        except Exception as notify_err:
+                            logger.error(f"Could not send crash notification to user: {str(notify_err)}")
+                        
+                        # Try to refund credits
+                        if DB_AVAILABLE and user_id:
+                            try:
+                                with app.app_context():
+                                    user = User.query.get(user_id)
+                                    if user:
+                                        user.credits += credits_required
+                                        db.session.commit()
+                                        logger.info(f"Refunded {credits_required} credits after background thread crash")
+                            except Exception as refund_err:
+                                logger.error(f"Could not refund credits after crash (CRITICAL): {str(refund_err)}")
+                
+                # Start background thread
+                thread = threading.Thread(target=generate_video_background)
+                thread.start()
+                
+            except Exception as e:
+                logger.error(f"Error processing WAN 2.2 video generation request: {str(e)}")
+                send_message(chat_id, f"❌ Error: {str(e)}")
             
             return
         
