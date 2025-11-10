@@ -2383,33 +2383,25 @@ Use /buy to purchase more credits or /daily for free credits.
             except Exception as e:
                 logger.error(f"Error starting transaction background thread: {str(e)}")
         
-        # RATE LIMITING: Clear processing lock on successful completion
-        if DB_AVAILABLE and user_id:
-            try:
-                from flask import current_app
-                with current_app.app_context():
-                    user = User.query.get(user_id)
-                    if user:
-                        user.processing_since = None
-                        db.session.commit()
-                        logger.debug(f"Rate limit: Cleared processing lock for user {telegram_id}")
-            except Exception as e:
-                logger.error(f"Error clearing processing lock: {e}")
-        
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
         error_message = "Sorry, I encountered an error while processing your request. Please try again later."
         send_message(chat_id, error_message)
         
-        # RATE LIMITING: Clear processing lock on error
+    finally:
+        # CRITICAL: Always clear processing lock, regardless of success or failure
+        # This prevents stuck locks that can last hours/days
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
                 with current_app.app_context():
                     user = User.query.get(user_id)
-                    if user:
+                    if user and user.processing_since:
+                        lock_duration = (datetime.utcnow() - user.processing_since).total_seconds()
                         user.processing_since = None
                         db.session.commit()
-                        logger.debug(f"Rate limit: Cleared processing lock after error for user {telegram_id}")
+                        logger.debug(f"Rate limit: Cleared processing lock for user {telegram_id} (held for {lock_duration:.2f}s)")
+                    elif user:
+                        logger.debug(f"Rate limit: No lock to clear for user {telegram_id}")
             except Exception as cleanup_error:
-                logger.error(f"Error clearing processing lock after error: {cleanup_error}")
+                logger.error(f"Error in finally block clearing processing lock: {cleanup_error}")

@@ -76,11 +76,17 @@ Preferred communication style: Simple, everyday language.
 - **Response Delivery**: Progressive updates, multi-message chunking, and smart chunking at character boundaries.
 - **Performance Optimizations**: Consolidated database operations, optimized history queries, upfront credit deduction, and background processing for image/video generation to prevent webhook timeouts.
 - **Rate Limiting**: Currently DISABLED to allow reflection prompts to complete. Lock-setting code is commented out (telegram_handler.py line 761-787). Lock cleanup code runs at message completion/error.
-- **Stuck Lock Prevention**: 
-  - **Startup Cleanup**: Automatic cleanup of processing locks older than 5 minutes on app startup (main.py `cleanup_stuck_processing_locks()`)
+- **Automated Lock Cleanup System** (implemented Nov 10, 2025):
+  - **Finally Block Protection**: Guaranteed lock cleanup on all code paths (success, error, or exception) in telegram_handler.py. Logs lock duration for monitoring.
+  - **Periodic Background Cleanup**: Daemon thread runs every 5 minutes, automatically clearing locks older than 5 minutes. Prevents 17+ hour stuck locks.
+  - **Startup Cleanup**: Immediate cleanup of all stuck locks on application startup
   - **Manual Cleanup**: `/admin/clear_locks` endpoint for emergency lock clearing (requires `ADMIN_EXPORT_TOKEN`)
-  - **Monitoring**: `/stats` endpoint tracks `users_with_locks`, `stuck_locks`, and `stuck_users` for real-time monitoring
-  - **Implementation**: Successfully cleared 20 stuck locks (some >17 hours old) on Nov 5, 2025
+  - **Enhanced Monitoring**: `/stats` endpoint shows:
+    - Lock health status (🟢 HEALTHY / 🔴 NEEDS ATTENTION)
+    - Lock categorization: Active (<60s), Warning (60s-5min), Stuck (>5min)
+    - Oldest and average lock ages
+    - Monitoring thresholds and cleanup info
+  - **Historical**: Successfully cleared 20 stuck locks (some >17 hours old) on Nov 5, 2025. Automated system now prevents this from recurring.
 
 ### Conversation Memory
 - The bot remembers the last 10 messages for context, with manual clearing via `/clear`.

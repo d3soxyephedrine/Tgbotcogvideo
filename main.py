@@ -506,7 +506,7 @@ def delete_conversation(conversation_id, **kwargs):
 
 @app.route('/stats')
 def stats():
-    """Endpoint to view basic statistics about the bot usage"""
+    """Endpoint to view basic statistics about the bot usage with enhanced lock monitoring"""
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Database not available",
@@ -518,28 +518,57 @@ def stats():
         message_count = Message.query.count()
         recent_messages = Message.query.order_by(Message.created_at.desc()).limit(5).all()
         
-        # Check for stuck processing locks
-        locked_users_count = User.query.filter(User.processing_since.isnot(None)).count()
-        
+        # Enhanced lock monitoring
         from datetime import timedelta
-        stuck_threshold = datetime.utcnow() - timedelta(minutes=5)
-        stuck_users = User.query.filter(
-            User.processing_since.isnot(None),
-            User.processing_since < stuck_threshold
-        ).all()
+        current_time = datetime.utcnow()
         
-        stuck_count = len(stuck_users)
+        # Get ALL users with locks (active + stuck)
+        all_locked_users = User.query.filter(User.processing_since.isnot(None)).all()
+        locked_users_count = len(all_locked_users)
         
-        # Format stuck users info
-        stuck_users_info = []
-        for user in stuck_users[:10]:  # Limit to 10 for display
-            lock_age = datetime.utcnow() - user.processing_since
-            stuck_users_info.append({
+        # Define thresholds
+        normal_threshold = timedelta(seconds=60)  # Lock should complete within 60s
+        stuck_threshold = timedelta(minutes=5)  # Stuck after 5 minutes
+        
+        # Categorize locks
+        active_locks = []  # Within normal range
+        warning_locks = []  # Between 60s and 5min
+        stuck_locks = []  # Over 5 minutes
+        
+        lock_ages = []
+        for user in all_locked_users:
+            lock_age = current_time - user.processing_since
+            lock_ages.append(lock_age.total_seconds())
+            
+            lock_info = {
                 "telegram_id": user.telegram_id,
                 "username": user.username,
-                "lock_age_minutes": int(lock_age.total_seconds() / 60),
+                "lock_age_seconds": int(lock_age.total_seconds()),
+                "lock_age_minutes": round(lock_age.total_seconds() / 60, 1),
                 "locked_since": user.processing_since.strftime("%Y-%m-%d %H:%M:%S")
-            })
+            }
+            
+            if lock_age > stuck_threshold:
+                lock_info["status"] = "🔴 STUCK"
+                stuck_locks.append(lock_info)
+            elif lock_age > normal_threshold:
+                lock_info["status"] = "🟡 WARNING"
+                warning_locks.append(lock_info)
+            else:
+                lock_info["status"] = "🟢 ACTIVE"
+                active_locks.append(lock_info)
+        
+        # Calculate lock statistics
+        lock_stats = {
+            "total_locks": locked_users_count,
+            "active_locks": len(active_locks),
+            "warning_locks": len(warning_locks),
+            "stuck_locks": len(stuck_locks),
+            "oldest_lock_seconds": int(max(lock_ages)) if lock_ages else 0,
+            "oldest_lock_minutes": round(max(lock_ages) / 60, 1) if lock_ages else 0,
+            "average_lock_seconds": int(sum(lock_ages) / len(lock_ages)) if lock_ages else 0,
+            "health_status": "🟢 HEALTHY" if len(stuck_locks) == 0 else "🔴 NEEDS ATTENTION"
+        }
         
         # Format recent messages for display
         recent_msgs_formatted = []
@@ -559,11 +588,22 @@ def stats():
             "stats": {
                 "total_users": user_count,
                 "total_messages": message_count,
-                "users_with_locks": locked_users_count,
-                "stuck_locks": stuck_count
+                "lock_health": lock_stats
             },
-            "stuck_users": stuck_users_info,
-            "recent_messages": recent_msgs_formatted
+            "locks": {
+                "active": active_locks[:5],  # Show first 5
+                "warnings": warning_locks,
+                "stuck": stuck_locks
+            },
+            "recent_messages": recent_msgs_formatted,
+            "monitoring": {
+                "thresholds": {
+                    "normal": "< 60 seconds",
+                    "warning": "60s - 5min",
+                    "stuck": "> 5 minutes (auto-cleanup)"
+                },
+                "cleanup_info": "Stuck locks are automatically cleared every 5 minutes by background thread"
+            }
         })
     except Exception as e:
         logger.error(f"Error generating stats: {str(e)}")
@@ -862,6 +902,26 @@ if DATABASE_URL and DB_AVAILABLE:
 # Note: Webhook and commands registration moved to gunicorn.conf.py
 # to avoid multiple workers registering simultaneously (rate limiting)
 
+# Periodic lock cleanup function
+def periodic_lock_cleanup():
+    """Background thread to clean up stuck processing locks every 5 minutes"""
+    while True:
+        try:
+            # Sleep first (5 minutes = 300 seconds) so startup cleanup runs first
+            time.sleep(300)
+            
+            if DATABASE_URL and DB_AVAILABLE:
+                with app.app_context():
+                    cleared = cleanup_stuck_processing_locks()
+                    if cleared > 0:
+                        logger.warning(f"Periodic cleanup: Cleared {cleared} stuck locks")
+                    else:
+                        logger.debug("Periodic cleanup: No stuck locks found")
+            else:
+                logger.debug("Periodic cleanup: Skipping - database not available")
+        except Exception as e:
+            logger.error(f"Error in periodic lock cleanup: {str(e)}")
+
 # Keepalive function
 def keep_alive():
     """Function to ping the app every 4 minutes to prevent Replit from sleeping"""
@@ -875,10 +935,15 @@ def keep_alive():
         # Sleep for 4 minutes (240 seconds)
         time.sleep(240)
 
-# Start keepalive thread
+# Start background threads
 keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
 keepalive_thread.start()
 logger.info("Started keepalive thread")
+
+if DATABASE_URL and DB_AVAILABLE:
+    lock_cleanup_thread = threading.Thread(target=periodic_lock_cleanup, daemon=True)
+    lock_cleanup_thread.start()
+    logger.info("Started periodic lock cleanup thread (runs every 5 minutes)")
 
 def verify_nowpayments_ipn(ipn_secret, raw_body_bytes, received_signature):
     """
