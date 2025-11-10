@@ -1923,13 +1923,14 @@ def generate_grok_image(prompt: str, max_retries: int = 3) -> Dict[str, Any]:
     return {"success": False, "error": f"All {max_retries} attempts failed"}
 
 
-def _submit_novita_video_task(endpoint: str, payload: Dict[str, Any], model_name: str, max_retries: int = 3) -> Dict[str, Any]:
+def _submit_novita_video_task(endpoint: str, payload: Dict[str, Any], model_name: str, max_polls: int = 60, max_retries: int = 3) -> Dict[str, Any]:
     """Shared helper to submit and poll Novita async video generation tasks
     
     Args:
         endpoint: Novita API endpoint URL
         payload: Request payload (input + parameters)
         model_name: Model name for logging
+        max_polls: Maximum number of polling attempts (each poll is 2 seconds)
         max_retries: Number of retry attempts
     
     Returns:
@@ -1966,9 +1967,8 @@ def _submit_novita_video_task(endpoint: str, payload: Dict[str, Any], model_name
             
             logger.info(f"{model_name} task submitted successfully: {task_id}")
             
-            # Step 2: Poll for task completion (max 120 seconds for video)
+            # Step 2: Poll for task completion
             poll_count = 0
-            max_polls = 60  # 60 polls * 2 seconds = 120 seconds max wait
             
             while poll_count < max_polls:
                 time.sleep(2)
@@ -2139,6 +2139,7 @@ def generate_wan_video(
         endpoint=config["endpoint"],
         payload=payload,
         model_name=config["name"],
+        max_polls=config.get("max_polls", 60),  # Use model-specific timeout
         max_retries=max_retries
     )
     
