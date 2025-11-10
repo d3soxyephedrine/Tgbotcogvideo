@@ -10,7 +10,7 @@ import uuid
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
-from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation
+from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation, TelegramPayment
 from datetime import datetime
 from sqlalchemy import desc
 from nowpayments_api import NOWPaymentsAPI
@@ -2156,6 +2156,88 @@ def payment_history():
         return jsonify({"error": "Invalid telegram_id format"}), 400
     except Exception as e:
         logger.error(f"Error retrieving payment history: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/broadcast', methods=['POST'])
+def broadcast_message():
+    """Send a broadcast message to all users (excluding recent Stars purchasers)
+    
+    POST /admin/broadcast
+    {
+        "token": "ADMIN_EXPORT_TOKEN",
+        "message": "Your announcement message",
+        "exclude_stars_purchasers_today": true
+    }
+    """
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Database not available",
+            "message": "Broadcast requires database connection"
+        }), 503
+    
+    # Verify admin token
+    admin_token = request.json.get('token')
+    expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
+    
+    if not expected_token or admin_token != expected_token:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    message = request.json.get('message')
+    exclude_stars_today = request.json.get('exclude_stars_purchasers_today', False)
+    
+    if not message:
+        return jsonify({"error": "message field is required"}), 400
+    
+    try:
+        # Get all users with telegram_id
+        all_users = User.query.filter(User.telegram_id.isnot(None)).all()
+        
+        # Get users who purchased Stars today (if exclusion enabled)
+        excluded_user_ids = set()
+        if exclude_stars_today:
+            from sqlalchemy import func
+            today_purchasers = db.session.query(TelegramPayment.user_id).filter(
+                func.date(TelegramPayment.created_at) == datetime.utcnow().date()
+            ).distinct().all()
+            excluded_user_ids = {user_id for (user_id,) in today_purchasers}
+        
+        # Filter eligible users
+        eligible_users = [u for u in all_users if u.id not in excluded_user_ids]
+        
+        # Send messages with rate limiting (30 messages/second max)
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for i, user in enumerate(eligible_users):
+            try:
+                result = send_message(user.telegram_id, message)
+                if result and result.get('ok'):
+                    success_count += 1
+                else:
+                    error_count += 1
+                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error')}")
+                
+                # Rate limiting: 30 messages/second = ~33ms between messages
+                if (i + 1) % 30 == 0:
+                    time.sleep(1)
+                    
+            except Exception as e:
+                error_count += 1
+                errors.append(f"User {user.telegram_id}: {str(e)}")
+        
+        return jsonify({
+            "success": True,
+            "total_users": len(all_users),
+            "excluded_users": len(excluded_user_ids),
+            "eligible_users": len(eligible_users),
+            "messages_sent": success_count,
+            "errors": error_count,
+            "error_details": errors[:10] if errors else []
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error broadcasting message: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
