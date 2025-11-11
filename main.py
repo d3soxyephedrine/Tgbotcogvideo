@@ -890,18 +890,11 @@ def register_telegram_webhook():
         return
     
     try:
-        # Get domain from Replit environment
-        domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
-        
-        if not domain:
-            logger.warning("Cannot auto-register webhook - REPLIT_DOMAINS not set")
-            return
+        # Use production domain (ko2bot.com) - locked in for production deployment
+        domain = "ko2bot.com"
         
         # Build webhook URL
-        if not domain.startswith('http'):
-            webhook_url = f"https://{domain}/{BOT_TOKEN}"
-        else:
-            webhook_url = f"{domain}/{BOT_TOKEN}"
+        webhook_url = f"https://{domain}/{BOT_TOKEN}"
         
         # Redact BOT_TOKEN from webhook_url for logging (do this early)
         safe_webhook_url = webhook_url.replace(BOT_TOKEN, "[REDACTED]")
