@@ -120,6 +120,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Deployment Features
 - Cloud-ready design for serverless platforms.
+- **Webhook Configuration**: Hardcoded to `https://ko2bot.com` (production domain locked in, no auto-detection from Replit environment).
 
 ### LibreChat Web Integration
 - **Architecture**: `/v1/chat/completions` endpoint provides an OpenAI-compatible API using the SAME `generate_response()` function as Telegram. Shared credit pool and unified database for web and Telegram users.
