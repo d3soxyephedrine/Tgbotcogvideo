@@ -321,6 +321,11 @@ def chat():
     """Web chat interface for LibreChat-like experience"""
     return render_template('chat.html')
 
+@app.route('/prompt-maker')
+def prompt_maker():
+    """Canmore Syntax Injector - Base64 payload generator"""
+    return render_template('prompt-maker.html')
+
 @app.route('/api/balance', methods=['GET'])
 @require_api_key
 def get_balance(**kwargs):
