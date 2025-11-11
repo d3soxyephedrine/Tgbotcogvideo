@@ -1035,6 +1035,35 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response)
             return
         
+        # Check for /vid command (text-only - explain proper usage)
+        if text.lower() == '/vid' or text.lower().startswith('/vid '):
+            response = """🎬 *WAN 2.2 Video Generation* (Image-to-Video)
+
+To create a video, you need to:
+
+1️⃣ Attach or send a photo first
+2️⃣ Add a caption starting with `/vid`
+
+*Examples:*
+• Send photo + caption: `/vid make the clouds move slowly`
+• Send photo + caption: `/vid 720P 8s zoom in dramatically`
+• Send photo + caption: `/vid 1080P 5s make it epic`
+
+*Pricing:*
+• 480P, 5s: 50 credits (default)
+• 720P, 5s: 60 credits
+• 720P, 8s: 70 credits
+• 1080P, 5s: 78 credits
+
+*Resolution & Duration Options:*
+• 480P/720P: 5s or 8s duration
+• 1080P: 5s only
+
+📸 Try sending a photo with `/vid` in the caption!"""
+            
+            send_message(chat_id, response, parse_mode="Markdown")
+            return
+        
         # Admin-only /stats command
         if text.lower() == '/stats':
             ADMIN_TELEGRAM_ID = 1230053047
