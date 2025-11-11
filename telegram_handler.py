@@ -649,10 +649,12 @@ def process_update(update):
         logger.debug(f"Missing chat_id: {chat_id}")
         return
     
-    # If there's a photo with caption, treat it as image editing request
+    # If there's a photo with caption, check if it's a command or generic image editing
     if photo and caption:
-        logger.info(f"Photo with caption detected - treating as image editing request")
-        text = ""  # Clear text to skip normal text processing
+        # Skip for video/edit commands - they have their own handlers
+        if not (caption.lower().startswith('/vid') or caption.lower().startswith('/img2video') or caption.lower().startswith('/edit')):
+            logger.info(f"Photo with caption detected - treating as image editing request")
+            text = ""  # Clear text to skip normal text processing
     # If no text and no photo with caption, ignore
     elif not text:
         logger.debug(f"Missing text and no photo with caption")
