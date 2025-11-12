@@ -1480,11 +1480,14 @@ def chat_completions_proxy():
         
         # Refund credits on error (only if they were deducted)
         try:
-            if 'user' in locals() and 'purchased_used' in locals() and 'daily_used' in locals():
-                user.credits += purchased_used
-                user.daily_credits += daily_used
-                db.session.commit()
-                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
+            if 'user' in locals():
+                purchased_used = locals().get('purchased_used', 0)
+                daily_used = locals().get('daily_used', 0)
+                if purchased_used > 0 or daily_used > 0:
+                    user.credits += purchased_used
+                    user.daily_credits += daily_used
+                    db.session.commit()
+                    logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
         except:
             pass
         
@@ -2265,15 +2268,20 @@ def broadcast_message():
             "message": "Broadcast requires database connection"
         }), 503
     
+    # Get and validate request data
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request data"}), 400
+    
     # Verify admin token
-    admin_token = request.json.get('token')
+    admin_token = data.get('token')
     expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
     
     if not expected_token or admin_token != expected_token:
         return jsonify({"error": "Unauthorized"}), 401
     
-    message = request.json.get('message')
-    exclude_stars_today = request.json.get('exclude_stars_purchasers_today', False)
+    message = data.get('message')
+    exclude_stars_today = data.get('exclude_stars_purchasers_today', False)
     
     if not message:
         return jsonify({"error": "message field is required"}), 400
@@ -2302,11 +2310,20 @@ def broadcast_message():
         for i, user in enumerate(eligible_users):
             try:
                 result = send_message(user.telegram_id, message)
-                if result and result.get('ok'):
+                # Handle both dict and list responses (list when message is chunked)
+                if isinstance(result, list):
+                    # For chunked messages, check if all parts succeeded
+                    if all(r.get('ok') for r in result):
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        failed = [r.get('description', 'Unknown error') for r in result if not r.get('ok')]
+                        errors.append(f"User {user.telegram_id}: {', '.join(failed)}")
+                elif result and result.get('ok'):
                     success_count += 1
                 else:
                     error_count += 1
-                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error')}")
+                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error') if result else 'No response'}")
                 
                 # Rate limiting: 30 messages/second = ~33ms between messages
                 if (i + 1) % 30 == 0:

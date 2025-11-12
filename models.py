@@ -50,6 +50,10 @@ class User(db.Model):
     conversations = db.relationship('Conversation', backref='user', lazy=True, cascade='all, delete-orphan')
     memories = db.relationship('Memory', backref='user', lazy=True, cascade='all, delete-orphan')
 
+    def __init__(self, **kwargs):
+        """Initialize User with keyword arguments"""
+        super(User, self).__init__(**kwargs)
+
     def __repr__(self):
         return f'<User {self.telegram_id}>'
 
@@ -68,6 +72,10 @@ class Conversation(db.Model):
     
     # One-to-many relationship with messages
     messages = db.relationship('Message', backref='conversation', lazy=True, cascade='all, delete-orphan')
+    
+    def __init__(self, **kwargs):
+        """Initialize Conversation with keyword arguments"""
+        super(Conversation, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<Conversation {self.id}: {self.title}>'
@@ -147,6 +155,10 @@ class CryptoPayment(db.Model):
     processed_at = db.Column(db.DateTime, nullable=True)  # Timestamp when credits were added
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __init__(self, **kwargs):
+        """Initialize CryptoPayment with keyword arguments"""
+        super(CryptoPayment, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<CryptoPayment {self.payment_id} for user {self.user_id}>'
