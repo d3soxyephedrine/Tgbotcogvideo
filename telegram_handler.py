@@ -542,6 +542,7 @@ def get_help_message():
 /qwen <prompt> - Qwen text-to-image generation (8 credits)
 /edit <prompt> - Image generation optimized for editing (8 credits)
 /grok <prompt> - Stylized image generation (8 credits)
+/video <prompt> - AI text-to-video generation (50 credits, ~30s)
 /write <request> - Professional writing mode (2 credits)
 
 🎁 *Daily Free Credits:*
@@ -563,6 +564,12 @@ def get_help_message():
 • Qwen edit: Send photo + caption with /edit prefix (12 credits)
 Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
+
+🎬 *Video Generation:*
+• **/video <prompt>**: CogVideoX - AI text-to-video (50 credits, ~30s)
+  - Create videos from text descriptions
+  - Example: `/video A dragon flying over mountains`
+  - Max 200 characters per prompt
 
 🎬 *Video Generation (Image-to-Video):*
 • **/vid**: WAN 2.2 - Adjustable resolution/duration (50-78 credits)
@@ -602,7 +609,8 @@ Example: ! memorize I love cats and prefer dark themes
 • /edit: 8 credits
 • FLUX editing: 15 credits
 • Qwen editing: 12 credits
-• Video generation: 50 credits
+• /video (text-to-video): 50 credits
+• Image-to-video (/vid, /img2video): 50-78 credits
 
 💰 *Credit Packages:*
 • $5 → 200 credits (2.5¢/credit)
