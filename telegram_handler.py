@@ -1375,7 +1375,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             user_video_cooldown[telegram_id] = now
             
             # Send processing message
-            status_msg = send_message(
+            send_message(
                 chat_id,
                 f"🎬 *Generating video...*\n\n"
                 f"Prompt: _{prompt}_\n"
@@ -1383,121 +1383,144 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 parse_mode="Markdown"
             )
             
-            try:
-                # Generate video
-                result = generate_video(prompt, frames=16, steps=20)
+            # Generate video in background thread to avoid webhook timeout
+            from flask import current_app
+            app = current_app._get_current_object()
+            
+            def generate_video_background():
+                """Background video generation with comprehensive error handling"""
+                try:
+                    with app.app_context():
+                        # Re-fetch user to avoid DetachedInstanceError
+                        from models import User
+                        user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
+                        
+                        # Generate video
+                        result = generate_video(prompt, frames=16, steps=20)
+                        
+                        # Handle generation failure
+                        if result["status"] == "error":
+                            error_msg = result.get("error", "Unknown error")
+                            logger.error(f"Video generation failed: {error_msg}")
+                            
+                            # Refund credits to exact buckets that were deducted
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                            
+                            send_message(
+                                chat_id,
+                                f"❌ *Video generation failed*\n\n"
+                                f"Error: {error_msg}\n\n"
+                                f"✅ {VIDEO_CREDITS} credits have been refunded.",
+                                parse_mode="Markdown"
+                            )
+                            return
+                        
+                        # Download video file using the video_path
+                        video_path = result.get("video_path")
+
+                        if not video_path:
+                            logger.error("No video_path in response")
+
+                            # Refund credits to exact buckets that were deducted
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+
+                            send_message(
+                                chat_id,
+                                f"❌ Video generated but video path missing.\n\n"
+                                f"✅ {VIDEO_CREDITS} credits have been refunded."
+                            )
+                            return
+
+                        logger.info(f"Downloading video from: {video_path}")
+
+                        try:
+                            video_bytes = download_video(video_path)
+                            if not video_bytes:
+                                raise Exception("Download returned empty content")
+                        except Exception as download_err:
+                            logger.error(f"Video download failed: {download_err}")
+                            
+                            # Refund credits to exact buckets that were deducted
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                            
+                            send_message(
+                                chat_id,
+                                f"❌ Video generated but download failed.\n\n"
+                                f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
+                            )
+                            return
+                        
+                        # Send video to user
+                        try:
+                            files = {
+                                'video': ('generated_video.mp4', io.BytesIO(video_bytes), 'video/mp4')
+                            }
+                            data = {
+                                'chat_id': chat_id,
+                                'caption': (
+                                    f"✅ *Video generated!*\n"
+                                    f"Prompt: _{prompt}_\n"
+                                    f"Time: {result.get('generation_time_ms', 0)/1000:.1f}s\n"
+                                    f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
+                                ),
+                                'parse_mode': 'Markdown'
+                            }
+                            
+                            response = requests.post(
+                                f"{BASE_URL}/sendVideo",
+                                files=files,
+                                data=data,
+                                timeout=60
+                            )
+                            
+                            if response.status_code == 200:
+                                logger.info(f"✅ Video sent successfully to user {telegram_id}")
+                            else:
+                                logger.error(f"Failed to send video: {response.text}")
+                                raise Exception(f"Telegram API error: {response.status_code}")
+                            
+                        except Exception as e:
+                            logger.error(f"Failed to send video: {e}")
+                            send_message(
+                                chat_id,
+                                f"❌ Failed to send video. Credits were deducted. Contact support."
+                            )
                 
-                # Handle generation failure
-                if result["status"] == "error":
-                    error_msg = result.get("error", "Unknown error")
-                    logger.error(f"Video generation failed: {error_msg}")
+                except Exception as e:
+                    logger.error(f"CRITICAL: CogVideoX-5B background thread crashed: {str(e)}", exc_info=True)
                     
-                    # Refund credits to exact buckets that were deducted
-                    user.daily_credits += daily_used
-                    user.credits += purchased_used
-                    db.session.commit()
-                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                    try:
+                        with app.app_context():
+                            # Re-fetch user
+                            from models import User
+                            user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
+                            if user_obj:
+                                # Refund credits
+                                user_obj.daily_credits += daily_used
+                                user_obj.credits += purchased_used
+                                db.session.commit()
+                                logger.info(f"Refunded {VIDEO_CREDITS} credits after background thread crash")
+                    except Exception as refund_err:
+                        logger.error(f"Could not refund credits after crash (CRITICAL): {str(refund_err)}")
                     
                     send_message(
                         chat_id,
-                        f"❌ *Video generation failed*\n\n"
-                        f"Error: {error_msg}\n\n"
-                        f"✅ {VIDEO_CREDITS} credits have been refunded.",
-                        parse_mode="Markdown"
-                    )
-                    return
-                
-                # Download video file using the video_path
-                video_path = result.get("video_path")
-
-                if not video_path:
-                    logger.error("No video_path in response")
-
-                    # Refund credits to exact buckets that were deducted
-                    user.daily_credits += daily_used
-                    user.credits += purchased_used
-                    db.session.commit()
-                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-
-                    send_message(
-                        chat_id,
-                        f"❌ Video generated but video path missing.\n\n"
+                        f"❌ Unexpected error during video generation.\n\n"
                         f"✅ {VIDEO_CREDITS} credits have been refunded."
                     )
-                    return
-
-                logger.info(f"Downloading video from: {video_path}")
-
-                try:
-                    video_bytes = download_video(video_path)
-                    if not video_bytes:
-                        raise Exception("Download returned empty content")
-                except Exception as download_err:
-                    logger.error(f"Video download failed: {download_err}")
-                    
-                    # Refund credits to exact buckets that were deducted
-                    user.daily_credits += daily_used
-                    user.credits += purchased_used
-                    db.session.commit()
-                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-                    
-                    send_message(
-                        chat_id,
-                        f"❌ Video generated but download failed.\n\n"
-                        f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
-                    )
-                    return
-                
-                # Send video to user
-                try:
-                    files = {
-                        'video': ('generated_video.mp4', io.BytesIO(video_bytes), 'video/mp4')
-                    }
-                    data = {
-                        'chat_id': chat_id,
-                        'caption': (
-                            f"✅ *Video generated!*\n"
-                            f"Prompt: _{prompt}_\n"
-                            f"Time: {result.get('generation_time_ms', 0)/1000:.1f}s\n"
-                            f"Credits remaining: {user.credits + user.daily_credits}"
-                        ),
-                        'parse_mode': 'Markdown'
-                    }
-                    
-                    response = requests.post(
-                        f"{BASE_URL}/sendVideo",
-                        files=files,
-                        data=data,
-                        timeout=60
-                    )
-                    
-                    if response.status_code == 200:
-                        logger.info(f"✅ Video sent successfully to user {telegram_id}")
-                    else:
-                        logger.error(f"Failed to send video: {response.text}")
-                        raise Exception(f"Telegram API error: {response.status_code}")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to send video: {e}")
-                    send_message(
-                        chat_id,
-                        f"❌ Failed to send video. Credits were deducted. Contact support."
-                    )
             
-            except Exception as e:
-                logger.error(f"Error in /video command: {str(e)}")
-                
-                # Refund credits to exact buckets that were deducted
-                user.daily_credits += daily_used
-                user.credits += purchased_used
-                db.session.commit()
-                logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-                
-                send_message(
-                    chat_id,
-                    f"❌ Error generating video: {str(e)}\n\n"
-                    f"✅ {VIDEO_CREDITS} credits have been refunded."
-                )
+            # Start background thread
+            thread = threading.Thread(target=generate_video_background)
+            thread.start()
             
             return
         
