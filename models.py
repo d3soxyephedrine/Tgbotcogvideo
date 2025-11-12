@@ -119,6 +119,10 @@ class Transaction(db.Model):
     description = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    def __init__(self, **kwargs):
+        """Initialize Transaction with keyword arguments"""
+        super(Transaction, self).__init__(**kwargs)
+    
     def __repr__(self):
         return f'<Transaction {self.id} for user {self.user_id}>'
 
@@ -156,6 +160,10 @@ class TelegramPayment(db.Model):
     processed_at = db.Column(db.DateTime, nullable=True)  # When credits were added
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __init__(self, **kwargs):
+        """Initialize TelegramPayment with keyword arguments"""
+        super(TelegramPayment, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<TelegramPayment {self.telegram_payment_charge_id} for user {self.user_id}>'

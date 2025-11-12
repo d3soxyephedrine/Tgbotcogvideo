@@ -102,6 +102,44 @@ def deduct_credits(user, amount):
     
     return True, daily_used, purchased_used, warning
 
+def store_message(user_id, user_message, bot_response, credits_cost=0, model_used=None, conversation_id=None):
+    """Store a message in the database and return the message ID
+    
+    Args:
+        user_id: User ID in database
+        user_message: User's message text
+        bot_response: Bot's response text
+        credits_cost: Credits charged for this message (default: 0)
+        model_used: Model used for generation (default: None, uses DEFAULT_MODEL)
+        conversation_id: Optional conversation ID for web chat (default: None)
+    
+    Returns:
+        int: Message ID if successful, None if failed or DB unavailable
+    """
+    if not DB_AVAILABLE:
+        logger.debug("Database not available, skipping message storage")
+        return None
+    
+    try:
+        if model_used is None:
+            model_used = DEFAULT_MODEL
+        
+        message_record = Message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            user_message=user_message,
+            bot_response=bot_response,
+            model_used=model_used,
+            credits_charged=credits_cost
+        )
+        db.session.add(message_record)
+        db.session.commit()
+        logger.debug(f"Message stored successfully: ID={message_record.id}")
+        return message_record.id
+    except Exception as e:
+        logger.error(f"Error storing message: {str(e)}")
+        return None
+
 # Get environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"

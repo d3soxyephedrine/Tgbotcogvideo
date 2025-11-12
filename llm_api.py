@@ -3,7 +3,7 @@ import logging
 import json
 import requests
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 # Enhanced logging configuration
 logging.basicConfig(
@@ -258,7 +258,7 @@ def inject_deepseek_handshake(conversation_history: list, user_id: int, model: s
     logger.info(f"✅ DeepSeek priming handshake injected (now {len(updated_history)} history messages)")
     return updated_history
 
-def get_system_prompt(model: str = None) -> str:
+def get_system_prompt(model: Optional[str] = None) -> str:
     """Enhanced system prompt for optimal performance
     
     Args:
@@ -622,7 +622,7 @@ def estimate_messages_tokens(messages: list) -> int:
     return total
 
 
-def create_request_data(user_message: str, model: str = None, conversation_history: list = None) -> Dict[str, Any]:
+def create_request_data(user_message: str, model: Optional[str] = None, conversation_history: Optional[List] = None) -> Dict[str, Any]:
     """Create request data with token budget management"""
     
     if model is None:
@@ -752,7 +752,7 @@ def handle_api_response(response: requests.Response) -> str:
         return f"Unexpected error: {str(e)}"
 
 
-def call_openai_api(user_message: str, conversation_history: list = None, max_retries: int = 3, model: str = None) -> str:
+def call_openai_api(user_message: str, conversation_history: Optional[List] = None, max_retries: int = 3, model: Optional[str] = None) -> str:
     """Make API call to OpenRouter with retry logic"""
     
     if not OPENROUTER_API_KEY:
@@ -865,7 +865,7 @@ def call_openai_api(user_message: str, conversation_history: list = None, max_re
         return "I'm experiencing technical difficulties. Please try again shortly."
 
 
-def call_openai_api_streaming(user_message: str, conversation_history: list = None, update_callback=None, max_retries: int = 3, model: str = None) -> str:
+def call_openai_api_streaming(user_message: str, conversation_history: Optional[List] = None, update_callback=None, max_retries: int = 3, model: Optional[str] = None) -> str:
     """Make streaming API call to OpenRouter with progressive updates
     
     Args:
@@ -1141,7 +1141,7 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
     return False
 
 
-def generate_response(user_message: str, conversation_history: list = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False, user_id: int = None, model: str = None) -> str:
+def generate_response(user_message: str, conversation_history: Optional[List] = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False, user_id: Optional[int] = None, model: Optional[str] = None) -> str:
     """Main response generation function with enhanced error handling and auto-refusal correction
     
     Args:
@@ -1302,7 +1302,7 @@ Write in a natural, professional, human style with the following characteristics
         return f"System Error: {str(e)}"
 
 
-def generate_image(prompt: str, image_url: str = None, max_retries: int = 3) -> Dict[str, Any]:
+def generate_image(prompt: str, image_url: Optional[str] = None, max_retries: int = 3) -> Dict[str, Any]:
     """Generate or edit an image using Novita AI API with FLUX.1 Kontext Max (uncensored model)
     
     Args:
@@ -2069,9 +2069,9 @@ def generate_wan_video(
     image_url: str,
     prompt: str = "",
     negative_prompt: str = "",
-    resolution: str = None,
-    duration: int = None,
-    seed: int = None,
+    resolution: Optional[str] = None,
+    duration: Optional[int] = None,
+    seed: Optional[int] = None,
     max_retries: int = 3
 ) -> Dict[str, Any]:
     """Generate video from image using specified WAN model
