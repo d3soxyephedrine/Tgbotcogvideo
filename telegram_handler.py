@@ -1322,16 +1322,16 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             # Credit cost
             VIDEO_CREDITS = 50
             
-            # Rate limiting: 1 video per minute per user
-            now = time.time()
-            if telegram_id in user_video_cooldown:
-                elapsed = now - user_video_cooldown[telegram_id]
-                if elapsed < 60:
-                    send_message(
-                        chat_id,
-                        f"⏳ Please wait {60-int(elapsed)} seconds before generating another video."
-                    )
-                    return
+            # Rate limiting: TEMPORARILY DISABLED FOR TESTING
+            # now = time.time()
+            # if telegram_id in user_video_cooldown:
+            #     elapsed = now - user_video_cooldown[telegram_id]
+            #     if elapsed < 60:
+            #         send_message(
+            #             chat_id,
+            #             f"⏳ Please wait {60-int(elapsed)} seconds before generating another video."
+            #         )
+            #         return
             
             # Check if user exists
             if not user:
@@ -1371,8 +1371,8 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 send_message(chat_id, "❌ Error processing credits. Please try again.")
                 return
             
-            # Update rate limit
-            user_video_cooldown[telegram_id] = now
+            # Update rate limit - TEMPORARILY DISABLED
+            # user_video_cooldown[telegram_id] = now
             
             # Send processing message
             send_message(
