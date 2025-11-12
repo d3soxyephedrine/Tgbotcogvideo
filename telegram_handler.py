@@ -1197,9 +1197,6 @@ Use /buy to purchase more credits or /daily for free credits.
             
             logger.info(f"Processing /video generation: {prompt[:50]}...")
             
-            # Credit cost
-            VIDEO_CREDITS = 50
-            
             # Rate limiting: 1 video per minute per user
             now = time.time()
             if telegram_id in user_video_cooldown:
@@ -1207,7 +1204,8 @@ Use /buy to purchase more credits or /daily for free credits.
                 if elapsed < 60:
                     send_message(
                         chat_id,
-                        f"⏳ Please wait {60-int(elapsed)} seconds before generating another video."
+                        f"⏳ Please wait {60-int(elapsed)} seconds before generating another video.\n\n"
+                        "This cooldown prevents server overload."
                     )
                     return
             
@@ -1216,17 +1214,27 @@ Use /buy to purchase more credits or /daily for free credits.
                 send_message(chat_id, "❌ User not found. Please use /start first.")
                 return
             
+            # Check if video API is healthy
+            if not check_video_api_health():
+                send_message(
+                    chat_id,
+                    "❌ Video generation service is currently unavailable.\n"
+                    "Please try again in a few minutes."
+                )
+                return
+            
             # Check balance upfront
             total_credits = user.credits + user.daily_credits
             
-            if total_credits < VIDEO_CREDITS:
+            if total_credits < VIDEO_CREDIT_COST:
                 send_message(
                     chat_id,
-                    f"❌ Insufficient credits!\n\n"
+                    f"❌ *Insufficient credits*\n\n"
                     f"💰 Available: {total_credits} credits\n"
-                    f"🎬 Video cost: {VIDEO_CREDITS} credits\n"
-                    f"📊 Need: {VIDEO_CREDITS - total_credits} more credits\n\n"
-                    f"Use /buy to purchase more credits or /daily to claim free credits."
+                    f"🎬 Video cost: {VIDEO_CREDIT_COST} credits\n"
+                    f"📊 Need: {VIDEO_CREDIT_COST - total_credits} more credits\n\n"
+                    f"Use /buy to purchase more credits or /daily to claim free credits.",
+                    parse_mode="Markdown"
                 )
                 return
             
