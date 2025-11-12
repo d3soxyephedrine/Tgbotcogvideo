@@ -1,6 +1,6 @@
 """
 Video Generation Module
-Handles AI video generation via Novita AI CogVideoX-5B API
+Handles AI video generation via CogVideoX-5B API
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import Optional, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
-NOVITA_API_KEY = os.getenv("NOVITA_API_KEY", "")
+VIDEO_API_KEY = os.getenv("VIDEO_API_KEY", "")
 NOVITA_TXT2VIDEO_ENDPOINT = "https://api.novita.ai/v3/async/txt2video"
 NOVITA_TASK_RESULT_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 VIDEO_CREDIT_COST = 50
@@ -22,17 +22,17 @@ class VideoGenerationError(Exception):
 
 def check_video_api_health() -> bool:
     """
-    Check if Novita AI video generation API is accessible.
+    Check if CogVideoX-5B video generation API is accessible.
     Returns True if API key is configured, False otherwise.
     """
-    if not NOVITA_API_KEY:
-        logger.error("NOVITA_API_KEY not configured")
+    if not VIDEO_API_KEY:
+        logger.error("VIDEO_API_KEY not configured")
         return False
     return True
 
 def _poll_task_result(task_id: str, max_wait_seconds: int = 180) -> Dict:
     """
-    Poll Novita AI for task completion.
+    Poll CogVideoX-5B API for task completion.
     
     Args:
         task_id: Task ID returned from submit request
@@ -41,11 +41,11 @@ def _poll_task_result(task_id: str, max_wait_seconds: int = 180) -> Dict:
     Returns:
         Dict with task result or error
     """
-    if not NOVITA_API_KEY:
-        raise VideoGenerationError("NOVITA_API_KEY not configured")
+    if not VIDEO_API_KEY:
+        raise VideoGenerationError("VIDEO_API_KEY not configured")
     
     headers = {
-        "Authorization": f"Bearer {NOVITA_API_KEY}",
+        "Authorization": f"Bearer {VIDEO_API_KEY}",
         "Content-Type": "application/json"
     }
     
@@ -99,7 +99,7 @@ def generate_video(
     guidance_scale: float = 6.0
 ) -> Dict:
     """
-    Generate video using Novita AI CogVideoX-5B API.
+    Generate video using CogVideoX-5B API.
     
     Args:
         prompt: Text description of video to generate
@@ -121,8 +121,8 @@ def generate_video(
     Raises:
         VideoGenerationError: If API request fails
     """
-    if not NOVITA_API_KEY:
-        raise VideoGenerationError("NOVITA_API_KEY not configured. Check Replit Secrets.")
+    if not VIDEO_API_KEY:
+        raise VideoGenerationError("VIDEO_API_KEY not configured. Check Replit Secrets.")
     
     if not prompt or not prompt.strip():
         raise VideoGenerationError("Prompt cannot be empty")
@@ -134,7 +134,7 @@ def generate_video(
         logger.info(f"Submitting video generation: '{prompt[:50]}...'")
         
         headers = {
-            "Authorization": f"Bearer {NOVITA_API_KEY}",
+            "Authorization": f"Bearer {VIDEO_API_KEY}",
             "Content-Type": "application/json"
         }
         
@@ -205,7 +205,7 @@ def generate_video(
 
 def download_video(video_url: str) -> Tuple[Optional[bytes], Optional[str]]:
     """
-    Download generated video file from Novita AI.
+    Download generated video file from CogVideoX-5B API.
     
     Args:
         video_url: URL returned from generate_video
@@ -216,7 +216,7 @@ def download_video(video_url: str) -> Tuple[Optional[bytes], Optional[str]]:
         - error_message: Error description (if failed)
     """
     try:
-        logger.info(f"Downloading video from Novita AI...")
+        logger.info(f"Downloading video from CogVideoX-5B API...")
         
         response = requests.get(
             video_url,
