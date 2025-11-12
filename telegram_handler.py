@@ -2664,8 +2664,8 @@ To create a video, you need to:
                             except Exception as refund_err:
                                 logger.error(f"Could not refund credits after crash (CRITICAL): {str(refund_err)}")
                 
-                # Start background thread
-                thread = threading.Thread(target=generate_video_background)
+                # Start background thread as daemon to prevent worker blocking
+                thread = threading.Thread(target=generate_video_background, daemon=True)
                 thread.start()
                 
             except Exception as e:
@@ -2843,8 +2843,8 @@ To create a video, you need to:
                                 except:
                                     pass
                 
-                # Start background thread
-                thread = threading.Thread(target=generate_video_background)
+                # Start background thread as daemon to prevent worker blocking
+                thread = threading.Thread(target=generate_video_background, daemon=True)
                 thread.start()
                 
             except Exception as e:
