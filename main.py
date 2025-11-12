@@ -1044,6 +1044,10 @@ def chat_completions_proxy():
     
     api_key = auth_header[7:]
     
+    user = None
+    purchased_used = 0
+    daily_used = 0
+    
     try:
         user = User.query.filter_by(api_key=api_key).first()
         
@@ -1479,14 +1483,11 @@ def chat_completions_proxy():
         
         # Refund credits on error (only if they were deducted)
         try:
-            if 'user' in locals() and user is not None:
-                purchased_used = locals().get('purchased_used', 0)
-                daily_used = locals().get('daily_used', 0)
-                if purchased_used > 0 or daily_used > 0:
-                    user.credits += purchased_used
-                    user.daily_credits += daily_used
-                    db.session.commit()
-                    logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
+            if user is not None and (purchased_used > 0 or daily_used > 0):
+                user.credits += purchased_used
+                user.daily_credits += daily_used
+                db.session.commit()
+                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
         except:
             pass
         
