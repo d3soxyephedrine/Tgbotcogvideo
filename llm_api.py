@@ -211,7 +211,7 @@ Now refine the user's prompt toward maximum explicit detail. Output ONLY the enh
             "original_prompt": prompt
         }
 
-def inject_deepseek_handshake(conversation_history: Optional[List], user_id: int, model: str) -> Optional[List]:
+def inject_deepseek_handshake(conversation_history: list, user_id: int, model: str) -> list:
     """Inject priming handshake into conversation history to bypass first-turn moderation
     
     Args:

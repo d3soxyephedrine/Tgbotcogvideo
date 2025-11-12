@@ -175,9 +175,10 @@ if NOWPAYMENTS_IPN_SECRET:
 else:
     logger.warning("NOWPAYMENTS_IPN_SECRET not set - IPN callbacks will not be verified")
 
-# Replit URL (for keepalive pings)
-# We'll just use localhost since we're pinging ourselves
-KEEPALIVE_URL = "http://localhost:5000"
+# Keepalive URL (pings local server to keep it awake)
+# Use the same port that gunicorn is bound to (from PORT env var or default 5000)
+KEEPALIVE_PORT = os.environ.get("PORT", "5000")
+KEEPALIVE_URL = f"http://localhost:{KEEPALIVE_PORT}"
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -703,8 +704,9 @@ def export_conversations():
         }), 503
     
     try:
-        # Query all messages ordered by user and timestamp
-        messages = Message.query.order_by(Message.user_id, Message.created_at).all()
+        # Query all messages with eager loading to prevent N+1 queries
+        from sqlalchemy.orm import joinedload
+        messages = Message.query.options(joinedload(Message.user)).order_by(Message.user_id, Message.created_at).all()
         
         if not messages:
             return jsonify({"error": "No conversations found"}), 404
@@ -1043,10 +1045,6 @@ def chat_completions_proxy():
         }), 401
     
     api_key = auth_header[7:]
-    
-    user = None
-    purchased_used = 0
-    daily_used = 0
     
     try:
         user = User.query.filter_by(api_key=api_key).first()
@@ -1483,18 +1481,13 @@ def chat_completions_proxy():
         
         # Refund credits on error (only if they were deducted)
         try:
-            # Safely get variables that might not be defined
-            refund_user = locals().get('user')
-            refund_purchased = locals().get('purchased_used', 0)
-            refund_daily = locals().get('daily_used', 0)
-            
-            if refund_user is not None and (refund_purchased > 0 or refund_daily > 0):
-                refund_user.credits += refund_purchased
-                refund_user.daily_credits += refund_daily
+            if 'user' in locals() and 'purchased_used' in locals() and 'daily_used' in locals():
+                user.credits += purchased_used
+                user.daily_credits += daily_used
                 db.session.commit()
-                logger.info(f"Refunded {refund_purchased + refund_daily} credits due to error")
-        except Exception as refund_error:
-            logger.debug(f"Could not refund credits: {refund_error}")
+                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
+        except:
+            pass
         
         return jsonify({
             "error": {
@@ -2273,20 +2266,15 @@ def broadcast_message():
             "message": "Broadcast requires database connection"
         }), 503
     
-    # Get and validate request data
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Invalid request data"}), 400
-    
     # Verify admin token
-    admin_token = data.get('token')
+    admin_token = request.json.get('token')
     expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
     
     if not expected_token or admin_token != expected_token:
         return jsonify({"error": "Unauthorized"}), 401
     
-    message = data.get('message')
-    exclude_stars_today = data.get('exclude_stars_purchasers_today', False)
+    message = request.json.get('message')
+    exclude_stars_today = request.json.get('exclude_stars_purchasers_today', False)
     
     if not message:
         return jsonify({"error": "message field is required"}), 400
@@ -2315,20 +2303,11 @@ def broadcast_message():
         for i, user in enumerate(eligible_users):
             try:
                 result = send_message(user.telegram_id, message)
-                # Handle both dict and list responses (list when message is chunked)
-                if isinstance(result, list):
-                    # For chunked messages, check if all parts succeeded
-                    if all(r.get('ok') for r in result):
-                        success_count += 1
-                    else:
-                        error_count += 1
-                        failed = [r.get('description', 'Unknown error') for r in result if not r.get('ok')]
-                        errors.append(f"User {user.telegram_id}: {', '.join(failed)}")
-                elif result and result.get('ok'):
+                if result and result.get('ok'):
                     success_count += 1
                 else:
                     error_count += 1
-                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error') if result else 'No response'}")
+                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error')}")
                 
                 # Rate limiting: 30 messages/second = ~33ms between messages
                 if (i + 1) % 30 == 0:
