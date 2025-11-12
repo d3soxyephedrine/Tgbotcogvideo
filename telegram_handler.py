@@ -2,9 +2,12 @@ import os
 import logging
 import requests
 import threading
+import time
+import io
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
+from video_api import generate_video, download_video
 from datetime import datetime
 
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
@@ -15,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Flag to track database availability (will be set by main.py)
 DB_AVAILABLE = False
+
+# Rate limiting for /video command (user_id: timestamp)
+user_video_cooldown = {}
 
 def set_db_available(available):
     """Set database availability flag from main.py"""
@@ -1216,6 +1222,204 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 logger.error(f"Error in CogVideoX video generation: {str(e)}")
                 
                 # Refund to exact buckets that were deducted
+                user.daily_credits += daily_used
+                user.credits += purchased_used
+                db.session.commit()
+                logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                
+                send_message(
+                    chat_id,
+                    f"❌ Error generating video: {str(e)}\n\n"
+                    f"✅ {VIDEO_CREDITS} credits have been refunded."
+                )
+            
+            return
+        
+        # Check for /video command (CogVideoX text-to-video via Novita GPU)
+        if text.lower() == '/video' or text.lower().startswith('/video '):
+            # Extract prompt
+            if text.lower() == '/video':
+                response = """🎬 *AI Video Generation*
+
+*Create videos from text descriptions!*
+
+*Usage:*
+`/video <your prompt>`
+
+*Examples:*
+• `/video A dragon flying over mountains`
+• `/video A rocket launch`
+• `/video Ocean waves at sunset`
+
+*Pricing:*
+• 50 credits per video (~30 seconds generation time)
+
+*Note:* Maximum 200 characters per prompt."""
+                
+                send_message(chat_id, response, parse_mode="Markdown")
+                return
+            
+            # Extract prompt after /video
+            prompt = text[7:].strip()
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt after /video")
+                return
+            
+            # Check prompt length
+            if len(prompt) > 200:
+                send_message(chat_id, "❌ Prompt too long. Maximum 200 characters.")
+                return
+            
+            logger.info(f"Processing /video generation: {prompt[:50]}...")
+            
+            # Credit cost
+            VIDEO_CREDITS = 50
+            
+            # Rate limiting: 1 video per minute per user
+            now = time.time()
+            if telegram_id in user_video_cooldown:
+                elapsed = now - user_video_cooldown[telegram_id]
+                if elapsed < 60:
+                    send_message(
+                        chat_id,
+                        f"⏳ Please wait {60-int(elapsed)} seconds before generating another video."
+                    )
+                    return
+            
+            # Check if user exists
+            if not user:
+                send_message(chat_id, "❌ User not found. Please use /start first.")
+                return
+            
+            # Check balance upfront
+            total_credits = user.credits + user.daily_credits
+            
+            if total_credits < VIDEO_CREDITS:
+                send_message(
+                    chat_id,
+                    f"❌ Insufficient credits!\n\n"
+                    f"💰 Available: {total_credits} credits\n"
+                    f"🎬 Video cost: {VIDEO_CREDITS} credits\n"
+                    f"📊 Need: {VIDEO_CREDITS - total_credits} more credits\n\n"
+                    f"Use /buy to purchase more credits or /daily to claim free credits."
+                )
+                return
+            
+            # Deduct credits upfront
+            try:
+                success, daily_used, purchased_used, credit_warning = deduct_credits(user, VIDEO_CREDITS)
+                if not success:
+                    send_message(
+                        chat_id,
+                        f"⚠️ Insufficient credits!\n\n"
+                        f"You have {total_credits} credits but need {VIDEO_CREDITS} credits to generate a video.\n\n"
+                        f"Use /buy to purchase more credits or /daily to claim free credits."
+                    )
+                    return
+                
+                db.session.commit()
+                logger.info(f"✓ Deducted {VIDEO_CREDITS} credits upfront for /video (daily: {daily_used}, purchased: {purchased_used})")
+            except Exception as e:
+                logger.error(f"Error deducting credits: {str(e)}")
+                send_message(chat_id, "❌ Error processing credits. Please try again.")
+                return
+            
+            # Update rate limit
+            user_video_cooldown[telegram_id] = now
+            
+            # Send processing message
+            status_msg = send_message(
+                chat_id,
+                f"🎬 *Generating video...*\n\n"
+                f"Prompt: _{prompt}_\n"
+                f"⏱ This takes ~30 seconds. Please wait...",
+                parse_mode="Markdown"
+            )
+            
+            try:
+                # Generate video
+                result = generate_video(prompt, frames=16, steps=20)
+                
+                # Handle generation failure
+                if result["status"] == "error":
+                    error_msg = result.get("error", "Unknown error")
+                    logger.error(f"Video generation failed: {error_msg}")
+                    
+                    # Refund credits to exact buckets that were deducted
+                    user.daily_credits += daily_used
+                    user.credits += purchased_used
+                    db.session.commit()
+                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                    
+                    send_message(
+                        chat_id,
+                        f"❌ *Video generation failed*\n\n"
+                        f"Error: {error_msg}\n\n"
+                        f"✅ {VIDEO_CREDITS} credits have been refunded.",
+                        parse_mode="Markdown"
+                    )
+                    return
+                
+                # Download video file
+                video_bytes = download_video(result["video_path"])
+                
+                if not video_bytes:
+                    logger.error("Video download failed")
+                    
+                    # Refund credits to exact buckets that were deducted
+                    user.daily_credits += daily_used
+                    user.credits += purchased_used
+                    db.session.commit()
+                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                    
+                    send_message(
+                        chat_id,
+                        f"❌ Video generated but download failed.\n\n"
+                        f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
+                    )
+                    return
+                
+                # Send video to user
+                try:
+                    files = {
+                        'video': ('generated_video.mp4', io.BytesIO(video_bytes), 'video/mp4')
+                    }
+                    data = {
+                        'chat_id': chat_id,
+                        'caption': (
+                            f"✅ *Video generated!*\n"
+                            f"Prompt: _{prompt}_\n"
+                            f"Time: {result['generation_time_ms']/1000:.1f}s\n"
+                            f"Credits remaining: {user.credits + user.daily_credits}"
+                        ),
+                        'parse_mode': 'Markdown'
+                    }
+                    
+                    response = requests.post(
+                        f"{BASE_URL}/sendVideo",
+                        files=files,
+                        data=data,
+                        timeout=60
+                    )
+                    
+                    if response.status_code == 200:
+                        logger.info(f"✅ Video sent successfully to user {telegram_id}")
+                    else:
+                        logger.error(f"Failed to send video: {response.text}")
+                        raise Exception(f"Telegram API error: {response.status_code}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to send video: {e}")
+                    send_message(
+                        chat_id,
+                        f"❌ Failed to send video. Credits were deducted. Contact support."
+                    )
+            
+            except Exception as e:
+                logger.error(f"Error in /video command: {str(e)}")
+                
+                # Refund credits to exact buckets that were deducted
                 user.daily_credits += daily_used
                 user.credits += purchased_used
                 db.session.commit()
