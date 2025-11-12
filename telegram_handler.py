@@ -325,6 +325,75 @@ def delete_message(chat_id, message_id):
         logger.debug(f"Error deleting message: {str(e)}")
         return {"error": str(e)}
 
+def send_video(chat_id, video, caption=None, parse_mode=None):
+    """Send a video file to a specific chat in Telegram
+    
+    Args:
+        chat_id (int): The ID of the chat to send to
+        video (str | bytes | io.BytesIO): Video file path, bytes, or BytesIO object
+        caption (str | None): Optional caption for the video (default: None)
+        parse_mode (str | None): Parse mode for caption formatting (default: None, use "Markdown" for formatting)
+    
+    Returns:
+        dict: The response from Telegram API
+    """
+    if not BOT_TOKEN:
+        logger.error("BOT_TOKEN not configured")
+        return {"error": "Bot token not configured"}
+    
+    try:
+        data = {"chat_id": chat_id}
+        
+        if caption:
+            data["caption"] = caption
+            if parse_mode:
+                data["parse_mode"] = parse_mode
+        
+        # Handle different video input types
+        if isinstance(video, str):
+            # Local file path
+            with open(video, 'rb') as video_file:
+                files = {'video': ('video.mp4', video_file, 'video/mp4')}
+                response = requests.post(
+                    f"{BASE_URL}/sendVideo",
+                    files=files,
+                    data=data,
+                    timeout=60
+                )
+        elif isinstance(video, bytes):
+            # Bytes object
+            files = {'video': ('video.mp4', io.BytesIO(video), 'video/mp4')}
+            response = requests.post(
+                f"{BASE_URL}/sendVideo",
+                files=files,
+                data=data,
+                timeout=60
+            )
+        elif isinstance(video, io.BytesIO):
+            # BytesIO object
+            files = {'video': ('video.mp4', video, 'video/mp4')}
+            response = requests.post(
+                f"{BASE_URL}/sendVideo",
+                files=files,
+                data=data,
+                timeout=60
+            )
+        else:
+            logger.error(f"Unsupported video type: {type(video)}")
+            return {"error": f"Unsupported video type: {type(video)}"}
+        
+        result = response.json()
+        
+        if not result.get("ok"):
+            logger.error(f"Failed to send video: {result}")
+        else:
+            logger.info(f"Video sent successfully to chat {chat_id}")
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error sending video: {str(e)}")
+        return {"error": str(e)}
+
 def send_invoice(chat_id, title, description, payload, prices):
     """Send a payment invoice to the user (Telegram Stars)
     
