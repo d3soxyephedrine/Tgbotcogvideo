@@ -7,7 +7,7 @@ import io
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
-from video_api import generate_video, download_video
+from video_api import generate_video, download_video, check_video_api_health, validate_prompt, VideoGenerationError, VIDEO_CREDIT_COST
 from datetime import datetime
 
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
