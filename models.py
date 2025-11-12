@@ -91,6 +91,10 @@ class Message(db.Model):
     credits_charged = db.Column(db.Integer, default=1, nullable=False)
     platform = db.Column(db.String(20), default='telegram', nullable=False, index=True)
     
+    def __init__(self, **kwargs):
+        """Initialize Message with keyword arguments"""
+        super(Message, self).__init__(**kwargs)
+    
     def __repr__(self):
         return f'<Message {self.id} from user {self.user_id}>'
 
