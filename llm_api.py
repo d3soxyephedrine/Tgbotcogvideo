@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 NOVITA_API_KEY = os.environ.get("NOVITA_API_KEY")
 XAI_API_KEY = os.environ.get("XAI_API_KEY")
+COGVIDEOX_API_URL = os.environ.get("COGVIDEOX_API_URL")
+COGVIDEOX_API_KEY = os.environ.get("COGVIDEOX_API_KEY")
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 NOVITA_IMAGE_ENDPOINT = "https://api.novita.ai/v3/async/flux-1-kontext-max"
@@ -2171,6 +2173,75 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
         prompt=prompt,
         max_retries=max_retries
     )
+
+
+def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps: int = 20) -> Dict[str, Any]:
+    """
+    Generate video using CogVideoX-5B on remote GPU server
+    
+    Args:
+        prompt: Text description of the video
+        frames: Number of frames (1-49, default 16)
+        fps: Frames per second (1-60, default 8)
+        steps: Inference steps (1-50, default 20)
+    
+    Returns:
+        Dict with 'status', 'video_path'/'error', and 'ms' keys
+        Example success: {"status": "ok", "video_path": "/tmp/videos/video_123.mp4", "ms": 12345}
+        Example error: {"status": "error", "error": "message", "ms": 100}
+    """
+    if not COGVIDEOX_API_URL or not COGVIDEOX_API_KEY:
+        logger.error("CogVideoX API not configured (missing URL or API key)")
+        return {
+            "status": "error",
+            "error": "CogVideoX API not configured. Add COGVIDEOX_API_URL and COGVIDEOX_API_KEY to environment."
+        }
+    
+    try:
+        logger.info(f"Calling CogVideoX GPU server: {prompt[:50]}...")
+        
+        start_time = time.time()
+        
+        response = requests.post(
+            COGVIDEOX_API_URL,
+            json={
+                "prompt": prompt,
+                "frames": frames,
+                "fps": fps,
+                "steps": steps
+            },
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": COGVIDEOX_API_KEY
+            },
+            timeout=300  # 5 minute timeout for video generation
+        )
+        
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ CogVideoX API response: {result.get('status')}")
+            return result
+        elif response.status_code == 401:
+            logger.error("CogVideoX API authentication failed")
+            return {"status": "error", "error": "Invalid API key", "ms": elapsed_ms}
+        elif response.status_code == 402:
+            return {"status": "error", "error": "Insufficient credits on GPU server", "ms": elapsed_ms}
+        else:
+            error_text = response.text[:200]
+            logger.error(f"CogVideoX API error {response.status_code}: {error_text}")
+            return {"status": "error", "error": f"HTTP {response.status_code}: {error_text}", "ms": elapsed_ms}
+    
+    except requests.exceptions.Timeout:
+        logger.error("CogVideoX API timeout after 5 minutes")
+        return {"status": "error", "error": "Video generation timed out (>5 min)"}
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"CogVideoX API connection error: {str(e)}")
+        return {"status": "error", "error": f"Cannot connect to GPU server: {str(e)}"}
+    except Exception as e:
+        logger.error(f"CogVideoX API unexpected error: {str(e)}")
+        return {"status": "error", "error": str(e)}
 
 
 def check_api_health() -> Dict[str, bool]:

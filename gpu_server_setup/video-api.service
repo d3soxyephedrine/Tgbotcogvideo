@@ -1,0 +1,22 @@
+[Unit]
+Description=CogVideoX Video Generation API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/video_api
+Environment="PATH=/home/ubuntu/cvxenv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/ubuntu/video_api/.env
+ExecStart=/home/ubuntu/cvxenv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/video-api.log
+StandardError=append:/var/log/video-api-error.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

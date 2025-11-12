@@ -1037,6 +1037,198 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response)
             return
         
+        # Check for /cogvideo command (CogVideoX-5B text-to-video)
+        if text.lower() == '/cogvideo' or text.lower().startswith('/cogvideo '):
+            from llm_api import generate_cogvideox_video
+            
+            # Extract prompt
+            if text.lower() == '/cogvideo':
+                response = """🎬 *CogVideoX-5B Video Generation* (Text-to-Video)
+
+*Create videos from text descriptions!*
+
+*Usage:*
+`/cogvideo [your description]`
+
+*Examples:*
+• `/cogvideo A dragon flying over a neon city at night`
+• `/cogvideo Waves crashing on a beach during sunset`
+• `/cogvideo A robot dancing in a futuristic warehouse`
+
+*Pricing:*
+• 60 credits per video (16 frames, 8 FPS, ~2 seconds)
+
+*Note:* This generates videos from scratch using AI on our GPU server.
+For image-to-video, use `/vid` or `/img2video` instead."""
+                
+                send_message(chat_id, response, parse_mode="Markdown")
+                return
+            
+            # Extract prompt after /cogvideo
+            prompt = text[10:].strip()
+            
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a description after /cogvideo")
+                return
+            
+            logger.info(f"Processing CogVideoX video generation: {prompt[:50]}...")
+            
+            # Credit cost
+            VIDEO_CREDITS = 60
+            
+            # Check if user has made first purchase
+            if user.purchased_credits == 0 and user.images_generated == 0:
+                send_message(
+                    chat_id, 
+                    "🔒 *Video generation requires a purchase first*\n\n"
+                    "To unlock video generation:\n"
+                    "• Use /buy to purchase credits via Telegram Stars\n"
+                    "• Or use /crypto for cryptocurrency payment\n\n"
+                    "After your first purchase, you'll have access to all video features!",
+                    parse_mode="Markdown"
+                )
+                return
+            
+            # Check balance upfront
+            available_balance = (user.purchased_credits - user.purchased_credits_used) + (user.daily_credits - user.daily_credits_used)
+            
+            if available_balance < VIDEO_CREDITS:
+                send_message(
+                    chat_id,
+                    f"❌ Insufficient credits!\n\n"
+                    f"💰 Available: {available_balance} credits\n"
+                    f"🎬 Video cost: {VIDEO_CREDITS} credits\n"
+                    f"📊 Need: {VIDEO_CREDITS - available_balance} more credits\n\n"
+                    f"Use /buy to purchase more credits."
+                )
+                return
+            
+            # Deduct credits upfront
+            try:
+                success, daily_used, purchased_used, credit_warning = deduct_credits(user, VIDEO_CREDITS)
+                if not success:
+                    total = user.credits + user.daily_credits
+                    send_message(
+                        chat_id,
+                        f"⚠️ Insufficient credits!\n\n"
+                        f"You have {total} credits but need {VIDEO_CREDITS} credits to generate a video.\n\n"
+                        f"Use /buy to purchase more credits or /daily to claim free credits."
+                    )
+                    return
+                
+                logger.info(f"✓ Deducted {VIDEO_CREDITS} credits upfront for CogVideoX video (daily: {daily_used}, purchased: {purchased_used})")
+            except Exception as e:
+                logger.error(f"Error deducting credits: {str(e)}")
+                send_message(chat_id, "❌ Error processing credits. Please try again.")
+                return
+            
+            # Send processing message
+            processing_msg = send_message(
+                chat_id,
+                f"🎬 *Generating video on GPU server...*\n\n"
+                f"📝 Prompt: {prompt[:100]}\n"
+                f"💰 Cost: {VIDEO_CREDITS} credits\n\n"
+                f"⏳ This may take 2-5 minutes. Please wait...",
+                parse_mode="Markdown"
+            )
+            
+            try:
+                # Generate video on GPU server
+                result = generate_cogvideox_video(prompt=prompt)
+                
+                if result["status"] == "ok":
+                    video_url = result.get("video_url")
+                    generation_ms = result.get("ms", 0)
+                    generation_sec = generation_ms / 1000
+                    
+                    logger.info(f"✅ CogVideoX video generated ({generation_sec:.1f}s)")
+                    logger.info(f"📥 Downloading video from: {video_url}")
+                    
+                    if not video_url:
+                        logger.error("No video_url in response")
+                        # Refund to exact buckets that were deducted
+                        user.daily_credits += daily_used
+                        user.credits += purchased_used
+                        db.session.commit()
+                        logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                        send_message(
+                            chat_id,
+                            f"❌ Video generated but download URL missing.\n\n"
+                            f"✅ {VIDEO_CREDITS} credits have been refunded."
+                        )
+                        return
+                    
+                    try:
+                        # Download video from GPU server
+                        video_response = requests.get(video_url, timeout=60)
+                        
+                        if video_response.status_code != 200:
+                            raise Exception(f"Download failed: HTTP {video_response.status_code}")
+                        
+                        # Save temporarily for Telegram upload
+                        temp_video_path = f"/tmp/cogvideo_{int(time.time())}.mp4"
+                        with open(temp_video_path, "wb") as f:
+                            f.write(video_response.content)
+                        
+                        logger.info(f"✅ Video downloaded: {len(video_response.content)} bytes")
+                        
+                        # Send video to user
+                        send_video(chat_id, temp_video_path)
+                        
+                        # Clean up temp file
+                        try:
+                            os.remove(temp_video_path)
+                        except:
+                            pass
+                        
+                        logger.info(f"✅ Video sent to user {chat_id}")
+                    
+                    except Exception as download_error:
+                        logger.error(f"Failed to download/send video: {str(download_error)}")
+                        # Refund to exact buckets that were deducted
+                        user.daily_credits += daily_used
+                        user.credits += purchased_used
+                        db.session.commit()
+                        logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                        send_message(
+                            chat_id,
+                            f"❌ Video generated but failed to download: {str(download_error)}\n\n"
+                            f"✅ {VIDEO_CREDITS} credits have been refunded."
+                        )
+                    
+                else:
+                    error_msg = result.get("error", "Unknown error")
+                    logger.error(f"CogVideoX video generation failed: {error_msg}")
+                    
+                    # Refund to exact buckets that were deducted
+                    user.daily_credits += daily_used
+                    user.credits += purchased_used
+                    db.session.commit()
+                    logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                    
+                    send_message(
+                        chat_id,
+                        f"❌ Video generation failed: {error_msg}\n\n"
+                        f"✅ {VIDEO_CREDITS} credits have been refunded to your account."
+                    )
+            
+            except Exception as e:
+                logger.error(f"Error in CogVideoX video generation: {str(e)}")
+                
+                # Refund to exact buckets that were deducted
+                user.daily_credits += daily_used
+                user.credits += purchased_used
+                db.session.commit()
+                logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+                
+                send_message(
+                    chat_id,
+                    f"❌ Error generating video: {str(e)}\n\n"
+                    f"✅ {VIDEO_CREDITS} credits have been refunded."
+                )
+            
+            return
+        
         # Check for /vid command (text-only - explain proper usage)
         if text.lower() == '/vid' or text.lower().startswith('/vid '):
             response = """🎬 *WAN 2.2 Video Generation* (Image-to-Video)
