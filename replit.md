@@ -2,7 +2,11 @@
 
 ## Overview
 
-This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, image editing, video generation (image-to-video), and a robust credit system with cryptocurrency payment options, extended with a LibreChat-compatible web API and a built-in web chat interface.
+This project is a Flask-based Telegram bot that integrates with ChatGPT-4o via OpenRouter to provide conversational AI responses. It manages user interactions, stores message history, and includes a credit-based payment system for monetizing LLM usage. The bot aims to offer a seamless, engaging AI chat experience to users while providing a sustainable operational model. Key capabilities include text generation, image generation, image editing, video generation (image-to-video and text-to-video), and a robust credit system with cryptocurrency payment options, extended with a LibreChat-compatible web API and a built-in web chat interface.
+
+## Recent Changes
+
+**November 12, 2025**: Fixed critical bug in `/video` (CogVideoX-5B text-to-video) command that caused credits to be incorrectly refunded. The handler was looking for `video_url` but the API returns `video_path`. Updated to use the correct field and delegate download to `video_api.download_video()` function. Also fixed metadata field from `ms` to `generation_time_ms` for accurate timing display.
 
 ## User Preferences
 
@@ -42,9 +46,10 @@ Preferred communication style: Simple, everyday language.
 - **Image Editing (Dual Models)**:
   - **FLUX.1 Kontext Max**: Image editing with maximum permissiveness via Novita AI. (15 credits/edit)
   - **Qwen-Image**: Image editing via Novita AI. (12 credits/edit)
-- **Video Generation (Dual Models - Image-to-Video)**:
-  - **WAN 2.2** (`/vid`): Advanced video generation with adjustable resolution (480P/720P/1080P) and duration (5s or 8s). 4-minute timeout for complex processing. (50-78 credits/video based on resolution/duration)
-  - **WAN 2.5 I2V Preview** (`/img2video`): Quick 720P 5s videos via Novita AI, with async task processing. 2-minute timeout. (50 credits/video)
+- **Video Generation (Triple Models - Text-to-Video & Image-to-Video)**:
+  - **CogVideoX-5B** (`/video`): Text-to-video generation via dedicated VIDEO_API_KEY. (50 credits/video)
+  - **WAN 2.2** (`/vid`): Advanced image-to-video with adjustable resolution (480P/720P/1080P) and duration (5s or 8s) via Novita AI. 4-minute timeout for complex processing. (50-78 credits/video based on resolution/duration)
+  - **WAN 2.5 I2V Preview** (`/img2video`): Quick 720P 5s image-to-video via Novita AI, with async task processing. 2-minute timeout. (50 credits/video)
 
 ### Pay-Per-Use Credit System with Daily Freebies
 - **Credit Types**: Daily free credits (25 credits, 48h expiry, 24h cooldown) and purchased credits with volume bonuses.
@@ -53,7 +58,7 @@ Preferred communication style: Simple, everyday language.
   - Text messages: 1 credit (DeepSeek) or 3 credits (GPT-4o)
   - Image generation: 8-10 credits
   - Image editing: 12-15 credits
-  - Video generation: 50-78 credits (WAN 2.5: 50, WAN 2.2: 50-78 based on resolution/duration)
+  - Video generation: 50-78 credits (CogVideoX-5B: 50, WAN 2.5: 50, WAN 2.2: 50-78 based on resolution/duration)
 - **Credit Packages**:
   - **Telegram Stars** (Primary - Instant but includes Telegram's ~35% fee):
     - 385 Stars → 200 credits (~$5 revenue)
@@ -108,7 +113,7 @@ Preferred communication style: Simple, everyday language.
 - Self-pinging to prevent hosting platform idling.
 
 ### Authentication & Security
-- Telegram BOT_TOKEN, OPENROUTER_API_KEY, NOVITA_API_KEY, XAI_API_KEY for respective services.
+- Telegram BOT_TOKEN, OPENROUTER_API_KEY, NOVITA_API_KEY, VIDEO_API_KEY, XAI_API_KEY for respective services.
 - User-specific API keys for LibreChat web access, generated via `/getapikey`.
 - Flask secret key for session management.
 
