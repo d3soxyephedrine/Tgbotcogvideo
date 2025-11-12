@@ -117,10 +117,10 @@ def download_video(video_path: str) -> Optional[bytes]:
         logger.error("VIDEO_API_KEY not configured")
         return None
     
+    # Extract filename from path
+    filename = os.path.basename(video_path)
+    
     try:
-        # Extract filename from path
-        filename = os.path.basename(video_path)
-        
         logger.info(f"Video download started from: /get_video/{filename}")
         
         response = requests.get(
