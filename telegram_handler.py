@@ -370,7 +370,8 @@ def send_video(chat_id, video, caption=None, parse_mode=None):
                 timeout=60
             )
         elif isinstance(video, io.BytesIO):
-            # BytesIO object
+            # BytesIO object - seek to start to ensure full upload
+            video.seek(0)
             files = {'video': ('video.mp4', video, 'video/mp4')}
             response = requests.post(
                 f"{BASE_URL}/sendVideo",
