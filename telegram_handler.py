@@ -1364,13 +1364,16 @@ For image-to-video, use `/vid` or `/img2video` instead."""
 
 *Examples:*
 • `/video A dragon flying over mountains`
-• `/video A rocket launch`
-• `/video Ocean waves at sunset`
+• `/video A rocket launching into space`
+• `/video Ocean waves crashing at sunset`
+• `/video A cat playing piano`
 
 *Pricing:*
-• 50 credits per video (~30 seconds generation time)
+• 50 credits per video
+• ~30 seconds generation time
+• 2-3 second MP4 output
 
-*Note:* Maximum 200 characters per prompt."""
+*Note:* Maximum 500 characters per prompt."""
                 
                 send_message(chat_id, response, parse_mode="Markdown")
                 return
@@ -1378,13 +1381,10 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             # Extract prompt after /video
             prompt = text[7:].strip()
             
-            if not prompt:
-                send_message(chat_id, "❌ Please provide a prompt after /video")
-                return
-            
-            # Check prompt length
-            if len(prompt) > 200:
-                send_message(chat_id, "❌ Prompt too long. Maximum 200 characters.")
+            # Validate prompt using enhanced validation
+            is_valid, error_msg = validate_prompt(prompt)
+            if not is_valid:
+                send_message(chat_id, f"❌ Invalid prompt: {error_msg}")
                 return
             
             logger.info(f"Processing /video generation: {prompt[:50]}...")

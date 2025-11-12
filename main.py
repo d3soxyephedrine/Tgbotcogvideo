@@ -1483,13 +1483,18 @@ def chat_completions_proxy():
         
         # Refund credits on error (only if they were deducted)
         try:
-            if user is not None and (purchased_used > 0 or daily_used > 0):
-                user.credits += purchased_used
-                user.daily_credits += daily_used
+            # Safely get variables that might not be defined
+            refund_user = locals().get('user')
+            refund_purchased = locals().get('purchased_used', 0)
+            refund_daily = locals().get('daily_used', 0)
+            
+            if refund_user is not None and (refund_purchased > 0 or refund_daily > 0):
+                refund_user.credits += refund_purchased
+                refund_user.daily_credits += refund_daily
                 db.session.commit()
-                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
-        except:
-            pass
+                logger.info(f"Refunded {refund_purchased + refund_daily} credits due to error")
+        except Exception as refund_error:
+            logger.debug(f"Could not refund credits: {refund_error}")
         
         return jsonify({
             "error": {
