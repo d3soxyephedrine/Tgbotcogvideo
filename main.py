@@ -703,9 +703,8 @@ def export_conversations():
         }), 503
     
     try:
-        # Query all messages with eager loading to prevent N+1 queries
-        from sqlalchemy.orm import joinedload
-        messages = Message.query.options(joinedload(Message.user)).order_by(Message.user_id, Message.created_at).all()
+        # Query all messages ordered by user and timestamp
+        messages = Message.query.order_by(Message.user_id, Message.created_at).all()
         
         if not messages:
             return jsonify({"error": "No conversations found"}), 404
