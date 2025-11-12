@@ -1480,7 +1480,7 @@ def chat_completions_proxy():
         
         # Refund credits on error (only if they were deducted)
         try:
-            if 'user' in locals():
+            if 'user' in locals() and user is not None:
                 purchased_used = locals().get('purchased_used', 0)
                 daily_used = locals().get('daily_used', 0)
                 if purchased_used > 0 or daily_used > 0:
