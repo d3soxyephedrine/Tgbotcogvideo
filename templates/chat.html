@@ -3246,16 +3246,23 @@
                 // Exit edit mode
                 exitEditMode(messageDiv);
 
-                // Update conversation history - remove messages after this one AND the edited message itself
-                // The edited message is already in the database, so we don't send it again
+                // Update conversation history - remove messages after the edited one
+                // Build history up to (but not including) edited message, then add edited message with new content
                 const updatedHistory = [];
                 for (let msg of conversationHistory) {
                     if (msg.id === messageId) {
-                        // Stop before the edited message - don't include it
+                        // Stop before the edited message
                         break;
                     }
                     updatedHistory.push(msg);
                 }
+
+                // Add the edited message with new content (backend needs this to know what to respond to)
+                updatedHistory.push({
+                    role: 'user',
+                    content: newContent
+                });
+
                 conversationHistory = updatedHistory;
 
                 // Re-send the message to get new AI response
