@@ -354,6 +354,74 @@ def get_balance(**kwargs):
             "error": "Internal server error"
         }), 500
 
+@app.route('/api/settings', methods=['GET'])
+@require_api_key
+def get_settings(**kwargs):
+    user = kwargs['user']
+    """Get user settings including model preference"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+
+    try:
+        # Map internal model names to display names
+        model_display_name = 'deepseek'
+        if user.preferred_model and ('gpt-4o' in user.preferred_model.lower() or 'chatgpt' in user.preferred_model.lower()):
+            model_display_name = 'gpt4o'
+
+        return jsonify({
+            "preferred_model": model_display_name,
+            "model_full_name": user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+        })
+    except Exception as e:
+        logger.error(f"Error fetching settings: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/settings', methods=['PATCH'])
+@require_api_key
+def update_settings(**kwargs):
+    user = kwargs['user']
+    """Update user settings including model preference"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
+        # Update model preference if provided
+        if 'preferred_model' in data:
+            model_choice = data['preferred_model'].lower()
+
+            # Map display names to internal model identifiers
+            if model_choice == 'deepseek':
+                user.preferred_model = 'deepseek/deepseek-chat-v3-0324'
+            elif model_choice == 'gpt4o':
+                user.preferred_model = 'openai/chatgpt-4o-latest'
+            else:
+                return jsonify({"error": "Invalid model choice. Use 'deepseek' or 'gpt4o'"}), 400
+
+            db.session.commit()
+            logger.info(f"Updated model preference for user {user.telegram_id} to {user.preferred_model}")
+
+        return jsonify({
+            "success": True,
+            "preferred_model": 'deepseek' if 'deepseek' in user.preferred_model.lower() else 'gpt4o',
+            "model_full_name": user.preferred_model
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error updating settings: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
 @app.route('/api/messages', methods=['GET'])
 @require_api_key
 def get_messages(**kwargs):

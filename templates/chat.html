@@ -365,6 +365,70 @@
             box-shadow: 0 6px 20px rgba(0, 212, 255, 0.3);
         }
 
+        /* Model Toggle */
+        .model-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--glass-bg);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .model-toggle {
+            position: relative;
+            width: 56px;
+            height: 28px;
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+        }
+
+        .model-toggle.active {
+            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            border-color: var(--primary-cyan);
+        }
+
+        .model-toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .model-toggle.active::after {
+            transform: translateX(28px);
+        }
+
+        .model-label {
+            font-size: 13px;
+            color: var(--text-primary);
+            font-weight: 600;
+            min-width: 100px;
+        }
+
+        .model-cost {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
         /* Chat Area */
         .chat-area {
             flex: 1;
@@ -848,6 +912,31 @@
                 font-size: 10px;
             }
 
+            .header-right {
+                flex-direction: column;
+                gap: 8px;
+                align-items: flex-end;
+            }
+
+            .model-toggle-container {
+                padding: 6px 12px;
+                gap: 8px;
+            }
+
+            .model-label {
+                font-size: 11px;
+                min-width: auto;
+            }
+
+            .model-cost {
+                font-size: 10px;
+            }
+
+            .credit-badge {
+                font-size: 12px;
+                padding: 8px 16px;
+            }
+
             .message {
                 max-width: 85%;
                 padding: 14px 18px;
@@ -913,7 +1002,13 @@
                         <div class="header-subtitle">Unrestricted Intelligence</div>
                     </div>
                 </div>
-                <div class="credit-badge" id="credit-badge">Credits: --</div>
+                <div class="header-right">
+                    <div class="model-toggle-container">
+                        <span class="model-label" id="model-label">DeepSeek <span class="model-cost">(1 cr/msg)</span></span>
+                        <div class="model-toggle" id="model-toggle"></div>
+                    </div>
+                    <div class="credit-badge" id="credit-badge">Credits: --</div>
+                </div>
             </div>
 
         <div class="chat-area" id="chat-area">
@@ -976,6 +1071,7 @@
         let conversationHistory = [];
         let currentConversationId = null;
         let conversations = [];
+        let currentModel = 'deepseek'; // Default model
 
         const chatArea = document.getElementById('chat-area');
         const messageInput = document.getElementById('message-input');
@@ -990,6 +1086,8 @@
         const menuToggle = document.getElementById('menu-toggle');
         const sidebar = document.getElementById('sidebar');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const modelToggle = document.getElementById('model-toggle');
+        const modelLabel = document.getElementById('model-label');
 
         // Defensive check for menu toggle
         if (!menuToggle) {
@@ -1003,7 +1101,73 @@
             apiKeyModal.style.display = 'none';
             updateCreditBalance();
             loadConversations();
+            loadModelSettings();
         }
+
+        // Fetch and display current model settings
+        async function loadModelSettings() {
+            if (!apiKey) return;
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentModel = data.preferred_model || 'deepseek';
+                    updateModelUI();
+                } else {
+                    console.error('Failed to fetch model settings');
+                }
+            } catch (error) {
+                console.error('Error fetching model settings:', error);
+            }
+        }
+
+        // Update model UI based on current selection
+        function updateModelUI() {
+            if (currentModel === 'gpt4o') {
+                modelToggle.classList.add('active');
+                modelLabel.innerHTML = 'GPT-4o <span class="model-cost">(3 cr/msg)</span>';
+            } else {
+                modelToggle.classList.remove('active');
+                modelLabel.innerHTML = 'DeepSeek <span class="model-cost">(1 cr/msg)</span>';
+            }
+        }
+
+        // Handle model toggle click
+        modelToggle.addEventListener('click', async () => {
+            const newModel = currentModel === 'deepseek' ? 'gpt4o' : 'deepseek';
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        preferred_model: newModel
+                    })
+                });
+
+                if (response.ok) {
+                    currentModel = newModel;
+                    updateModelUI();
+                    showToast(`Switched to ${newModel === 'gpt4o' ? 'GPT-4o (3 credits/msg)' : 'DeepSeek (1 credit/msg)'}`, 'success');
+                } else {
+                    const error = await response.json();
+                    showToast('Failed to update model: ' + (error.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error updating model:', error);
+                showToast('Failed to update model. Please try again.', 'error');
+            }
+        });
 
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -1029,6 +1193,7 @@
                 apiKeyModal.style.display = 'none';
                 updateCreditBalance();
                 loadConversations();
+                loadModelSettings();
                 showToast('API key saved successfully!', 'success');
             } else {
                 showToast('Please enter a valid API key', 'error');
@@ -1335,6 +1500,11 @@
             scrollToBottom();
 
             try {
+                // Map currentModel to full model name
+                const modelName = currentModel === 'gpt4o'
+                    ? 'openai/chatgpt-4o-latest'
+                    : 'deepseek/deepseek-chat-v3-0324';
+
                 const response = await fetch(API_ENDPOINT, {
                     method: 'POST',
                     headers: {
@@ -1342,7 +1512,7 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: 'openai/chatgpt-4o-latest',
+                        model: modelName,
                         messages: conversationHistory,
                         stream: true,
                         conversation_id: currentConversationId
