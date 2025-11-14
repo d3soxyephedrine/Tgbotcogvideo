@@ -10,7 +10,7 @@ import uuid
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
-from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation, TelegramPayment
+from models import db, User, Message, Payment, Transaction, CryptoPayment, Conversation, TelegramPayment, Memory
 from datetime import datetime
 from sqlalchemy import desc
 from nowpayments_api import NOWPaymentsAPI
@@ -598,6 +598,133 @@ def delete_conversation(conversation_id, **kwargs):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error deleting conversation: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/memories', methods=['GET'])
+@require_api_key
+def get_memories(**kwargs):
+    user = kwargs['user']
+    """Get all memories for the authenticated user"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+
+    try:
+        # Fetch all memories for this user, ordered by newest first
+        memories = Memory.query.filter_by(user_id=user.id).order_by(desc(Memory.created_at)).all()
+
+        # Format memories for frontend
+        formatted_memories = [{
+            "id": memory.id,
+            "content": memory.content,
+            "created_at": memory.created_at.isoformat(),
+            "platform": memory.platform
+        } for memory in memories]
+
+        return jsonify({
+            "memories": formatted_memories,
+            "count": len(formatted_memories),
+            "max_allowed": 10
+        })
+    except Exception as e:
+        logger.error(f"Error fetching memories: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/memories', methods=['POST'])
+@require_api_key
+def create_memory(**kwargs):
+    user = kwargs['user']
+    """Create a new memory for the authenticated user"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+
+    try:
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return jsonify({"error": "Missing 'content' field"}), 400
+
+        content = data['content'].strip()
+
+        # Validate content
+        if not content:
+            return jsonify({"error": "Memory content cannot be empty"}), 400
+
+        if len(content) > 200:
+            return jsonify({"error": "Memory content exceeds 200 characters"}), 400
+
+        # Check memory count limit (10 max)
+        current_count = Memory.query.filter_by(user_id=user.id).count()
+        if current_count >= 10:
+            return jsonify({
+                "error": "Maximum 10 memories reached. Delete one to add more."
+            }), 400
+
+        # Create new memory
+        new_memory = Memory(
+            user_id=user.id,
+            content=content,
+            platform='web'
+        )
+        db.session.add(new_memory)
+        db.session.commit()
+
+        logger.info(f"Created memory {new_memory.id} for user {user.telegram_id}")
+
+        return jsonify({
+            "id": new_memory.id,
+            "content": new_memory.content,
+            "created_at": new_memory.created_at.isoformat(),
+            "message": "Memory saved successfully"
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creating memory: {str(e)}")
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/api/memories/<int:memory_id>', methods=['DELETE'])
+@require_api_key
+def delete_memory(memory_id, **kwargs):
+    user = kwargs['user']
+    """Delete a specific memory"""
+    if not DB_AVAILABLE:
+        return jsonify({
+            "error": "Service temporarily unavailable"
+        }), 503
+
+    try:
+        # Find the memory and ensure it belongs to the user
+        memory = Memory.query.filter_by(
+            id=memory_id,
+            user_id=user.id
+        ).first()
+
+        if not memory:
+            return jsonify({
+                "error": "Memory not found"
+            }), 404
+
+        # Delete the memory
+        db.session.delete(memory)
+        db.session.commit()
+
+        logger.info(f"Deleted memory {memory_id} for user {user.telegram_id}")
+
+        return jsonify({
+            "success": True,
+            "message": "Memory deleted successfully"
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting memory: {str(e)}")
         return jsonify({
             "error": "Internal server error"
         }), 500
