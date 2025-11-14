@@ -22,9 +22,12 @@ def check_video_api_health() -> Tuple[bool, str]:
     if not VIDEO_API_KEY:
         return False, "VIDEO_API_KEY environment variable not configured"
     
+    # Get base URL by removing /generate_video if present
+    base_url = VIDEO_API_URL.replace("/generate_video", "")
+    
     try:
         response = requests.get(
-            f"{VIDEO_API_URL}/health",
+            f"{base_url}/health",
             timeout=5
         )
         if response.status_code == 200:
@@ -61,11 +64,11 @@ def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
         return {"status": "error", "error": "Video API key not configured"}
     
     try:
-        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}/generate_video")
+        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
         
         response = requests.post(
-            f"{VIDEO_API_URL}/generate_video",
+            VIDEO_API_URL,
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": VIDEO_API_KEY
@@ -120,12 +123,15 @@ def download_video(video_path: str) -> Optional[bytes]:
 
     # Extract filename from path
     filename = os.path.basename(video_path)
+    
+    # Get base URL by removing /generate_video if present
+    base_url = VIDEO_API_URL.replace("/generate_video", "")
 
     try:
         logger.info(f"Video download started from: /get_video/{filename}")
 
         response = requests.get(
-            f"{VIDEO_API_URL}/get_video/{filename}",
+            f"{base_url}/get_video/{filename}",
             headers={"x-api-key": VIDEO_API_KEY},
             timeout=30
         )
