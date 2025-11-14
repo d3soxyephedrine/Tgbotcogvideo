@@ -8,7 +8,7 @@ import base64
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
-from video_api import generate_video, download_video
+from video_api import generate_video, get_video_bytes
 from datetime import datetime
 
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
@@ -1388,7 +1388,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 chat_id,
                 f"🎬 *Generating video...*\n\n"
                 f"Prompt: _{prompt}_\n"
-                f"⏱ This takes ~30 seconds. Please wait...",
+                f"⏱ This takes ~60-90 seconds. Please wait...",
                 parse_mode="Markdown"
             )
             
@@ -1404,8 +1404,8 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         from models import User
                         user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
                         
-                        # Generate video
-                        result = generate_video(prompt, frames=16, steps=20)
+                        # Generate video (Wan API with better quality settings)
+                        result = generate_video(prompt, frames=25, steps=25)
                         
                         # Handle generation failure
                         if result["status"] == "error":
@@ -1427,43 +1427,23 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                             )
                             return
                         
-                        # Download video file using the video_path
-                        video_path = result.get("video_path")
-
-                        if not video_path:
-                            logger.error("No video_path in response")
-
-                            # Refund credits to exact buckets that were deducted
-                            user_obj.daily_credits += daily_used
-                            user_obj.credits += purchased_used
-                            db.session.commit()
-                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-
-                            send_message(
-                                chat_id,
-                                f"❌ Video generated but video path missing.\n\n"
-                                f"✅ {VIDEO_CREDITS} credits have been refunded."
-                            )
-                            return
-
-                        logger.info(f"Downloading video from: {video_path}")
-
+                        # Extract video bytes from base64 response (Wan API)
                         try:
-                            video_bytes = download_video(video_path)
+                            video_bytes = get_video_bytes(result)
                             if not video_bytes:
-                                raise Exception("Download returned empty content")
-                        except Exception as download_err:
-                            logger.error(f"Video download failed: {download_err}")
-                            
+                                raise Exception("Failed to extract video from response")
+                        except Exception as extract_err:
+                            logger.error(f"Video extraction failed: {extract_err}")
+
                             # Refund credits to exact buckets that were deducted
                             user_obj.daily_credits += daily_used
                             user_obj.credits += purchased_used
                             db.session.commit()
                             logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-                            
+
                             send_message(
                                 chat_id,
-                                f"❌ Video generated but download failed.\n\n"
+                                f"❌ Video generated but extraction failed.\n\n"
                                 f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
                             )
                             return
@@ -1478,7 +1458,9 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                                 'caption': (
                                     f"✅ *Video generated!*\n"
                                     f"Prompt: _{prompt}_\n"
-                                    f"Time: {result.get('generation_time_ms', 0)/1000:.1f}s\n"
+                                    f"Model: Wan2.1-I2V-14B-720P\n"
+                                    f"Time: {result.get('ms', 0)/1000:.1f}s\n"
+                                    f"Frames: {result.get('frames', 25)}\n"
                                     f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
                                 ),
                                 'parse_mode': 'Markdown'

@@ -2,6 +2,7 @@ import os
 import requests
 from typing import Optional, Dict, Tuple
 import logging
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -102,38 +103,38 @@ def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
 def download_video(video_path: str) -> Optional[bytes]:
     """
     Download generated video file from Novita server.
-    
+
     Args:
         video_path: Full path like "/root/video_api/videos/abc123.mp4"
-    
+
     Returns:
         Video bytes or None if failed
     """
     if not VIDEO_API_URL:
         logger.error("VIDEO_API_URL not configured")
         return None
-    
+
     if not VIDEO_API_KEY:
         logger.error("VIDEO_API_KEY not configured")
         return None
-    
+
     # Extract filename from path
     filename = os.path.basename(video_path)
-    
+
     try:
         logger.info(f"Video download started from: /get_video/{filename}")
-        
+
         response = requests.get(
             f"{VIDEO_API_URL}/get_video/{filename}",
             headers={"x-api-key": VIDEO_API_KEY},
             timeout=30
         )
         response.raise_for_status()
-        
+
         video_bytes = response.content
         logger.info(f"Video downloaded successfully: {len(video_bytes)} bytes")
         return video_bytes
-        
+
     except requests.Timeout:
         logger.error(f"Video download timed out for {filename}")
         return None
@@ -142,4 +143,30 @@ def download_video(video_path: str) -> Optional[bytes]:
         return None
     except Exception as e:
         logger.error(f"Video download failed: {type(e).__name__}: {str(e)}")
+        return None
+
+def get_video_bytes(result: Dict) -> Optional[bytes]:
+    """
+    Extract video bytes from Wan API response (base64 encoded).
+
+    Args:
+        result: API response dict containing base64-encoded video
+
+    Returns:
+        Video bytes or None if failed
+    """
+    try:
+        # Wan API returns video as base64 in the response
+        video_base64 = result.get("video")
+        if not video_base64:
+            logger.error("No 'video' field in response")
+            return None
+
+        # Decode base64 to bytes
+        video_bytes = base64.b64decode(video_base64)
+        logger.info(f"Video extracted successfully: {len(video_bytes)} bytes")
+        return video_bytes
+
+    except Exception as e:
+        logger.error(f"Failed to extract video from response: {type(e).__name__}: {str(e)}")
         return None
