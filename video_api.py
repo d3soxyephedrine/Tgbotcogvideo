@@ -41,32 +41,32 @@ def check_video_api_health() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"GPU server health check failed: {str(e)}"
 
-def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
+def generate_video(prompt: str, frames: int = 49, steps: int = 40) -> Dict:
     """
-    Generate video via Novita GPU API.
-    Takes ~30 seconds.
-    
+    Generate video via Wan 2.1 T2V API.
+    Takes ~60-90 seconds.
+
     Args:
         prompt: Text description for video generation
-        frames: Number of frames to generate (default: 16)
-        steps: Number of diffusion steps (default: 20)
-    
-    Returns: 
-        {"status": "ok", "video_path": "/root/.../xyz.mp4", "generation_time_ms": 28000}
+        frames: Number of frames to generate (default: 49)
+        steps: Number of diffusion steps (default: 40)
+
+    Returns:
+        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": 45000, "frames": 49}
         or {"status": "error", "error": "message"}
     """
     if not VIDEO_API_URL:
         logger.error("VIDEO_API_URL not configured")
         return {"status": "error", "error": "Video API URL not configured"}
-    
+
     if not VIDEO_API_KEY:
         logger.error("VIDEO_API_KEY not configured")
         return {"status": "error", "error": "Video API key not configured"}
-    
+
     try:
-        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}")
+        logger.info(f"Calling Wan 2.1 T2V API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
-        
+
         response = requests.post(
             VIDEO_API_URL,
             headers={
@@ -76,19 +76,22 @@ def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
             json={
                 "prompt": prompt,
                 "frames": frames,
-                "fps": 8,
-                "steps": steps
+                "fps": 16,
+                "steps": steps,
+                "guidance_scale": 7.5,
+                "height": 480,
+                "width": 832
             },
-            timeout=90
+            timeout=120  # Increased timeout for Wan 2.1 T2V
         )
         response.raise_for_status()
-        
+
         result = response.json()
-        logger.info(f"VIDEO_API response: {result.get('status', 'unknown')}")
+        logger.info(f"Wan 2.1 T2V response: {result.get('status', 'unknown')}")
         return result
-        
+
     except requests.Timeout:
-        error_msg = f"Video generation timed out after 90s. GPU server at {VIDEO_API_URL} may be overloaded or down."
+        error_msg = f"Video generation timed out after 120s. GPU server at {VIDEO_API_URL} may be overloaded or down."
         logger.error(error_msg)
         return {"status": "error", "error": error_msg}
     except requests.ConnectionError as e:
@@ -163,9 +166,9 @@ def get_video_bytes(result: Dict) -> Optional[bytes]:
     """
     try:
         # Wan API returns video as base64 in the response
-        video_base64 = result.get("video")
+        video_base64 = result.get("video_base64") or result.get("video")
         if not video_base64:
-            logger.error("No 'video' field in response")
+            logger.error("No 'video_base64' or 'video' field in response")
             return None
 
         # Decode base64 to bytes
