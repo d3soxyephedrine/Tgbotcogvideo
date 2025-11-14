@@ -41,18 +41,18 @@ def check_video_api_health() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"GPU server health check failed: {str(e)}"
 
-def generate_video(prompt: str, frames: int = 49, steps: int = 40) -> Dict:
+def generate_video(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
     """
-    Generate video via Wan 2.1 T2V API.
+    Generate video via Wan 2.1 T2V API (NSFW-enabled).
     Takes ~60-90 seconds.
 
     Args:
         prompt: Text description for video generation
-        frames: Number of frames to generate (default: 49)
-        steps: Number of diffusion steps (default: 40)
+        frames: Number of frames to generate (default: 25, max: 33)
+        steps: Number of diffusion steps (default: 25, max: 30)
 
     Returns:
-        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": 45000, "frames": 49}
+        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": 45000, "frames": 25}
         or {"status": "error", "error": "message"}
     """
     if not VIDEO_API_URL:
@@ -64,7 +64,7 @@ def generate_video(prompt: str, frames: int = 49, steps: int = 40) -> Dict:
         return {"status": "error", "error": "Video API key not configured"}
 
     try:
-        logger.info(f"Calling Wan 2.1 T2V API at {VIDEO_API_URL}")
+        logger.info(f"Calling Wan 2.1 T2V NSFW API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
 
         response = requests.post(
@@ -76,11 +76,12 @@ def generate_video(prompt: str, frames: int = 49, steps: int = 40) -> Dict:
             json={
                 "prompt": prompt,
                 "frames": frames,
-                "fps": 16,
+                "fps": 8,
                 "steps": steps,
                 "guidance_scale": 7.5,
-                "height": 480,
-                "width": 832
+                "height": 384,
+                "width": 640,
+                "seed": None
             },
             timeout=120  # Increased timeout for Wan 2.1 T2V
         )

@@ -1404,8 +1404,8 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         from models import User
                         user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
                         
-                        # Generate video (Wan 2.1 T2V with high quality settings)
-                        result = generate_video(prompt, frames=49, steps=40)
+                        # Generate video (Wan 2.1 T2V NSFW-enabled)
+                        result = generate_video(prompt, frames=25, steps=25)
                         
                         # Handle generation failure
                         if result["status"] == "error":
@@ -1458,10 +1458,10 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                                 'caption': (
                                     f"✅ *Video generated!*\n"
                                     f"Prompt: _{prompt}_\n"
-                                    f"Model: Wan 2.1 T2V (480x832, 16fps)\n"
+                                    f"Model: Wan 2.1 T2V NSFW (640x384, 8fps)\n"
                                     f"Time: {result.get('ms', 0)/1000:.1f}s\n"
-                                    f"Frames: {result.get('frames', 49)}\n"
-                                    f"Steps: {result.get('steps', 40)}\n"
+                                    f"Frames: {result.get('frames', 25)}\n"
+                                    f"Steps: {result.get('steps', 25)}\n"
                                     f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
                                 ),
                                 'parse_mode': 'Markdown'
