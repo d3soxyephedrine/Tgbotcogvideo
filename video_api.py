@@ -64,6 +64,8 @@ def generate_video(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
         return {"status": "error", "error": "Video API key not configured"}
 
     try:
+        logger.info(f"[DEBUG] VIDEO_API_URL = {VIDEO_API_URL}")
+        logger.info(f"[DEBUG] VIDEO_API_KEY = {VIDEO_API_KEY[:20]}...{VIDEO_API_KEY[-10:]}")
         logger.info(f"Calling Wan 2.1 T2V NSFW API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
 
