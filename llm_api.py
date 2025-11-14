@@ -2248,6 +2248,10 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
             return {"status": "error", "error": "Invalid API key", "ms": elapsed_ms}
         elif response.status_code == 402:
             return {"status": "error", "error": "Insufficient credits on GPU server", "ms": elapsed_ms}
+        elif response.status_code == 404:
+            logger.error(f"CogVideoX API endpoint not found (404): {COGVIDEOX_API_URL}")
+            logger.error("Make sure COGVIDEOX_API_URL includes the full path: http://your-server:8080/generate_video")
+            return {"status": "error", "error": "API endpoint not found. Check COGVIDEOX_API_URL configuration.", "ms": elapsed_ms}
         elif response.status_code == 422:
             # FastAPI validation error - extract detailed error message
             try:

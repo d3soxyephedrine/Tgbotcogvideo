@@ -24,7 +24,42 @@ print()
 if not COGVIDEOX_API_URL or not COGVIDEOX_API_KEY:
     print("❌ Error: COGVIDEOX_API_URL or COGVIDEOX_API_KEY not set")
     print("Please set these in your .env file")
+    print()
+    print("Example configuration:")
+    print("  COGVIDEOX_API_URL=http://your-gpu-server-ip:8080/generate_video")
+    print("  COGVIDEOX_API_KEY=your-api-key")
     sys.exit(1)
+
+# Check if URL looks correct
+if COGVIDEOX_API_URL and not COGVIDEOX_API_URL.endswith('/generate_video'):
+    print("⚠️  Warning: URL doesn't end with /generate_video")
+    print(f"   Current: {COGVIDEOX_API_URL}")
+    print(f"   Expected: {COGVIDEOX_API_URL}/generate_video")
+    print()
+
+# Try health check first
+print("Step 1: Testing health endpoint...")
+try:
+    base_url = COGVIDEOX_API_URL.replace('/generate_video', '')
+    health_url = f"{base_url}/health"
+    print(f"Checking: {health_url}")
+
+    health_response = requests.get(health_url, timeout=5)
+    if health_response.status_code == 200:
+        print("✅ Server is running!")
+        health_data = health_response.json()
+        print(f"   Model: {health_data.get('model_id', 'unknown')}")
+        print(f"   GPU: {health_data.get('gpu_name', 'unknown')}")
+        print(f"   Status: {health_data.get('status', 'unknown')}")
+    else:
+        print(f"⚠️  Server responded with status {health_response.status_code}")
+    print()
+except Exception as e:
+    print(f"❌ Health check failed: {e}")
+    print("   Server may not be running")
+    print()
+
+print("Step 2: Testing video generation endpoint...")
 
 # Test payload
 payload = {
