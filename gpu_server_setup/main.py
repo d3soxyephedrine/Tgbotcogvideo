@@ -6,6 +6,7 @@ import os
 import time
 import torch
 import uuid
+import base64
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -69,6 +70,7 @@ class VideoResponse(BaseModel):
     status: str
     video_path: Optional[str] = None
     video_url: Optional[str] = None
+    video_base64: Optional[str] = None
     ms: Optional[int] = None
     error: Optional[str] = None
     frames: Optional[int] = None
@@ -194,20 +196,31 @@ async def generate_video(
         output_path = os.path.join(OUTPUT_DIR, output_filename)
         
         export_to_video(video_frames, output_path, fps=request.fps)
-        
+
         elapsed_ms = int((time.time() - start_time) * 1000)
-        
+
         # Get server's public IP/hostname from environment (set this in .env)
         server_host = os.getenv("SERVER_HOST", "localhost:8080")
         video_url = f"http://{server_host}/videos/{output_filename}"
-        
+
+        # Read video file and encode as base64 for client
+        video_base64 = None
+        try:
+            with open(output_path, 'rb') as video_file:
+                video_bytes = video_file.read()
+                video_base64 = base64.b64encode(video_bytes).decode('utf-8')
+                logger.info(f"✅ Video encoded to base64: {len(video_base64)} chars")
+        except Exception as e:
+            logger.error(f"Failed to encode video to base64: {e}")
+
         logger.info(f"✅ Video generated successfully: {output_path} ({elapsed_ms}ms)")
         logger.info(f"📥 Download URL: {video_url}")
-        
+
         return VideoResponse(
             status="ok",
             video_path=output_path,
             video_url=video_url,
+            video_base64=video_base64,
             ms=elapsed_ms,
             frames=request.frames,
             fps=request.fps,
