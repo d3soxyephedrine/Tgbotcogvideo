@@ -1216,21 +1216,33 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         
                         logger.info(f"✅ Video decoded: {len(video_bytes)} bytes")
                         
-                        # Save temporarily for Telegram upload
-                        temp_video_path = f"/tmp/cogvideo_{int(time.time())}.mp4"
-                        with open(temp_video_path, "wb") as f:
-                            f.write(video_bytes)
+                        # Send video to user via Telegram API
+                        files = {
+                            'video': ('cogvideo.mp4', io.BytesIO(video_bytes), 'video/mp4')
+                        }
+                        data = {
+                            'chat_id': chat_id,
+                            'caption': (
+                                f"🎬 *CogVideoX Video Generated!*\n\n"
+                                f"📝 Prompt: _{prompt[:100]}_\n"
+                                f"⏱️ Generation time: {generation_sec:.1f}s\n"
+                                f"💰 Credits remaining: {user.credits + user.daily_credits}"
+                            ),
+                            'parse_mode': 'Markdown'
+                        }
                         
-                        # Send video to user
-                        send_video(chat_id, temp_video_path)
+                        response = requests.post(
+                            f"{BASE_URL}/sendVideo",
+                            files=files,
+                            data=data,
+                            timeout=60
+                        )
                         
-                        # Clean up temp file
-                        try:
-                            os.remove(temp_video_path)
-                        except:
-                            pass
-                        
-                        logger.info(f"✅ Video sent to user {chat_id}")
+                        if response.status_code == 200:
+                            logger.info(f"✅ Video sent successfully to user {chat_id}")
+                        else:
+                            logger.error(f"Failed to send video: {response.text}")
+                            raise Exception(f"Telegram API error: {response.status_code}")
                     
                     except Exception as decode_error:
                         logger.error(f"Failed to decode/send video: {str(decode_error)}")

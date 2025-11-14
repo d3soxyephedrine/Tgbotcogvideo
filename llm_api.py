@@ -2214,7 +2214,7 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
                 "Content-Type": "application/json",
                 "x-api-key": COGVIDEOX_API_KEY
             },
-            timeout=300  # 5 minute timeout for video generation
+            timeout=600  # 10 minute timeout for video generation
         )
         
         elapsed_ms = int((time.time() - start_time) * 1000)
@@ -2234,8 +2234,8 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
             return {"status": "error", "error": f"HTTP {response.status_code}: {error_text}", "ms": elapsed_ms}
     
     except requests.exceptions.Timeout:
-        logger.error("CogVideoX API timeout after 5 minutes")
-        return {"status": "error", "error": "Video generation timed out (>5 min)"}
+        logger.error("CogVideoX API timeout after 10 minutes")
+        return {"status": "error", "error": "Video generation timed out (>10 min)"}
     except requests.exceptions.ConnectionError as e:
         logger.error(f"CogVideoX API connection error: {str(e)}")
         return {"status": "error", "error": f"Cannot connect to GPU server: {str(e)}"}
