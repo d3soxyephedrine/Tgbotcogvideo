@@ -395,7 +395,7 @@ def get_messages(**kwargs):
         if cursor:
             try:
                 cursor_time = datetime.fromisoformat(cursor)
-                query = query.filter(Message.updated_at > cursor_time)
+                query = query.filter(Message.created_at > cursor_time)
             except ValueError:
                 logger.warning(f"Invalid cursor timestamp: {cursor}")
 
@@ -431,7 +431,7 @@ def get_messages(**kwargs):
 
         # Add cursor for next page if results maxed out
         if len(messages) == limit and messages:
-            response["pagination"]["next_cursor"] = messages[0].updated_at.isoformat()
+            response["pagination"]["next_cursor"] = messages[0].created_at.isoformat()
 
         logger.debug(f"Loaded {len(formatted_messages)} web messages for user {user.telegram_id} (limit={limit}, offset={offset})")
         return jsonify(response)
