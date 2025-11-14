@@ -2655,6 +2655,7 @@
 
             try {
                 // Validate API key by testing it with the balance endpoint
+                console.log('Validating API key...');
                 const response = await fetch('/api/balance', {
                     method: 'GET',
                     headers: {
@@ -2662,8 +2663,11 @@
                     }
                 });
 
+                console.log('Validation response status:', response.status);
+
                 if (response.ok) {
                     // Key is valid - save it
+                    console.log('API key validated successfully');
                     apiKey = key;
                     localStorage.setItem('uncensored_ai_api_key', key);
                     apiKeyModal.style.display = 'none';
@@ -2677,12 +2681,21 @@
                     showToast('API key saved successfully!', 'success');
                 } else if (response.status === 401) {
                     // Invalid API key
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Invalid API key:', errorData);
                     showToast('Invalid API key. Get yours from Telegram: /getapikey', 'error');
                     apiKeyInput.value = '';
                     apiKeyInput.focus();
+                } else if (response.status === 503) {
+                    // Database unavailable
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Database unavailable:', errorData);
+                    showToast('Database temporarily unavailable. Try again in a moment.', 'error');
                 } else {
                     // Other error
-                    showToast('Error validating API key. Please try again.', 'error');
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Validation error:', response.status, errorData);
+                    showToast(`Error validating API key (${response.status}). Please try again.`, 'error');
                 }
             } catch (error) {
                 console.error('Error validating API key:', error);
