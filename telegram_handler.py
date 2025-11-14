@@ -1213,9 +1213,21 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                     try:
                         # Decode base64 video
                         video_bytes = base64.b64decode(video_base64)
-                        
-                        logger.info(f"✅ Video decoded: {len(video_bytes)} bytes")
-                        
+
+                        video_size_mb = len(video_bytes) / (1024 * 1024)
+                        logger.info(f"✅ Video decoded: {len(video_bytes)} bytes ({video_size_mb:.2f} MB)")
+
+                        # Telegram's video size limit is 50 MB for bots
+                        MAX_VIDEO_SIZE_MB = 50
+                        if video_size_mb > MAX_VIDEO_SIZE_MB:
+                            logger.error(f"Video size ({video_size_mb:.2f} MB) exceeds Telegram's {MAX_VIDEO_SIZE_MB} MB limit")
+                            raise Exception(f"Video file too large ({video_size_mb:.1f} MB). Telegram's limit is {MAX_VIDEO_SIZE_MB} MB")
+
+                        # Validate video is not empty
+                        if len(video_bytes) == 0:
+                            logger.error("Video file is empty")
+                            raise Exception("Generated video file is empty")
+
                         # Send video to user via Telegram API
                         files = {
                             'video': ('cogvideo.mp4', io.BytesIO(video_bytes), 'video/mp4')
@@ -1230,18 +1242,23 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                             ),
                             'parse_mode': 'Markdown'
                         }
-                        
+
                         response = requests.post(
                             f"{BASE_URL}/sendVideo",
                             files=files,
                             data=data,
                             timeout=60
                         )
-                        
+
                         if response.status_code == 200:
                             logger.info(f"✅ Video sent successfully to user {chat_id}")
+                        elif response.status_code == 422:
+                            # Telegram returns 422 for validation errors (file too large, invalid format, etc.)
+                            error_details = response.json() if response.headers.get('content-type') == 'application/json' else response.text
+                            logger.error(f"Telegram API validation error (422): {error_details}")
+                            raise Exception(f"Video validation failed. File may be too large or in an unsupported format")
                         else:
-                            logger.error(f"Failed to send video: {response.text}")
+                            logger.error(f"Failed to send video (HTTP {response.status_code}): {response.text}")
                             raise Exception(f"Telegram API error: {response.status_code}")
                     
                     except Exception as decode_error:
