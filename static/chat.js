@@ -158,7 +158,7 @@ async function updateCreditBalance() {
     }
 }
 
-async function loadConversations() {
+async function loadConversations(autoSwitch = true) {
     if (!apiKey) return;
 
     try {
@@ -175,12 +175,15 @@ async function loadConversations() {
 
             renderConversations();
 
-            // Select first conversation or create one if none exist
-            if (conversations.length > 0) {
-                switchConversation(conversations[0].id);
-            } else {
-                // Auto-create first conversation
-                await createNewConversation();
+            // Only auto-switch if explicitly requested (initial load)
+            if (autoSwitch) {
+                // Select first conversation or create one if none exist
+                if (conversations.length > 0) {
+                    switchConversation(conversations[0].id);
+                } else {
+                    // Auto-create first conversation
+                    await createNewConversation();
+                }
             }
         } else if (response.status === 401) {
             console.error('Invalid API key');
@@ -469,8 +472,8 @@ async function sendMessage() {
         // Update credit balance after message
         updateCreditBalance();
 
-        // Reload conversations to get updated titles
-        await loadConversations();
+        // Reload conversations to get updated titles (but don't switch away from current conversation)
+        await loadConversations(false);
     }
 }
 
