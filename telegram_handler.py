@@ -581,7 +581,7 @@ def get_help_message():
 /qwen <prompt> - Qwen text-to-image generation (8 credits)
 /edit <prompt> - Image generation optimized for editing (8 credits)
 /grok <prompt> - Stylized image generation (8 credits)
-/video <prompt> - AI text-to-video generation (50 credits, ~30s)
+/video <prompt> - AI text-to-video generation (50 credits, ~60-90s)
 /write <request> - Professional writing mode (2 credits)
 
 🎁 *Daily Free Credits:*
@@ -605,7 +605,7 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
 🎬 *Video Generation:*
-• **/video <prompt>**: CogVideoX - AI text-to-video (50 credits, ~30s)
+• **/video <prompt>**: Wan 2.1 T2V - AI text-to-video (50 credits, ~60-90s)
   - Create videos from text descriptions
   - Example: `/video A dragon flying over mountains`
   - Max 200 characters per prompt
@@ -1290,7 +1290,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             
             return
         
-        # Check for /video command (CogVideoX text-to-video via Novita GPU)
+        # Check for /video command (Wan 2.1 T2V text-to-video)
         if text.lower() == '/video' or text.lower().startswith('/video '):
             # Extract prompt
             if text.lower() == '/video':
@@ -1488,7 +1488,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                             )
                 
                 except Exception as e:
-                    logger.error(f"CRITICAL: CogVideoX-5B background thread crashed: {str(e)}", exc_info=True)
+                    logger.error(f"CRITICAL: Wan 2.1 T2V background thread crashed: {str(e)}", exc_info=True)
                     
                     try:
                         with app.app_context():
