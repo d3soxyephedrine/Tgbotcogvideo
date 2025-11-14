@@ -1165,6 +1165,124 @@
             backdrop-filter: blur(10px);
         }
 
+        /* Message Edit Button */
+        .message-content {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .edit-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: rgba(0, 212, 255, 0.2);
+            border: 1px solid rgba(0, 212, 255, 0.4);
+            color: var(--primary-cyan);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        .message.user:hover .edit-btn {
+            opacity: 1;
+        }
+
+        .edit-btn:hover {
+            background: rgba(0, 212, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        /* Edit Mode */
+        .message.editing {
+            padding: 12px;
+        }
+
+        .message.editing .message-content {
+            display: none;
+        }
+
+        .edit-mode {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message.editing .edit-mode {
+            display: flex;
+        }
+
+        .edit-textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 15px;
+            resize: vertical;
+            outline: none;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+
+        .edit-textarea:focus {
+            border-color: var(--primary-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .edit-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .edit-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .edit-cancel-btn {
+            background: rgba(148, 163, 184, 0.2);
+            color: var(--text-primary);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .edit-cancel-btn:hover {
+            background: rgba(148, 163, 184, 0.3);
+        }
+
+        .edit-save-btn {
+            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+        }
+
+        .edit-save-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+        }
+
+        .edit-save-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* Typing Indicator */
         .typing-indicator {
             background: var(--glass-bg);
@@ -2794,9 +2912,9 @@
                     const data = await response.json();
                     const messages = data.messages || [];
                     
-                    // Display all messages
+                    // Display all messages with their IDs
                     messages.forEach(msg => {
-                        addMessage(msg.role, msg.content);
+                        addMessage(msg.role, msg.content, msg.id);
                     });
                     
                     // Populate conversation history for context
@@ -2950,25 +3068,273 @@
             }
         }
 
-        function addMessage(type, content) {
+        function addMessage(type, content, messageId = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
+            if (messageId) {
+                messageDiv.dataset.messageId = messageId;
+            }
 
-            // Render markdown for assistant messages, plain text for user/error
-            if (type === 'assistant') {
+            // For user messages, add edit button and edit mode UI
+            if (type === 'user') {
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'message-content';
+                contentWrapper.textContent = content;
+
+                // Edit button
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-btn';
+                editBtn.innerHTML = '✏️';
+                editBtn.title = 'Edit message';
+                editBtn.onclick = () => enterEditMode(messageDiv, content);
+                contentWrapper.appendChild(editBtn);
+
+                // Edit mode UI (hidden by default)
+                const editMode = document.createElement('div');
+                editMode.className = 'edit-mode';
+                editMode.innerHTML = `
+                    <textarea class="edit-textarea" rows="3">${escapeHtml(content)}</textarea>
+                    <div class="edit-actions">
+                        <button class="edit-cancel-btn">Cancel</button>
+                        <button class="edit-save-btn">Save & Regenerate</button>
+                    </div>
+                `;
+
+                messageDiv.appendChild(contentWrapper);
+                messageDiv.appendChild(editMode);
+
+                // Add event listeners
+                const cancelBtn = editMode.querySelector('.edit-cancel-btn');
+                const saveBtn = editMode.querySelector('.edit-save-btn');
+                const textarea = editMode.querySelector('.edit-textarea');
+
+                cancelBtn.onclick = () => exitEditMode(messageDiv);
+                saveBtn.onclick = () => saveEditedMessage(messageDiv, textarea.value, messageId);
+
+                // Auto-resize textarea
+                textarea.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = this.scrollHeight + 'px';
+                });
+            }
+            // Render markdown for assistant messages
+            else if (type === 'assistant') {
                 try {
                     messageDiv.innerHTML = marked.parse(content);
                 } catch (err) {
                     console.error('Markdown parse error:', err);
                     messageDiv.textContent = content;
                 }
-            } else {
+            }
+            // Plain text for error messages
+            else {
                 messageDiv.textContent = content;
             }
 
             chatArea.appendChild(messageDiv);
             scrollToBottom();
             return messageDiv;
+        }
+
+        function enterEditMode(messageDiv, currentContent) {
+            messageDiv.classList.add('editing');
+            const textarea = messageDiv.querySelector('.edit-textarea');
+            if (textarea) {
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        }
+
+        function exitEditMode(messageDiv) {
+            messageDiv.classList.remove('editing');
+        }
+
+        async function saveEditedMessage(messageDiv, newContent, messageId) {
+            newContent = newContent.trim();
+            if (!newContent || !apiKey) return;
+
+            const saveBtn = messageDiv.querySelector('.edit-save-btn');
+            const originalText = saveBtn.textContent;
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+
+            try {
+                // Update message in backend and delete subsequent messages
+                const response = await fetch(`/api/messages/${messageId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        content: newContent,
+                        conversation_id: currentConversationId
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to update message');
+                }
+
+                // Remove all messages after this one from UI
+                let nextElement = messageDiv.nextElementSibling;
+                while (nextElement) {
+                    const toRemove = nextElement;
+                    nextElement = nextElement.nextElementSibling;
+                    if (toRemove.classList.contains('message')) {
+                        toRemove.remove();
+                    }
+                }
+
+                // Update the message content in UI
+                const contentWrapper = messageDiv.querySelector('.message-content');
+                if (contentWrapper) {
+                    contentWrapper.childNodes[0].textContent = newContent;
+                }
+
+                // Exit edit mode
+                exitEditMode(messageDiv);
+
+                // Update conversation history - remove messages after this one
+                const updatedHistory = [];
+                for (let msg of conversationHistory) {
+                    updatedHistory.push(msg);
+                    if (msg.id === messageId) {
+                        // Update this message's content
+                        msg.content = newContent;
+                        break;
+                    }
+                }
+                conversationHistory = updatedHistory;
+
+                // Re-send the message to get new AI response
+                showToast('Message updated. Generating new response...', 'success');
+                await resendFromEditedMessage(newContent);
+
+            } catch (error) {
+                console.error('Error editing message:', error);
+                showToast('Failed to update message: ' + error.message, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalText;
+            }
+        }
+
+        async function resendFromEditedMessage(messageContent) {
+            // Disable input
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            sendButton.classList.add('loading');
+
+            // Show typing indicator
+            typingIndicator.classList.add('active');
+            scrollToBottom();
+
+            try {
+                // Map currentModel to full model name
+                const modelName = currentModel === 'gpt4o'
+                    ? 'openai/chatgpt-4o-latest'
+                    : 'deepseek/deepseek-chat-v3-0324';
+
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: conversationHistory,
+                        stream: true,
+                        conversation_id: currentConversationId
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error?.message || 'Request failed');
+                }
+
+                // Handle streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let assistantMessage = '';
+                let messageElement = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.substring(6);
+                            if (data === '[DONE]') continue;
+
+                            try {
+                                const parsed = JSON.parse(data);
+                                const content = parsed.choices?.[0]?.delta?.content;
+
+                                if (content) {
+                                    assistantMessage += content;
+
+                                    // Create or update message element
+                                    if (!messageElement) {
+                                        typingIndicator.classList.remove('active');
+                                        messageElement = addMessage('assistant', assistantMessage);
+                                    } else {
+                                        // Update with markdown rendering during streaming
+                                        try {
+                                            messageElement.innerHTML = marked.parse(assistantMessage);
+                                        } catch (err) {
+                                            messageElement.textContent = assistantMessage;
+                                        }
+                                    }
+
+                                    scrollToBottom();
+                                }
+                            } catch (e) {
+                                // Ignore parsing errors for incomplete chunks
+                            }
+                        }
+                    }
+                }
+
+                // Add assistant response to history
+                if (assistantMessage) {
+                    conversationHistory.push({
+                        role: 'assistant',
+                        content: assistantMessage
+                    });
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                typingIndicator.classList.remove('active');
+
+                if (error.message.includes('Invalid API key')) {
+                    addMessage('error', '❌ Invalid API key. Get a new one from Telegram: /getapikey');
+                } else if (error.message.includes('Insufficient credits')) {
+                    addMessage('error', '❌ ' + error.message);
+                } else {
+                    addMessage('error', '❌ Error: ' + error.message);
+                }
+            } finally {
+                // Re-enable input
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                sendButton.classList.remove('loading');
+                messageInput.focus();
+                typingIndicator.classList.remove('active');
+
+                // Update credit balance
+                updateCreditBalance();
+
+                // Reload conversations to get updated titles
+                await loadConversations();
+            }
         }
 
         function scrollToBottom() {

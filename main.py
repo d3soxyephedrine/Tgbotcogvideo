@@ -463,15 +463,17 @@ def get_messages(**kwargs):
         for msg in messages:
             if msg.user_message:
                 formatted_messages.append({
+                    "id": msg.id,
                     "role": "user",
                     "content": msg.user_message
                 })
             if msg.bot_response:
                 formatted_messages.append({
+                    "id": msg.id,
                     "role": "assistant",
                     "content": msg.bot_response
                 })
-        
+
         logger.info(f"Loaded {len(formatted_messages)} web messages for user {user.telegram_id}")
         return jsonify({"messages": formatted_messages})
     except Exception as e:
@@ -479,6 +481,66 @@ def get_messages(**kwargs):
         return jsonify({
             "error": "Internal server error"
         }), 500
+
+@app.route('/api/messages/<int:message_id>', methods=['PATCH'])
+@require_api_key
+def edit_message(message_id, **kwargs):
+    user = kwargs['user']
+    """Edit a message and delete all subsequent messages in the conversation"""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+
+    try:
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return jsonify({"error": "Missing 'content' field"}), 400
+
+        new_content = data['content'].strip()
+        if not new_content:
+            return jsonify({"error": "Content cannot be empty"}), 400
+
+        conversation_id = data.get('conversation_id')
+
+        # Find the message
+        message = Message.query.filter_by(id=message_id, user_id=user.id, platform='web').first()
+        if not message:
+            return jsonify({"error": "Message not found"}), 404
+
+        # Update the message content (only user_message can be edited)
+        if not message.user_message:
+            return jsonify({"error": "Only user messages can be edited"}), 400
+
+        message.user_message = new_content
+        message.bot_response = None  # Clear bot response since it will be regenerated
+
+        # Delete all subsequent messages in this conversation
+        if conversation_id:
+            from sqlalchemy import desc
+            # Get all messages after this one in chronological order
+            subsequent_messages = Message.query.filter(
+                Message.user_id == user.id,
+                Message.conversation_id == conversation_id,
+                Message.id > message_id
+            ).all()
+
+            for msg in subsequent_messages:
+                db.session.delete(msg)
+
+            logger.info(f"Deleted {len(subsequent_messages)} messages after message {message_id}")
+
+        db.session.commit()
+
+        logger.info(f"Updated message {message_id} for user {user.telegram_id}")
+        return jsonify({
+            "success": True,
+            "message": "Message updated successfully",
+            "deleted_count": len(subsequent_messages) if conversation_id else 0
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error editing message: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/api/conversations', methods=['GET'])
 @require_api_key
