@@ -7,6 +7,12 @@ import json
 import hmac
 import hashlib
 import uuid
+
+# Configure centralized logging FIRST, before other imports
+from logging_config import setup_logging, get_logger
+setup_logging(level=logging.DEBUG)
+logger = get_logger(__name__)
+
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
@@ -20,10 +26,6 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from flask import send_file
 import io
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 # Global flag to track database availability
 DB_AVAILABLE = False
@@ -83,17 +85,15 @@ else:
 
 def validate_database_connection():
     """Validate database connection without blocking startup"""
-    global DB_AVAILABLE, DB_INIT_ATTEMPTS
-    
     if not DATABASE_URL:
         logger.warning("Database connection skipped - DATABASE_URL not configured")
         return False
-    
+
     try:
         with app.app_context():
             # Test connection
             db.engine.connect()
-            logger.info("Database connection validated successfully")
+            logger.debug("Database connection validated successfully")
             return True
     except Exception as e:
         logger.error(f"Database connection validation failed: {str(e)}")
@@ -102,45 +102,48 @@ def validate_database_connection():
 def init_database():
     """Initialize database tables safely with retry logic"""
     global DB_AVAILABLE, DB_INIT_ATTEMPTS
-    
+
     if not DATABASE_URL:
         logger.info("Database initialization skipped - no DATABASE_URL configured")
         return
-    
+
+    # Initialize the database extension ONCE
+    db.init_app(app)
+    logger.debug("Database extension initialized")
+
+    # Retry logic for table creation and connection validation
     max_retries = MAX_DB_INIT_ATTEMPTS
     retry_delay = 2
-    
+
     for attempt in range(1, max_retries + 1):
         DB_INIT_ATTEMPTS = attempt
         try:
             logger.info(f"Database initialization attempt {attempt}/{max_retries}")
-            
-            # Initialize database connection
-            db.init_app(app)
-            
+
             with app.app_context():
-                # Validate connection first
-                db.engine.connect()
-                
+                # Validate connection using dedicated function
+                if not validate_database_connection():
+                    raise Exception("Database connection validation failed")
+
                 # Create tables
                 db.create_all()
-                
+
                 # Mark as available
                 DB_AVAILABLE = True
-                
+
                 # Sync with telegram_handler
                 try:
                     from telegram_handler import set_db_available
                     set_db_available(True)
                 except ImportError:
                     logger.warning("Could not sync database status with telegram_handler")
-                
+
                 logger.info("Database tables created successfully")
                 return
-                
+
         except Exception as e:
             logger.error(f"Database initialization attempt {attempt} failed: {str(e)}")
-            
+
             if attempt < max_retries:
                 logger.info(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
@@ -359,17 +362,23 @@ def get_balance(**kwargs):
 def get_messages(**kwargs):
     user = kwargs['user']
     """Get user's web chat message history (authenticated via API key)
-    
+
     Query params:
         conversation_id (optional): Filter messages by conversation ID
+        limit (optional): Maximum number of messages to return (default: 100, max: 1000)
+        offset (optional): Number of messages to skip for pagination (default: 0)
+        cursor (optional): ISO timestamp for cursor-based pagination (messages after this time)
     """
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
-    
+
     conversation_id = request.args.get('conversation_id', type=int)
-    
+    limit = min(request.args.get('limit', 100, type=int), 1000)  # Cap at 1000
+    offset = request.args.get('offset', 0, type=int)
+    cursor = request.args.get('cursor', type=str)  # ISO timestamp for incremental sync
+
     try:
         # Get web messages for this user, optionally filtered by conversation
         from sqlalchemy import desc
@@ -377,19 +386,25 @@ def get_messages(**kwargs):
             user_id=user.id,
             platform='web'
         )
-        
+
         # Filter by conversation if specified
         if conversation_id is not None:
-            # When loading a specific conversation, load ALL messages (no limit)
             query = query.filter_by(conversation_id=conversation_id)
-            messages = query.order_by(desc(Message.created_at)).all()
-        else:
-            # When no conversation specified (legacy), limit to last 20
-            messages = query.order_by(desc(Message.created_at)).limit(20).all()
-        
+
+        # Cursor-based pagination (for incremental sync)
+        if cursor:
+            try:
+                cursor_time = datetime.fromisoformat(cursor)
+                query = query.filter(Message.updated_at > cursor_time)
+            except ValueError:
+                logger.warning(f"Invalid cursor timestamp: {cursor}")
+
+        # Apply pagination: order, offset, limit
+        messages = query.order_by(desc(Message.created_at)).offset(offset).limit(limit).all()
+
         # Reverse to chronological order
         messages = list(reversed(messages))
-        
+
         # Format messages for frontend
         formatted_messages = []
         for msg in messages:
@@ -403,9 +418,23 @@ def get_messages(**kwargs):
                     "role": "assistant",
                     "content": msg.bot_response
                 })
-        
-        logger.info(f"Loaded {len(formatted_messages)} web messages for user {user.telegram_id}")
-        return jsonify({"messages": formatted_messages})
+
+        # Include pagination metadata
+        response = {
+            "messages": formatted_messages,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(formatted_messages)
+            }
+        }
+
+        # Add cursor for next page if results maxed out
+        if len(messages) == limit and messages:
+            response["pagination"]["next_cursor"] = messages[0].updated_at.isoformat()
+
+        logger.debug(f"Loaded {len(formatted_messages)} web messages for user {user.telegram_id} (limit={limit}, offset={offset})")
+        return jsonify(response)
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
         return jsonify({
@@ -416,24 +445,45 @@ def get_messages(**kwargs):
 @require_api_key
 def get_conversations(**kwargs):
     user = kwargs['user']
-    """Get all conversations for authenticated user"""
+    """Get conversations for authenticated user
+
+    Query params:
+        limit (optional): Maximum number of conversations to return (default: 50, max: 500)
+        offset (optional): Number of conversations to skip for pagination (default: 0)
+        cursor (optional): ISO timestamp for cursor-based pagination (conversations updated after this time)
+    """
     if not DB_AVAILABLE:
         return jsonify({
             "error": "Service temporarily unavailable"
         }), 503
-    
+
+    limit = min(request.args.get('limit', 50, type=int), 500)  # Cap at 500
+    offset = request.args.get('offset', 0, type=int)
+    cursor = request.args.get('cursor', type=str)  # ISO timestamp for incremental sync
+
     try:
-        # Get all conversations with message counts in a single query (eliminates N+1 problem)
+        # Get conversations with message counts in a single query (eliminates N+1 problem)
         from sqlalchemy import desc, func
-        conversations_with_counts = db.session.query(
+        query = db.session.query(
             Conversation,
             func.count(Message.id).label('message_count')
         ).outerjoin(Message).filter(
             Conversation.user_id == user.id
-        ).group_by(Conversation.id).order_by(
+        ).group_by(Conversation.id)
+
+        # Cursor-based pagination (for incremental sync)
+        if cursor:
+            try:
+                cursor_time = datetime.fromisoformat(cursor)
+                query = query.filter(Conversation.updated_at > cursor_time)
+            except ValueError:
+                logger.warning(f"Invalid cursor timestamp: {cursor}")
+
+        # Apply pagination: order, offset, limit
+        conversations_with_counts = query.order_by(
             desc(Conversation.updated_at)
-        ).all()
-        
+        ).offset(offset).limit(limit).all()
+
         # Format conversations for frontend
         conversation_list = []
         for conv, msg_count in conversations_with_counts:
@@ -444,9 +494,23 @@ def get_conversations(**kwargs):
                 "updated_at": conv.updated_at.isoformat(),
                 "message_count": msg_count
             })
-        
-        logger.info(f"Loaded {len(conversation_list)} conversations for user {user.telegram_id}")
-        return jsonify({"conversations": conversation_list})
+
+        # Include pagination metadata
+        response = {
+            "conversations": conversation_list,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(conversation_list)
+            }
+        }
+
+        # Add cursor for next page if results maxed out
+        if len(conversation_list) == limit and conversation_list:
+            response["pagination"]["next_cursor"] = conversation_list[-1]["updated_at"]
+
+        logger.debug(f"Loaded {len(conversation_list)} conversations for user {user.telegram_id} (limit={limit}, offset={offset})")
+        return jsonify(response)
     except Exception as e:
         logger.error(f"Error fetching conversations: {str(e)}")
         return jsonify({
@@ -952,18 +1016,22 @@ def keep_alive():
     """Function to ping the app every 4 minutes to prevent Replit from sleeping"""
     while True:
         try:
-            logger.info("Pinging server to keep it alive...")
+            logger.debug("Pinging server to keep it alive...")
             requests.get(KEEPALIVE_URL, timeout=10)
-            logger.info("Ping successful")
+            logger.debug("Keep-alive ping successful")
         except Exception as e:
             logger.error(f"Error pinging server: {str(e)}")
         # Sleep for 4 minutes (240 seconds)
         time.sleep(240)
 
-# Start background threads
-keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
-keepalive_thread.start()
-logger.info("Started keepalive thread")
+# Start background threads (gated by environment flags)
+ENABLE_KEEPALIVE = os.environ.get("ENABLE_KEEPALIVE", "false").lower() in ["true", "1", "yes"]
+if ENABLE_KEEPALIVE:
+    keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keepalive_thread.start()
+    logger.info("Started keepalive thread (ENABLE_KEEPALIVE=true)")
+else:
+    logger.debug("Keepalive thread disabled (set ENABLE_KEEPALIVE=true to enable)")
 
 if DATABASE_URL and DB_AVAILABLE:
     lock_cleanup_thread = threading.Thread(target=periodic_lock_cleanup, daemon=True)

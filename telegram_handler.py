@@ -13,8 +13,7 @@ from datetime import datetime
 
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Get logger instance (logging configured centrally in logging_config.py)
 logger = logging.getLogger(__name__)
 
 # Flag to track database availability (will be set by main.py)

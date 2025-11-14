@@ -103,32 +103,53 @@ def format_memories_for_display(memories):
 
 def truncate_memories_to_fit(memories, token_limit=2000):
     """Keep most recent memories that fit within token budget
-    
+
     Args:
         memories: List of Memory objects (newest first)
         token_limit: Maximum tokens to allocate for memories
-    
+
     Returns:
         Truncated list of memories that fit within budget
+
+    Optimization: Caches cumulative token counts to avoid O(n log n) string formatting
+    during binary search. Now runs in O(n) preprocessing + O(log n) search.
     """
     if not memories:
         return []
-    
-    formatted = format_memories_for_context(memories)
-    estimated_tokens = len(formatted) // 4
-    
-    if estimated_tokens <= token_limit:
+
+    # Pre-compute formatted text and token estimates for each memory (O(n) once)
+    # Format: "[id] content" plus newline separator
+    memory_tokens = []
+    cumulative_tokens = []
+    total_tokens = 0
+
+    for i, mem in enumerate(memories):
+        # Estimate tokens for this memory's formatted text
+        formatted_line = f"[{mem.id}] {mem.content}"
+        line_tokens = len(formatted_line) // 4
+        # Add newline token for all but last memory
+        if i > 0:
+            line_tokens += 1  # Account for \n separator
+
+        memory_tokens.append(line_tokens)
+        total_tokens += line_tokens
+        cumulative_tokens.append(total_tokens)
+
+    # Check if all memories fit
+    if total_tokens <= token_limit:
         return memories
-    
-    # Binary search for optimal count
-    left, right = 0, len(memories)
+
+    # Binary search using cached cumulative counts (O(log n))
+    left, right = 0, len(memories) - 1
     while left < right:
         mid = (left + right + 1) // 2
-        test_formatted = format_memories_for_context(memories[:mid])
-        if len(test_formatted) // 4 <= token_limit:
+        if cumulative_tokens[mid] <= token_limit:
             left = mid
         else:
             right = mid - 1
-    
-    logger.debug(f"Truncated memories from {len(memories)} to {left} to fit {token_limit} token budget")
-    return memories[:left]
+
+    # Return memories up to and including the found index
+    result_count = left + 1 if left >= 0 and cumulative_tokens[left] <= token_limit else 0
+
+    logger.debug(f"Truncated memories from {len(memories)} to {result_count} to fit {token_limit} token budget (cached: {total_tokens} total tokens)")
+    return memories[:result_count]
