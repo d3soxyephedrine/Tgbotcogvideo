@@ -4,6 +4,7 @@ import requests
 import threading
 import time
 import io
+import base64
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
@@ -1189,15 +1190,14 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 result = generate_cogvideox_video(prompt=prompt)
                 
                 if result["status"] == "ok":
-                    video_url = result.get("video_url")
+                    video_base64 = result.get("video_base64")
                     generation_ms = result.get("ms", 0)
                     generation_sec = generation_ms / 1000
                     
                     logger.info(f"✅ CogVideoX video generated ({generation_sec:.1f}s)")
-                    logger.info(f"📥 Downloading video from: {video_url}")
                     
-                    if not video_url:
-                        logger.error("No video_url in response")
+                    if not video_base64:
+                        logger.error("No video_base64 in response")
                         # Refund to exact buckets that were deducted
                         user.daily_credits += daily_used
                         user.credits += purchased_used
@@ -1205,24 +1205,21 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
                         send_message(
                             chat_id,
-                            f"❌ Video generated but download URL missing.\n\n"
+                            f"❌ Video generated but not included in response.\n\n"
                             f"✅ {VIDEO_CREDITS} credits have been refunded."
                         )
                         return
                     
                     try:
-                        # Download video from GPU server
-                        video_response = requests.get(video_url, timeout=60)
+                        # Decode base64 video
+                        video_bytes = base64.b64decode(video_base64)
                         
-                        if video_response.status_code != 200:
-                            raise Exception(f"Download failed: HTTP {video_response.status_code}")
+                        logger.info(f"✅ Video decoded: {len(video_bytes)} bytes")
                         
                         # Save temporarily for Telegram upload
                         temp_video_path = f"/tmp/cogvideo_{int(time.time())}.mp4"
                         with open(temp_video_path, "wb") as f:
-                            f.write(video_response.content)
-                        
-                        logger.info(f"✅ Video downloaded: {len(video_response.content)} bytes")
+                            f.write(video_bytes)
                         
                         # Send video to user
                         send_video(chat_id, temp_video_path)
@@ -1235,8 +1232,8 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         
                         logger.info(f"✅ Video sent to user {chat_id}")
                     
-                    except Exception as download_error:
-                        logger.error(f"Failed to download/send video: {str(download_error)}")
+                    except Exception as decode_error:
+                        logger.error(f"Failed to decode/send video: {str(decode_error)}")
                         # Refund to exact buckets that were deducted
                         user.daily_credits += daily_used
                         user.credits += purchased_used
@@ -1244,7 +1241,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
                         send_message(
                             chat_id,
-                            f"❌ Video generated but failed to download: {str(download_error)}\n\n"
+                            f"❌ Failed to process video: {str(decode_error)}\n\n"
                             f"✅ {VIDEO_CREDITS} credits have been refunded."
                         )
                     
