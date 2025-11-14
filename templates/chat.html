@@ -866,6 +866,48 @@
             font-size: 14px;
         }
 
+        /* Command Palette FAB */
+        .command-palette-fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            border: none;
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4);
+            z-index: 1500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+
+        .command-palette-fab:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 12px 35px rgba(0, 212, 255, 0.6);
+        }
+
+        .command-palette-fab:active {
+            transform: translateY(-1px) scale(1);
+        }
+
+        @media (max-width: 768px) {
+            .command-palette-fab {
+                bottom: 20px;
+                right: 20px;
+                width: 50px;
+                height: 50px;
+                font-size: 22px;
+            }
+        }
+
         /* Chat Area */
         .chat-area {
             flex: 1;
@@ -2266,6 +2308,12 @@
 
         // ===== END COMMAND PALETTE =====
 
+        // Command Palette FAB Button Handler
+        const commandPaletteFab = document.getElementById('command-palette-fab');
+        if (commandPaletteFab) {
+            commandPaletteFab.addEventListener('click', openCommandPalette);
+        }
+
         // Toast notification function
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
@@ -2723,5 +2771,10 @@
         }
     </script>
     </div> <!-- end main-wrapper -->
+
+    <!-- Command Palette FAB Button -->
+    <button class="command-palette-fab" id="command-palette-fab" title="Open Command Palette (Ctrl+K)">
+        ⌘
+    </button>
 </body>
 </html>
