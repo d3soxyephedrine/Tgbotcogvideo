@@ -1119,11 +1119,24 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             
             # Extract prompt after /cogvideo
             prompt = text[10:].strip()
-            
+
             if not prompt:
                 send_message(chat_id, "❌ Please provide a description after /cogvideo")
                 return
-            
+
+            # Validate prompt length (GPU server has 1000 char limit)
+            MAX_PROMPT_LENGTH = 1000
+            if len(prompt) > MAX_PROMPT_LENGTH:
+                send_message(
+                    chat_id,
+                    f"❌ Prompt is too long!\n\n"
+                    f"📏 Your prompt: {len(prompt)} characters\n"
+                    f"📏 Maximum allowed: {MAX_PROMPT_LENGTH} characters\n"
+                    f"✂️ Please shorten your description by {len(prompt) - MAX_PROMPT_LENGTH} characters.",
+                    parse_mode="Markdown"
+                )
+                return
+
             logger.info(f"Processing CogVideoX video generation: {prompt[:50]}...")
             
             # Credit cost

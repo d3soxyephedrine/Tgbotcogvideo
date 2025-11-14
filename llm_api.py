@@ -2178,13 +2178,13 @@ def generate_wan25_video(image_url: str, prompt: str = "", max_retries: int = 3)
 def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps: int = 20) -> Dict[str, Any]:
     """
     Generate video using CogVideoX-5B on remote GPU server
-    
+
     Args:
         prompt: Text description of the video
         frames: Number of frames (1-49, default 16)
         fps: Frames per second (1-60, default 8)
         steps: Inference steps (1-50, default 20)
-    
+
     Returns:
         Dict with 'status', 'video_path'/'error', and 'ms' keys
         Example success: {"status": "ok", "video_path": "/tmp/videos/video_123.mp4", "ms": 12345}
@@ -2196,29 +2196,49 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
             "status": "error",
             "error": "CogVideoX API not configured. Add COGVIDEOX_API_URL and COGVIDEOX_API_KEY to environment."
         }
-    
+
+    # Validate prompt length (server has max 1000 character limit)
+    MAX_PROMPT_LENGTH = 1000
+    if len(prompt) > MAX_PROMPT_LENGTH:
+        logger.error(f"Prompt too long: {len(prompt)} chars (max {MAX_PROMPT_LENGTH})")
+        return {
+            "status": "error",
+            "error": f"Prompt is too long ({len(prompt)} characters). Maximum allowed is {MAX_PROMPT_LENGTH} characters."
+        }
+
+    if not prompt or not prompt.strip():
+        logger.error("Empty prompt provided")
+        return {
+            "status": "error",
+            "error": "Prompt cannot be empty"
+        }
+
     try:
+        payload = {
+            "prompt": prompt.strip(),
+            "frames": frames,
+            "fps": fps,
+            "steps": steps
+        }
+
         logger.info(f"Calling CogVideoX GPU server: {prompt[:50]}...")
-        
+        logger.debug(f"Request payload: {payload}")
+
         start_time = time.time()
-        
+
         response = requests.post(
             COGVIDEOX_API_URL,
-            json={
-                "prompt": prompt,
-                "frames": frames,
-                "fps": fps,
-                "steps": steps
-            },
+            json=payload,
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": COGVIDEOX_API_KEY
             },
             timeout=600  # 10 minute timeout for video generation
         )
-        
+
         elapsed_ms = int((time.time() - start_time) * 1000)
-        
+        logger.debug(f"Response status: {response.status_code}, elapsed: {elapsed_ms}ms")
+
         if response.status_code == 200:
             result = response.json()
             logger.info(f"✅ CogVideoX API response: {result.get('status')}")
@@ -2228,6 +2248,29 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
             return {"status": "error", "error": "Invalid API key", "ms": elapsed_ms}
         elif response.status_code == 402:
             return {"status": "error", "error": "Insufficient credits on GPU server", "ms": elapsed_ms}
+        elif response.status_code == 422:
+            # FastAPI validation error - extract detailed error message
+            try:
+                error_detail = response.json()
+                logger.error(f"CogVideoX API validation error (422): {error_detail}")
+                # Extract meaningful error message from FastAPI validation response
+                if isinstance(error_detail, dict) and 'detail' in error_detail:
+                    detail = error_detail['detail']
+                    if isinstance(detail, list) and len(detail) > 0:
+                        # FastAPI returns list of validation errors
+                        first_error = detail[0]
+                        field = first_error.get('loc', ['unknown'])[-1]
+                        msg = first_error.get('msg', 'Validation failed')
+                        error_msg = f"Invalid {field}: {msg}"
+                    else:
+                        error_msg = str(detail)
+                else:
+                    error_msg = str(error_detail)
+                return {"status": "error", "error": f"Validation error: {error_msg}", "ms": elapsed_ms}
+            except:
+                error_text = response.text[:200]
+                logger.error(f"CogVideoX API validation error (422): {error_text}")
+                return {"status": "error", "error": "Request validation failed. Check prompt length and parameters.", "ms": elapsed_ms}
         else:
             error_text = response.text[:200]
             logger.error(f"CogVideoX API error {response.status_code}: {error_text}")
