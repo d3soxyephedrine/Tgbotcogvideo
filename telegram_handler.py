@@ -1719,7 +1719,66 @@ To create a video, you need to:
             else:
                 send_message(chat_id, "❌ Stats require database access.")
                 return
-        
+
+        # Admin-only /unlock_video command
+        if text.lower().startswith('/unlock_video'):
+            ADMIN_TELEGRAM_ID = 1230053047
+
+            if telegram_id != ADMIN_TELEGRAM_ID:
+                send_message(chat_id, "⛔ *ADMIN ACCESS REQUIRED*\n\nThis command is restricted to system administrators only.", parse_mode="Markdown")
+                return
+
+            if DB_AVAILABLE:
+                try:
+                    from flask import current_app
+                    from datetime import datetime
+
+                    parts = text.split()
+                    if len(parts) == 1:
+                        # Unlock self
+                        target_telegram_id = telegram_id
+                    elif len(parts) == 2:
+                        # Unlock specific user by telegram ID
+                        try:
+                            target_telegram_id = int(parts[1])
+                        except ValueError:
+                            send_message(chat_id, "❌ Invalid Telegram ID. Usage: /unlock_video [telegram_id]")
+                            return
+                    else:
+                        send_message(chat_id, "❌ Usage: /unlock_video [telegram_id]\n\nOmit telegram_id to unlock yourself.")
+                        return
+
+                    with current_app.app_context():
+                        user = User.query.filter_by(telegram_id=target_telegram_id).first()
+
+                        if not user:
+                            send_message(chat_id, f"❌ User with Telegram ID {target_telegram_id} not found.")
+                            return
+
+                        if user.last_purchase_at:
+                            send_message(
+                                chat_id,
+                                f"✓ User @{user.username or 'unknown'} (ID: {target_telegram_id}) already has video unlocked.\n"
+                                f"Last purchase: {user.last_purchase_at}"
+                            )
+                        else:
+                            user.last_purchase_at = datetime.utcnow()
+                            db.session.commit()
+                            send_message(
+                                chat_id,
+                                f"✅ Video generation unlocked for @{user.username or 'unknown'} (ID: {target_telegram_id})\n"
+                                f"Set last_purchase_at to {user.last_purchase_at}"
+                            )
+                            logger.info(f"Admin {telegram_id} unlocked video for user {target_telegram_id}")
+
+                except Exception as db_error:
+                    logger.error(f"Error unlocking video: {str(db_error)}")
+                    send_message(chat_id, f"❌ Error: {str(db_error)}")
+                    return
+            else:
+                send_message(chat_id, "❌ This command requires database access.")
+                return
+
         # RATE LIMITING: DISABLED to allow reflection prompts to complete
         # The reflection system makes internal API calls that were being blocked
         # if DB_AVAILABLE and user:
