@@ -58,6 +58,14 @@ Preferred communication style: Simple, everyday language.
 - **Jailbreak Integration**: Web chat uses the identical jailbreak system as Telegram.
 - **Web Chat Interface**: Built-in ChatGPT-style web interface at `/chat` for text-only conversations with streaming responses and real-time credit balance display.
 
+### Video Generation API Configuration
+- **GPU Server**: Novita AI GPU instance (proxy.us-ca-6.gpu-instance.novita.ai)
+- **Port**: 51348
+- **Endpoint**: VIDEO_API_URL environment variable contains the full endpoint URL including `/generate_video` path
+- **Usage**: The `/video` command uses this endpoint for CogVideoX-5B text-to-video generation
+- **Cost**: 60 credits per video (16 frames, 8 FPS, ~2 seconds)
+- **Timeout**: 90 seconds for video generation requests
+
 ## External Dependencies
 
 - **Telegram Bot API**: Core platform for user interaction.
