@@ -2625,4 +2625,11 @@ def internal_error(e):
 if __name__ == '__main__':
     # Run the Flask application
     # Note: keepalive thread is already started in global scope
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    import os
+    port = int(os.getenv('PORT', 5000))
+    print(f"🚀 Starting Ko2 bot server on http://0.0.0.0:{port}")
+    print(f"📊 Database: {'Connected' if DB_AVAILABLE else 'NOT CONNECTED'}")
+    print(f"🤖 Telegram Bot: Configured")
+    print(f"💬 Web Chat: Available at /chat")
+    print(f"🏥 Health Check: /health")
+    app.run(host='0.0.0.0', port=port, debug=True)

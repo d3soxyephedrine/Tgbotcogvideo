@@ -1,0 +1,29 @@
+# Ko2 Bot - Python Dependencies
+# Generated from pyproject.toml for maximum compatibility
+
+# Core Web Framework
+flask>=3.1.0
+flask-sqlalchemy>=3.1.1
+gunicorn>=23.0.0
+
+# Database
+psycopg2-binary>=2.9.10
+sqlalchemy>=2.0.40
+
+# Telegram Bot
+python-telegram-bot>=22.0
+
+# AI/LLM APIs
+openai>=1.73.0
+
+# Payments
+nowpayments-api>=1.0.2
+
+# Document Generation
+python-docx>=1.2.0
+docx>=0.2.4
+
+# Utilities
+requests>=2.32.3
+email-validator>=2.2.0
+psutil>=7.1.3
