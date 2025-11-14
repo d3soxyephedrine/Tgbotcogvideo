@@ -259,6 +259,133 @@ kill -9 <PID>
 PORT=8000 python main.py
 ```
 
+## 🚀 Production Deployment Verification
+
+### Pre-Deployment Checklist
+
+#### ✅ Route Mounting
+- [x] `/` serves landing page (`index.html`)
+- [x] `/chat` serves web chat interface (`chat.html`)
+- [x] `/health` returns JSON health status
+- [x] All routes work with Gunicorn in production
+
+#### ✅ Authentication Flow
+- [x] `/getapikey` command exists in Telegram bot
+- [x] Only works in private chats (security)
+- [x] Generates 48-character API key
+- [x] Stores in `user.api_key` database field
+- [x] Frontend stores in `localStorage`
+- [x] All endpoints validate via `Authorization: Bearer` header
+
+#### ✅ Backend Endpoints
+All require API key authentication and return 503 if database unavailable:
+
+| Endpoint | Status | Credit Deduction | Platform Field |
+|----------|--------|------------------|----------------|
+| `/api/balance` | ✅ | No | - |
+| `/api/conversations` (GET/POST/DELETE) | ✅ | No | - |
+| `/api/messages` (GET/PATCH) | ✅ | No | `platform='web'` |
+| `/v1/chat/completions` | ✅ | Yes (1-3) | `platform='web'` |
+| `/api/settings` (GET/PATCH) | ✅ | No | - |
+| `/api/memories` (GET/POST/DELETE) | ✅ | No | - |
+
+#### ✅ Real-Time Streaming (`/v1/chat/completions`)
+- [x] Uses same `deduct_credits()` as Telegram
+- [x] DeepSeek: 1 credit/msg, GPT-4o: 3 credits/msg
+- [x] Injects same jailbreak system prompt
+- [x] Uses `generate_response()` with refusal detection
+- [x] Supports memory commands (`/remember`, `/forget`, `/list`)
+- [x] Refunds credits for commands (not LLM requests)
+- [x] Stores messages with `platform='web'`
+- [x] Returns 402 with buy URL if insufficient credits
+- [x] Buy URL uses `REPLIT_DOMAINS` environment variable
+
+#### ✅ Database Configuration
+- [x] Returns 503 on all endpoints if `DB_AVAILABLE=False`
+- [x] Replit PostgreSQL auto-configured via `DATABASE_URL`
+- [x] Tables auto-create on startup (`db.create_all()`)
+- [x] `/health` endpoint shows database status and latency
+- [x] Messages stored with `conversation_id` and `platform='web'`
+
+#### ✅ Frontend Features
+- [x] Dynamic conversation rendering
+- [x] Historical message loading
+- [x] Credit balance updates
+- [x] Create/switch/delete conversations
+- [x] Message editing with regeneration
+- [x] Model switching (DeepSeek ↔ GPT-4o)
+- [x] Memory management UI
+- [x] Command palette (Ctrl+K)
+- [x] Markdown rendering with syntax highlighting
+- [x] SSE streaming responses
+
+#### ✅ Static File Serving
+- [x] `/static/ko2-logo.png` exists (1.02 MB)
+- [x] Flask serves static files via `send_from_directory()`
+- [x] Logo displayed in web chat header
+- [x] Works through Replit reverse proxy
+
+#### ✅ Port & Domain Configuration
+- [x] App respects `PORT` environment variable
+- [x] Binds to `0.0.0.0` (Replit requirement)
+- [x] `REPLIT_DOMAINS` used for buy links
+- [x] Fallback to `REPLIT_DEV_DOMAIN`
+
+### Production Testing Commands
+
+```bash
+# 1. Health Check
+curl https://your-app.replit.app/health
+# Expected: {"status": "healthy", "database": "connected", ...}
+
+# 2. Get API Key (Telegram)
+# Send to your bot: /getapikey
+# Copy the 48-character key
+
+# 3. Test Authentication
+API_KEY="your-48-char-key"
+curl -H "Authorization: Bearer $API_KEY" \
+     https://your-app.replit.app/api/balance
+# Expected: {"total_credits": X, "daily_credits": Y, ...}
+
+# 4. Test Streaming
+curl -X POST https://your-app.replit.app/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/chatgpt-4o-latest",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+# Expected: SSE stream ending with "data: [DONE]"
+
+# 5. Test Static Files
+curl -I https://your-app.replit.app/static/ko2-logo.png
+# Expected: HTTP/1.1 200 OK, Content-Type: image/png
+
+# 6. Test Web Interface
+# Visit: https://your-app.replit.app/chat
+# Paste API key, send message, verify markdown rendering
+```
+
+### Known Production Behaviors
+
+**Credit Deduction:**
+- Deducted BEFORE streaming starts
+- NOT refunded on LLM errors (by design)
+- Refunded for memory commands (`/remember`, `/forget`, `/list`)
+
+**Conversation Parity:**
+- Web and Telegram use SAME credit pool
+- Web and Telegram have SEPARATE conversation histories
+- Memory is SHARED across platforms
+
+**Error Responses:**
+- `401`: Invalid API key → User needs `/getapikey`
+- `402`: Insufficient credits → Response includes buy URL
+- `503`: Database unavailable → Check PostgreSQL connection
+- `500`: Internal error → Check logs for details
+
 ## 📝 Development
 
 ### Adding New Features
