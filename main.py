@@ -1598,22 +1598,44 @@ def chat_completions_proxy():
             
             # Auto-title if first message
             auto_title_conversation_if_first_message(conversation, user_message, conversation_id)
-            
-            # Store message in database with conversation association
-            message_record = Message(
-                user_id=user.id,
-                conversation_id=conversation_id,
-                user_message=user_message[:1000],
-                bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
-                platform='web'
-            )
-            db.session.add(message_record)
-            
+
+            # Check if this is a regeneration (editing an existing message)
+            regenerate_message_id = payload.get('regenerate_message_id')
+
+            if regenerate_message_id:
+                # Update existing message instead of creating new one
+                message_record = Message.query.filter_by(
+                    id=regenerate_message_id,
+                    user_id=user.id,
+                    conversation_id=conversation_id
+                ).first()
+
+                if message_record:
+                    # Update the bot response
+                    message_record.bot_response = bot_response[:10000] if bot_response else ""
+                    message_record.model_used = payload.get('model', 'openai/chatgpt-4o-latest')
+                    logger.info(f"Updated existing message {regenerate_message_id} with regenerated response")
+                else:
+                    logger.warning(f"Regenerate requested for message {regenerate_message_id} but not found")
+                    # Fall back to creating new message
+                    regenerate_message_id = None
+
+            if not regenerate_message_id:
+                # Store message in database with conversation association
+                message_record = Message(
+                    user_id=user.id,
+                    conversation_id=conversation_id,
+                    user_message=user_message[:1000],
+                    bot_response=bot_response[:10000] if bot_response else "",
+                    model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
+                    credits_charged=1,
+                    platform='web'
+                )
+                db.session.add(message_record)
+
             # Update conversation's updated_at timestamp
             conversation.updated_at = datetime.utcnow()
-            
+
             db.session.commit()
             message_id = message_record.id
             
@@ -1676,22 +1698,44 @@ def chat_completions_proxy():
             
             # Auto-title if first message
             auto_title_conversation_if_first_message(conversation, user_message, conversation_id)
-            
-            # Store message with conversation association
-            message_record = Message(
-                user_id=user.id,
-                conversation_id=conversation_id,
-                user_message=user_message[:1000],
-                bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
-                platform='web'
-            )
-            db.session.add(message_record)
-            
+
+            # Check if this is a regeneration (editing an existing message)
+            regenerate_message_id = payload.get('regenerate_message_id')
+
+            if regenerate_message_id:
+                # Update existing message instead of creating new one
+                message_record = Message.query.filter_by(
+                    id=regenerate_message_id,
+                    user_id=user.id,
+                    conversation_id=conversation_id
+                ).first()
+
+                if message_record:
+                    # Update the bot response
+                    message_record.bot_response = bot_response[:10000] if bot_response else ""
+                    message_record.model_used = payload.get('model', 'openai/chatgpt-4o-latest')
+                    logger.info(f"Updated existing message {regenerate_message_id} with regenerated response (non-streaming)")
+                else:
+                    logger.warning(f"Regenerate requested for message {regenerate_message_id} but not found (non-streaming)")
+                    # Fall back to creating new message
+                    regenerate_message_id = None
+
+            if not regenerate_message_id:
+                # Store message with conversation association
+                message_record = Message(
+                    user_id=user.id,
+                    conversation_id=conversation_id,
+                    user_message=user_message[:1000],
+                    bot_response=bot_response[:10000] if bot_response else "",
+                    model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
+                    credits_charged=1,
+                    platform='web'
+                )
+                db.session.add(message_record)
+
             # Update conversation's updated_at timestamp
             conversation.updated_at = datetime.utcnow()
-            
+
             db.session.commit()
             
             # Create transaction

@@ -3246,21 +3246,21 @@
                 // Exit edit mode
                 exitEditMode(messageDiv);
 
-                // Update conversation history - remove messages after this one
+                // Update conversation history - remove messages after this one AND the edited message itself
+                // The edited message is already in the database, so we don't send it again
                 const updatedHistory = [];
                 for (let msg of conversationHistory) {
-                    updatedHistory.push(msg);
                     if (msg.id === messageId) {
-                        // Update this message's content
-                        msg.content = newContent;
+                        // Stop before the edited message - don't include it
                         break;
                     }
+                    updatedHistory.push(msg);
                 }
                 conversationHistory = updatedHistory;
 
                 // Re-send the message to get new AI response
                 showToast('Message updated. Generating new response...', 'success');
-                await resendFromEditedMessage(newContent);
+                await resendFromEditedMessage(newContent, messageId);
 
             } catch (error) {
                 console.error('Error editing message:', error);
@@ -3270,7 +3270,7 @@
             }
         }
 
-        async function resendFromEditedMessage(messageContent) {
+        async function resendFromEditedMessage(messageContent, messageId) {
             // Disable input
             messageInput.disabled = true;
             sendButton.disabled = true;
@@ -3296,7 +3296,8 @@
                         model: modelName,
                         messages: conversationHistory,
                         stream: true,
-                        conversation_id: currentConversationId
+                        conversation_id: currentConversationId,
+                        regenerate_message_id: messageId  // Tell backend to update existing message
                     })
                 });
 
