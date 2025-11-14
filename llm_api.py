@@ -26,6 +26,7 @@ NOVITA_QWEN_IMG2IMG_ENDPOINT = "https://api.novita.ai/v3/async/qwen-image-edit"
 NOVITA_HUNYUAN_ENDPOINT = "https://api.novita.ai/v3/async/hunyuan-image-3"
 NOVITA_WAN25_I2V_ENDPOINT = "https://api.novita.ai/v3/async/wan-2.5-i2v-preview"
 NOVITA_WAN22_I2V_ENDPOINT = "https://api.novita.ai/v3/async/wan-2.2-i2v"
+NOVITA_WAN21_T2V_ENDPOINT = "https://api.novita.ai/v3/async/wan-t2v"
 NOVITA_TASK_ENDPOINT = "https://api.novita.ai/v3/async/task-result"
 XAI_IMAGE_ENDPOINT = "https://api.x.ai/v1/images/generations"
 
@@ -2291,10 +2292,88 @@ def generate_cogvideox_video(prompt: str, frames: int = 16, fps: int = 8, steps:
         return {"status": "error", "error": str(e)}
 
 
+def generate_wan21_t2v_video(
+    prompt: str,
+    resolution: str = "480p",
+    num_inference_steps: int = 30,
+    guidance_scale: float = 5.0,
+    seed: Optional[int] = None,
+    enable_safety_checker: bool = True,
+    lora_path: Optional[str] = None,
+    lora_scale: float = 1.0,
+    max_retries: int = 3
+) -> Dict[str, Any]:
+    """
+    Generate video from text using Novita AI Wan 2.1 T2V API
+
+    Args:
+        prompt: Text description for video generation (max 1000 chars)
+        resolution: Video resolution - "480p" or "720p" (default: "480p")
+        num_inference_steps: Number of inference steps, 1-40 (default: 30)
+        guidance_scale: Guidance scale, 0-10 (default: 5.0)
+        seed: Random seed for reproducibility (optional)
+        enable_safety_checker: Enable NSFW filter (default: True)
+        lora_path: Path to LoRA model compatible with Wan2.1 14B T2V (optional)
+        lora_scale: LoRA scale 0-4.0 (default: 1.0, higher = more LoRA effect)
+        max_retries: Number of retry attempts (default: 3)
+
+    Returns:
+        Dict with 'status', 'video_url', 'video_base64', 'ms' or 'error' keys
+    """
+    if not NOVITA_API_KEY:
+        logger.error("NOVITA_API_KEY not configured")
+        return {"status": "error", "error": "Novita API key not configured"}
+
+    # Validate prompt
+    if not prompt or not prompt.strip():
+        return {"status": "error", "error": "Prompt cannot be empty"}
+
+    if len(prompt) > 1000:
+        logger.warning(f"Prompt too long ({len(prompt)} chars), truncating to 1000")
+        prompt = prompt[:1000]
+
+    # Build payload
+    payload = {
+        "input": {
+            "text": prompt.strip()
+        },
+        "parameters": {
+            "resolution": resolution,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "enable_safety_checker": enable_safety_checker
+        }
+    }
+
+    # Add optional parameters
+    if seed is not None:
+        payload["parameters"]["seed"] = seed
+
+    if lora_path:
+        payload["input"]["loras"] = [{
+            "path": lora_path,
+            "scale": lora_scale
+        }]
+
+    logger.info(f"Generating Wan 2.1 T2V video: {prompt[:50]}...")
+    logger.debug(f"Parameters: resolution={resolution}, steps={num_inference_steps}, guidance={guidance_scale}")
+
+    # Submit task to Novita
+    result = _submit_novita_video_task(
+        endpoint=NOVITA_WAN21_T2V_ENDPOINT,
+        payload=payload,
+        model_name="Wan 2.1 T2V",
+        max_polls=120,  # 120 * 2s = 4 minutes timeout
+        max_retries=max_retries
+    )
+
+    return result
+
+
 def check_api_health() -> Dict[str, bool]:
     """Check health status of OpenRouter API"""
     health_status = {}
-    
+
     if OPENROUTER_API_KEY:
         try:
             test_response = generate_response("Say 'OK' if working")
@@ -2303,7 +2382,7 @@ def check_api_health() -> Dict[str, bool]:
             health_status["openrouter"] = False
     else:
         health_status["openrouter"] = False
-    
+
     return health_status
 
 

@@ -5,7 +5,7 @@ import threading
 import time
 import io
 import base64
-from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
+from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video, generate_wan21_t2v_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
 from video_api import generate_video, download_video
@@ -1098,7 +1098,7 @@ Use /buy to purchase more credits or /daily for free credits.
             if text.lower() == '/cogvideo':
                 response = """🎬 *CogVideoX-5B Video Generation* (Text-to-Video)
 
-*Create videos from text descriptions!*
+*Create videos from text descriptions using Wan 2.1 T2V!*
 
 *Usage:*
 `/cogvideo [your description]`
@@ -1109,10 +1109,13 @@ Use /buy to purchase more credits or /daily for free credits.
 • `/cogvideo A robot dancing in a futuristic warehouse`
 
 *Pricing:*
-• 60 credits per video (16 frames, 8 FPS, ~2 seconds)
+• 60 credits per video (480p, ~5 seconds)
 
-*Note:* This generates videos from scratch using AI on our GPU server.
-For image-to-video, use `/vid` or `/img2video` instead."""
+*Features:*
+• NSFW Lora support enabled
+• Text-to-video generation powered by Novita AI
+
+*Note:* For image-to-video, use `/vid` or `/img2video` instead."""
                 
                 send_message(chat_id, response, parse_mode="Markdown")
                 return
@@ -1191,24 +1194,30 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             # Send processing message
             processing_msg = send_message(
                 chat_id,
-                f"🎬 *Generating video on GPU server...*\n\n"
+                f"🎬 *Generating video with Wan 2.1 T2V...*\n\n"
                 f"📝 Prompt: {prompt[:100]}\n"
-                f"💰 Cost: {VIDEO_CREDITS} credits\n\n"
+                f"💰 Cost: {VIDEO_CREDITS} credits\n"
+                f"🎨 Mode: NSFW Lora enabled\n\n"
                 f"⏳ This may take 2-5 minutes. Please wait...",
                 parse_mode="Markdown"
             )
             
             try:
-                # Generate video on GPU server
-                result = generate_cogvideox_video(prompt=prompt)
-                
-                if result["status"] == "ok":
+                # Generate video using Novita Wan 2.1 T2V API
+                result = generate_wan21_t2v_video(
+                    prompt=prompt,
+                    resolution="480p",  # 480p for faster generation and lower cost
+                    enable_safety_checker=False  # NSFW mode enabled
+                )
+
+                if result.get("success"):
+                    video_url = result.get("video_url")
                     video_base64 = result.get("video_base64")
                     generation_ms = result.get("ms", 0)
                     generation_sec = generation_ms / 1000
                     
-                    logger.info(f"✅ CogVideoX video generated ({generation_sec:.1f}s)")
-                    
+                    logger.info(f"✅ Wan 2.1 T2V video generated ({generation_sec:.1f}s)")
+
                     if not video_base64:
                         logger.error("No video_base64 in response")
                         # Refund to exact buckets that were deducted
@@ -1248,9 +1257,10 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         data = {
                             'chat_id': chat_id,
                             'caption': (
-                                f"🎬 *CogVideoX Video Generated!*\n\n"
+                                f"🎬 *Wan 2.1 T2V Video Generated!*\n\n"
                                 f"📝 Prompt: _{prompt[:100]}_\n"
                                 f"⏱️ Generation time: {generation_sec:.1f}s\n"
+                                f"🎨 Mode: NSFW Lora\n"
                                 f"💰 Credits remaining: {user.credits + user.daily_credits}"
                             ),
                             'parse_mode': 'Markdown'
@@ -1289,7 +1299,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                     
                 else:
                     error_msg = result.get("error", "Unknown error")
-                    logger.error(f"CogVideoX video generation failed: {error_msg}")
+                    logger.error(f"Wan 2.1 T2V video generation failed: {error_msg}")
                     
                     # Refund to exact buckets that were deducted
                     user.daily_credits += daily_used
@@ -1304,7 +1314,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                     )
             
             except Exception as e:
-                logger.error(f"Error in CogVideoX video generation: {str(e)}")
+                logger.error(f"Error in Wan 2.1 T2V video generation: {str(e)}")
                 
                 # Refund to exact buckets that were deducted
                 user.daily_credits += daily_used
