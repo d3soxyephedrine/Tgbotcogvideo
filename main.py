@@ -873,7 +873,6 @@ def register_telegram_commands():
             {"command": "uncensored", "description": "Fully uncensored image generation (10 credits)"},
             {"command": "grok", "description": "Generate stylized image (8 credits)"},
             {"command": "edit", "description": "Image generation with text support (8 credits)"},
-            {"command": "cogvideo", "description": "Text-to-video with CogVideoX-5B (60 credits)"},
             {"command": "vid", "description": "Send photo + /vid caption for WAN 2.2 video"},
             {"command": "write", "description": "Professional writing mode (2 credits)"},
             {"command": "stats", "description": "System statistics (admin only)"}
