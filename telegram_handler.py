@@ -605,7 +605,7 @@ Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
 🎬 *Video Generation:*
-• **/video <prompt>**: CogVideoX - AI text-to-video (50 credits, ~30s)
+• **/video <prompt>**: Wan 2.1 T2V - AI text-to-video with NSFW Lora (50 credits, ~2-5min)
   - Create videos from text descriptions
   - Example: `/video A dragon flying over mountains`
   - Max 200 characters per prompt
@@ -1185,7 +1185,7 @@ Use /buy to purchase more credits or /daily for free credits.
                     )
                     return
                 
-                logger.info(f"✓ Deducted {VIDEO_CREDITS} credits upfront for CogVideoX video (daily: {daily_used}, purchased: {purchased_used})")
+                logger.info(f"✓ Deducted {VIDEO_CREDITS} credits upfront for Wan 2.1 T2V video (daily: {daily_used}, purchased: {purchased_used})")
             except Exception as e:
                 logger.error(f"Error deducting credits: {str(e)}")
                 send_message(chat_id, "❌ Error processing credits. Please try again.")
@@ -1330,11 +1330,11 @@ Use /buy to purchase more credits or /daily for free credits.
             
             return
         
-        # Check for /video command (CogVideoX text-to-video via Novita GPU)
+        # Check for /video command (Wan 2.1 T2V text-to-video via Novita AI)
         if text.lower() == '/video' or text.lower().startswith('/video '):
             # Extract prompt
             if text.lower() == '/video':
-                response = """🎬 *AI Video Generation*
+                response = """🎬 *Wan 2.1 T2V Video Generation*
 
 *Create videos from text descriptions!*
 
@@ -1347,23 +1347,35 @@ Use /buy to purchase more credits or /daily for free credits.
 • `/video Ocean waves at sunset`
 
 *Pricing:*
-• 50 credits per video (~30 seconds generation time)
+• 50 credits per video (480p, ~5 seconds)
 
-*Note:* Maximum 200 characters per prompt."""
-                
+*Features:*
+• NSFW Lora support enabled
+• Text-to-video powered by Novita AI
+
+*Note:* Maximum 1000 characters per prompt."""
+
                 send_message(chat_id, response, parse_mode="Markdown")
                 return
-            
+
             # Extract prompt after /video
             prompt = text[7:].strip()
-            
+
             if not prompt:
                 send_message(chat_id, "❌ Please provide a prompt after /video")
                 return
-            
-            # Check prompt length
-            if len(prompt) > 200:
-                send_message(chat_id, "❌ Prompt too long. Maximum 200 characters.")
+
+            # Validate prompt length (Wan 2.1 T2V supports up to 1000 chars)
+            MAX_PROMPT_LENGTH = 1000
+            if len(prompt) > MAX_PROMPT_LENGTH:
+                send_message(
+                    chat_id,
+                    f"❌ Prompt is too long!\n\n"
+                    f"📏 Your prompt: {len(prompt)} characters\n"
+                    f"📏 Maximum allowed: {MAX_PROMPT_LENGTH} characters\n"
+                    f"✂️ Please shorten your description by {len(prompt) - MAX_PROMPT_LENGTH} characters.",
+                    parse_mode="Markdown"
+                )
                 return
             
             logger.info(f"Processing /video generation: {prompt[:50]}...")
@@ -1426,9 +1438,11 @@ Use /buy to purchase more credits or /daily for free credits.
             # Send processing message
             send_message(
                 chat_id,
-                f"🎬 *Generating video...*\n\n"
-                f"Prompt: _{prompt}_\n"
-                f"⏱ This takes ~30 seconds. Please wait...",
+                f"🎬 *Generating video with Wan 2.1 T2V...*\n\n"
+                f"📝 Prompt: _{prompt[:100]}_\n"
+                f"💰 Cost: {VIDEO_CREDITS} credits\n"
+                f"🎨 Mode: NSFW Lora enabled\n\n"
+                f"⏱️ This may take 2-5 minutes. Please wait...",
                 parse_mode="Markdown"
             )
             
@@ -1444,11 +1458,15 @@ Use /buy to purchase more credits or /daily for free credits.
                         from models import User
                         user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
                         
-                        # Generate video
-                        result = generate_video(prompt, frames=16, steps=20)
-                        
+                        # Generate video using Novita Wan 2.1 T2V API
+                        result = generate_wan21_t2v_video(
+                            prompt=prompt,
+                            resolution="480p",
+                            enable_safety_checker=False  # NSFW mode enabled
+                        )
+
                         # Handle generation failure
-                        if result["status"] == "error":
+                        if not result.get("success"):
                             error_msg = result.get("error", "Unknown error")
                             logger.error(f"Video generation failed: {error_msg}")
                             
@@ -1467,11 +1485,12 @@ Use /buy to purchase more credits or /daily for free credits.
                             )
                             return
                         
-                        # Download video file using the video_path
-                        video_path = result.get("video_path")
+                        # Get video data from response
+                        video_base64 = result.get("video_base64")
+                        video_url = result.get("video_url")
 
-                        if not video_path:
-                            logger.error("No video_path in response")
+                        if not video_base64:
+                            logger.error("No video_base64 in response")
 
                             # Refund credits to exact buckets that were deducted
                             user_obj.daily_credits += daily_used
@@ -1481,30 +1500,44 @@ Use /buy to purchase more credits or /daily for free credits.
 
                             send_message(
                                 chat_id,
-                                f"❌ Video generated but video path missing.\n\n"
+                                f"❌ Video generated but not included in response.\n\n"
                                 f"✅ {VIDEO_CREDITS} credits have been refunded."
                             )
                             return
 
-                        logger.info(f"Downloading video from: {video_path}")
+                        logger.info(f"Decoding base64 video: {len(video_base64)} chars")
 
                         try:
-                            video_bytes = download_video(video_path)
-                            if not video_bytes:
-                                raise Exception("Download returned empty content")
-                        except Exception as download_err:
-                            logger.error(f"Video download failed: {download_err}")
-                            
+                            # Decode base64 video
+                            video_bytes = base64.b64decode(video_base64)
+
+                            video_size_mb = len(video_bytes) / (1024 * 1024)
+                            logger.info(f"✅ Video decoded: {len(video_bytes)} bytes ({video_size_mb:.2f} MB)")
+
+                            # Telegram's video size limit is 50 MB for bots
+                            MAX_VIDEO_SIZE_MB = 50
+                            if video_size_mb > MAX_VIDEO_SIZE_MB:
+                                logger.error(f"Video size ({video_size_mb:.2f} MB) exceeds Telegram's {MAX_VIDEO_SIZE_MB} MB limit")
+                                raise Exception(f"Video file too large ({video_size_mb:.1f} MB). Telegram's limit is {MAX_VIDEO_SIZE_MB} MB")
+
+                            # Validate video is not empty
+                            if len(video_bytes) == 0:
+                                logger.error("Video file is empty")
+                                raise Exception("Generated video file is empty")
+
+                        except Exception as decode_err:
+                            logger.error(f"Video decode failed: {decode_err}")
+
                             # Refund credits to exact buckets that were deducted
                             user_obj.daily_credits += daily_used
                             user_obj.credits += purchased_used
                             db.session.commit()
                             logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-                            
+
                             send_message(
                                 chat_id,
-                                f"❌ Video generated but download failed.\n\n"
-                                f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
+                                f"❌ Video decode failed: {str(decode_err)}\n\n"
+                                f"✅ {VIDEO_CREDITS} credits have been refunded."
                             )
                             return
                         
@@ -1516,10 +1549,11 @@ Use /buy to purchase more credits or /daily for free credits.
                             data = {
                                 'chat_id': chat_id,
                                 'caption': (
-                                    f"✅ *Video generated!*\n"
-                                    f"Prompt: _{prompt}_\n"
-                                    f"Time: {result.get('generation_time_ms', 0)/1000:.1f}s\n"
-                                    f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
+                                    f"🎬 *Wan 2.1 T2V Video Generated!*\n\n"
+                                    f"📝 Prompt: _{prompt[:100]}_\n"
+                                    f"⏱️ Generation time: {result.get('ms', 0)/1000:.1f}s\n"
+                                    f"🎨 Mode: NSFW Lora\n"
+                                    f"💰 Credits remaining: {user_obj.credits + user_obj.daily_credits}"
                                 ),
                                 'parse_mode': 'Markdown'
                             }
@@ -1533,19 +1567,32 @@ Use /buy to purchase more credits or /daily for free credits.
                             
                             if response.status_code == 200:
                                 logger.info(f"✅ Video sent successfully to user {telegram_id}")
+                            elif response.status_code == 422:
+                                # Telegram returns 422 for validation errors (file too large, invalid format, etc.)
+                                error_details = response.json() if response.headers.get('content-type') == 'application/json' else response.text
+                                logger.error(f"Telegram API validation error (422): {error_details}")
+                                raise Exception(f"Video validation failed. File may be too large or in an unsupported format")
                             else:
-                                logger.error(f"Failed to send video: {response.text}")
+                                logger.error(f"Failed to send video (HTTP {response.status_code}): {response.text}")
                                 raise Exception(f"Telegram API error: {response.status_code}")
                             
                         except Exception as e:
                             logger.error(f"Failed to send video: {e}")
+
+                            # Refund credits to exact buckets that were deducted
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
+
                             send_message(
                                 chat_id,
-                                f"❌ Failed to send video. Credits were deducted. Contact support."
+                                f"❌ Failed to send video: {str(e)}\n\n"
+                                f"✅ {VIDEO_CREDITS} credits have been refunded."
                             )
                 
                 except Exception as e:
-                    logger.error(f"CRITICAL: CogVideoX-5B background thread crashed: {str(e)}", exc_info=True)
+                    logger.error(f"CRITICAL: Wan 2.1 T2V background thread crashed: {str(e)}", exc_info=True)
                     
                     try:
                         with app.app_context():
