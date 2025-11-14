@@ -2641,19 +2641,56 @@
         }
 
         // Save API key
-        saveApiKeyButton.addEventListener('click', () => {
+        saveApiKeyButton.addEventListener('click', async () => {
             const key = apiKeyInput.value.trim();
-            if (key) {
-                apiKey = key;
-                localStorage.setItem('uncensored_ai_api_key', key);
-                apiKeyModal.style.display = 'none';
-                updateCreditBalance();
-                loadConversations();
-                loadModelSettings();
-                loadMemories();
-                showToast('API key saved successfully!', 'success');
-            } else {
+            if (!key) {
                 showToast('Please enter a valid API key', 'error');
+                return;
+            }
+
+            // Disable button and show loading state
+            saveApiKeyButton.disabled = true;
+            const originalText = saveApiKeyButton.textContent;
+            saveApiKeyButton.textContent = 'Validating...';
+
+            try {
+                // Validate API key by testing it with the balance endpoint
+                const response = await fetch('/api/balance', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${key}`
+                    }
+                });
+
+                if (response.ok) {
+                    // Key is valid - save it
+                    apiKey = key;
+                    localStorage.setItem('uncensored_ai_api_key', key);
+                    apiKeyModal.style.display = 'none';
+
+                    // Load user data
+                    updateCreditBalance();
+                    loadConversations();
+                    loadModelSettings();
+                    loadMemories();
+
+                    showToast('API key saved successfully!', 'success');
+                } else if (response.status === 401) {
+                    // Invalid API key
+                    showToast('Invalid API key. Get yours from Telegram: /getapikey', 'error');
+                    apiKeyInput.value = '';
+                    apiKeyInput.focus();
+                } else {
+                    // Other error
+                    showToast('Error validating API key. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Error validating API key:', error);
+                showToast('Network error. Please check your connection.', 'error');
+            } finally {
+                // Re-enable button
+                saveApiKeyButton.disabled = false;
+                saveApiKeyButton.textContent = originalText;
             }
         });
 
