@@ -1129,7 +1129,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             VIDEO_CREDITS = 60
             
             # Check if user has made first purchase
-            if user.purchased_credits == 0 and user.images_generated == 0:
+            if user.credits == 0 and user.images_generated == 0:
                 send_message(
                     chat_id, 
                     "🔒 *Video generation requires a purchase first*\n\n"
@@ -1142,7 +1142,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 return
             
             # Check balance upfront
-            available_balance = (user.purchased_credits - user.purchased_credits_used) + (user.daily_credits - user.daily_credits_used)
+            available_balance = user.credits + user.daily_credits
             
             if available_balance < VIDEO_CREDITS:
                 send_message(
