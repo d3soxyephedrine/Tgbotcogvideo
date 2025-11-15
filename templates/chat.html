@@ -1857,29 +1857,49 @@
             openMemoryModal('Edit Memory', content, memoryId);
         }
 
-        // Memory UI Event Listeners
-        document.getElementById('add-memory-btn').addEventListener('click', () => {
-            openMemoryModal('Add Memory');
-        });
+        // Wait for DOM to be fully loaded before attaching memory modal event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Memory UI Event Listeners
+            const addMemoryBtn = document.getElementById('add-memory-btn');
+            const memoryModalCancel = document.getElementById('memory-modal-cancel');
+            const memoryModalSave = document.getElementById('memory-modal-save');
+            const memoryModal = document.getElementById('memory-modal');
+            const memoryTextarea = document.getElementById('memory-textarea');
 
-        document.getElementById('memory-modal-cancel').addEventListener('click', closeMemoryModal);
-        document.getElementById('memory-modal-save').addEventListener('click', saveMemory);
-
-        // Close modal on backdrop click
-        document.getElementById('memory-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'memory-modal') {
-                closeMemoryModal();
+            if (addMemoryBtn) {
+                addMemoryBtn.addEventListener('click', () => {
+                    openMemoryModal('Add Memory');
+                });
             }
-        });
 
-        // Allow Enter to save memory (Shift+Enter for new line)
-        document.getElementById('memory-textarea').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                saveMemory();
+            if (memoryModalCancel) {
+                memoryModalCancel.addEventListener('click', closeMemoryModal);
             }
-            if (e.key === 'Escape') {
-                closeMemoryModal();
+
+            if (memoryModalSave) {
+                memoryModalSave.addEventListener('click', saveMemory);
+            }
+
+            // Close modal on backdrop click
+            if (memoryModal) {
+                memoryModal.addEventListener('click', (e) => {
+                    if (e.target.id === 'memory-modal') {
+                        closeMemoryModal();
+                    }
+                });
+            }
+
+            // Allow Enter to save memory (Shift+Enter for new line)
+            if (memoryTextarea) {
+                memoryTextarea.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        saveMemory();
+                    }
+                    if (e.key === 'Escape') {
+                        closeMemoryModal();
+                    }
+                });
             }
         });
 
