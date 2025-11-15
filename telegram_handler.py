@@ -792,36 +792,39 @@ def process_update(update):
         
         # Check for /balance or /credits commands
         if text.lower() == '/balance' or text.lower() == '/credits':
-            if DB_AVAILABLE and user:
-                from datetime import timedelta
-                
-                # Check if daily credits are expired
-                now = datetime.utcnow()
-                if user.daily_credits_expiry and now > user.daily_credits_expiry:
-                    user.daily_credits = 0
-                    user.daily_credits_expiry = None
-                    db.session.commit()
-                
-                total_credits = user.credits + user.daily_credits
-                
-                if user.daily_credits > 0:
-                    # Show breakdown when there are daily credits
-                    time_until_expiry = user.daily_credits_expiry - now
-                    hours = int(time_until_expiry.total_seconds() // 3600)
-                    response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-                else:
-                    # Show simple balance when no daily credits
-                    response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-            else:
-                response = "💳 Credit system requires database access."
-            
-            # Store command in database if available
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
+                    from datetime import timedelta
+
                     with current_app.app_context():
+                        # Reload user in this context to avoid detached object issues
+                        user = User.query.filter_by(telegram_id=telegram_id).first()
+                        if not user:
+                            send_message(chat_id, "❌ User not found. Please try again.")
+                            return
+
+                        # Check if daily credits are expired
+                        now = datetime.utcnow()
+                        if user.daily_credits_expiry and now > user.daily_credits_expiry:
+                            user.daily_credits = 0
+                            user.daily_credits_expiry = None
+                            db.session.commit()
+
+                        total_credits = user.credits + user.daily_credits
+
+                        if user.daily_credits > 0:
+                            # Show breakdown when there are daily credits
+                            time_until_expiry = user.daily_credits_expiry - now
+                            hours = int(time_until_expiry.total_seconds() // 3600)
+                            response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+                        else:
+                            # Show simple balance when no daily credits
+                            response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+
+                        # Store command in database
                         message_record = Message(
-                            user_id=user_id,
+                            user_id=user.id,
                             user_message=text,
                             bot_response=response,
                             model_used=os.environ.get('MODEL', DEFAULT_MODEL),
@@ -830,28 +833,31 @@ def process_update(update):
                         db.session.add(message_record)
                         db.session.commit()
                 except Exception as db_error:
-                    logger.error(f"Database error storing balance command: {str(db_error)}")
-            
+                    logger.error(f"Database error processing /balance: {str(db_error)}", exc_info=True)
+                    response = "❌ Error retrieving balance. Please try again."
+            else:
+                response = "💳 Credit system requires database access."
+
             # Send response
             send_message(chat_id, response)
             return
         
         # Check for /daily command
         if text.lower() == '/daily':
-            if DB_AVAILABLE and user:
+            if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
                     from datetime import timedelta
-                    
+
                     with current_app.app_context():
                         # Reload user in this context to avoid detached object issues
                         user = User.query.filter_by(telegram_id=telegram_id).first()
                         if not user:
                             send_message(chat_id, "❌ User not found. Please try again.")
                             return
-                        
+
                         now = datetime.utcnow()
-                        
+
                         # Check if user can claim (24h cooldown)
                         if user.last_daily_claim_at:
                             time_since_last_claim = now - user.last_daily_claim_at
@@ -863,28 +869,28 @@ def process_update(update):
                                 response = f"⏰ Daily credits already claimed!\n\nYou can claim again in {hours}h {minutes}m."
                                 send_message(chat_id, response)
                                 return
-                        
+
                         # Grant 25 daily credits with 48h expiry
                         user.daily_credits = 25
                         user.daily_credits_expiry = now + timedelta(hours=48)
                         user.last_daily_claim_at = now
                         db.session.commit()
-                        
+
                         # Calculate expiry countdown
                         expiry_time = user.daily_credits_expiry
                         time_until_expiry = expiry_time - now
                         hours = int(time_until_expiry.total_seconds() // 3600)
-                        
+
                         response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
-                        
+
                         logger.info(f"User {telegram_id} claimed daily credits: +25 credits")
                 except Exception as db_error:
-                    logger.error(f"Database error processing /daily: {str(db_error)}")
+                    logger.error(f"Database error processing /daily: {str(db_error)}", exc_info=True)
                     db.session.rollback()
                     response = "❌ Error processing daily claim. Please try again."
             else:
                 response = "💳 Daily credits require database access."
-            
+
             # Send response
             send_message(chat_id, response)
             return
