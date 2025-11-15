@@ -168,7 +168,7 @@
         }
 
         h1 {
-            font-size: 56px;
+            font-size: clamp(2.5rem, 7vw, 3.5rem);
             font-weight: 700;
             background: linear-gradient(135deg, var(--royal-blue), var(--primary-purple), var(--deep-purple));
             -webkit-background-clip: text;
@@ -176,23 +176,25 @@
             background-clip: text;
             letter-spacing: 2px;
             margin-bottom: 16px;
+            line-height: 1.1;
         }
 
         .tagline {
-            font-size: 20px;
+            font-size: clamp(0.95rem, 3.5vw, 1.25rem);
             color: var(--text-secondary);
             font-weight: 500;
-            letter-spacing: 3px;
+            letter-spacing: clamp(1.5px, 0.6vw, 3px);
             text-transform: uppercase;
             margin-bottom: 20px;
         }
 
         .description {
-            font-size: 18px;
+            font-size: clamp(1rem, 3.6vw, 1.125rem);
             color: var(--text-primary);
             line-height: 1.8;
             max-width: 700px;
             margin: 0 auto 50px;
+            padding: 0 8px;
         }
 
         /* CTA Buttons */
@@ -383,30 +385,66 @@
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
-            h1 {
-                font-size: 36px;
+            .header {
+                padding: 48px 0 36px;
             }
 
-            .tagline {
-                font-size: 16px;
-            }
-
-            .description {
-                font-size: 16px;
+            .logo-container {
+                width: 96px;
+                height: 96px;
             }
 
             .cta-container {
                 flex-direction: column;
-                align-items: center;
+                align-items: stretch;
+                gap: 16px;
+                max-width: 360px;
+                margin: 0 auto 60px;
             }
 
             .cta-btn {
                 width: 100%;
-                max-width: 300px;
+                max-width: none;
             }
 
             .features {
                 grid-template-columns: 1fr;
+            }
+
+            .feature-card {
+                padding: 24px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: 15px;
+            }
+
+            .header {
+                padding: 40px 0 28px;
+            }
+
+            .logo-container {
+                width: 80px;
+                height: 80px;
+            }
+
+            .tagline {
+                letter-spacing: 1.2px;
+            }
+
+            .description {
+                margin-bottom: 40px;
+            }
+
+            .cta-btn {
+                font-size: 16px;
+                padding: 16px 24px;
+            }
+
+            .feature-card {
+                padding: 20px;
             }
         }
     </style>

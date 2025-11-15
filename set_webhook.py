@@ -18,10 +18,15 @@ def set_telegram_webhook():
         sys.exit(1)
 
     # Get domain from Railway environment
-    domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
-    if not domain:
-        # Fallback to Railway's static URL
-        domain = os.environ.get('RAILWAY_STATIC_URL', 'tgbotcogvideo-production.up.railway.app')
+    domain = (
+        os.environ.get('TELEGRAM_WEBHOOK_DOMAIN')
+        or os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+        or os.environ.get('RAILWAY_STATIC_URL')
+        or 'tgbotcogvideo-production.up.railway.app'
+    )
+
+    # Strip protocol if present
+    domain = domain.replace('https://', '').replace('http://', '')
 
     # Construct webhook URL
     webhook_url = f"https://{domain}/{bot_token}"
