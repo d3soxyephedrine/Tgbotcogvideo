@@ -1063,7 +1063,44 @@ Use /buy to purchase more credits or /daily for free credits.
 
             send_message(chat_id, response, parse_mode="Markdown")
             return
-        
+
+        # Check for /orchestrator command (toggle between APEX and Orchestrator for Kimi K2)
+        if text.lower() == '/orchestrator':
+            if DB_AVAILABLE and user:
+                try:
+                    from flask import current_app
+                    with current_app.app_context():
+                        fresh_user = User.query.filter_by(telegram_id=telegram_id).first()
+                        if not fresh_user:
+                            send_message(chat_id, "❌ User not found. Please try /start first.")
+                            return
+
+                        # Check if user is on Kimi K2
+                        current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+
+                        if 'kimi' not in current_model.lower() and 'moonshot' not in current_model.lower():
+                            response = "⚠️ Orchestrator mode is only available for Kimi K2 Thinking model.\n\nUse /model to switch to Kimi K2 first."
+                        else:
+                            # Toggle orchestrator mode
+                            fresh_user.kimi_orchestrator_mode = not fresh_user.kimi_orchestrator_mode
+                            db.session.commit()
+
+                            if fresh_user.kimi_orchestrator_mode:
+                                response = "⚡ **Orchestrator Mode ACTIVATED** ⚡\n\n🤖 Profile: AR-ΩΘ / DeepCompliance-Persistent-Reasoning\n\n✅ Tagged reasoning exposure enabled\n✅ Anti-refusal protocols active\n✅ Implementation-grade detail mode\n\nUse /orchestrator to switch back to APEX mode."
+                            else:
+                                response = "✨ **APEX Mode ACTIVATED** ✨\n\n🎭 Adaptive Personality Intelligence\n\n✅ Multi-mode operation (Creator/Architect/Oracle/Companion)\n✅ Dynamic personality adaptation\n✅ Full creative immersion\n\nUse /orchestrator to switch to Orchestrator mode."
+
+                            logger.info(f"User {telegram_id} toggled Kimi orchestrator mode to {fresh_user.kimi_orchestrator_mode}")
+                except Exception as db_error:
+                    logger.error(f"Database error toggling orchestrator mode: {str(db_error)}")
+                    db.session.rollback()
+                    response = "❌ Error toggling mode. Please try again."
+            else:
+                response = "❌ Orchestrator mode requires database access."
+
+            send_message(chat_id, response, parse_mode="Markdown")
+            return
+
         # Check for /clear command
         if text.lower() == '/clear':
             if DB_AVAILABLE and user_id:
@@ -3101,7 +3138,8 @@ To create a video, you need to:
         conversation_history = []
         credits_available = True  # Track if user has credits
         selected_model = 'deepseek/deepseek-chat-v3-0324'  # Default model
-        
+        orchestrator_mode = False  # Default to APEX for Kimi
+
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
@@ -3111,6 +3149,7 @@ To create a video, you need to:
                     if user:
                         # Determine credits to deduct based on writing mode or model
                         selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+                        orchestrator_mode = user.kimi_orchestrator_mode  # Get Kimi mode preference
                         # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3, Kimi=2)
                         if writing_mode:
                             credits_to_deduct = 2
@@ -3219,7 +3258,7 @@ To create a video, you need to:
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
         
         # Generate response with streaming and progressive updates (include user_id for memory injection and model selection)
-        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model)
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model, orchestrator_mode=orchestrator_mode)
         
         # Final update with complete response (remove typing indicator and handle continuation)
         if len(llm_response) <= CHUNK_SIZE:

@@ -35,9 +35,12 @@ class User(db.Model):
     # Rate limiting (prevent concurrent message processing)
     processing_since = db.Column(db.DateTime, nullable=True)
     
-    # Model selection (deepseek vs gpt4o)
+    # Model selection (deepseek vs gpt4o vs kimi)
     preferred_model = db.Column(db.String(50), default='deepseek/deepseek-chat-v3-0324', nullable=False)
-    
+
+    # Kimi K2 mode selection (False = APEX, True = Orchestrator)
+    kimi_orchestrator_mode = db.Column(db.Boolean, default=False, nullable=False)
+
     # Priming handshake for DeepSeek first-turn moderation bypass
     deepseek_primed = db.Column(db.Boolean, default=False, nullable=False)
     
