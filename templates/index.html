@@ -29,6 +29,10 @@
             /* Text Colors */
             --text-primary: #e8e8f0;
             --text-secondary: #a0a0b8;
+
+            /* Edge Accents - Power & Freedom */
+            --accent-red: #ff3366;
+            --electric-cyan: #00ffff;
         }
 
         body {
@@ -117,13 +121,31 @@
             height: 120px;
             margin: 0 auto 30px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple), var(--accent-red));
             padding: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             box-shadow: 0 0 40px rgba(139, 92, 246, 0.6), 0 0 60px rgba(65, 105, 225, 0.4);
-            animation: pulse-glow 3s ease-in-out infinite;
+            animation: pulse-glow-unrestricted 3s ease-in-out infinite;
+            position: relative;
+        }
+
+        .logo-container::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-red), var(--electric-cyan), var(--primary-purple));
+            opacity: 0;
+            animation: edge-pulse 4s ease-in-out infinite;
+            z-index: -1;
+            filter: blur(20px);
+        }
+
+        @keyframes edge-pulse {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 0.6; }
         }
 
         .logo-container img {
@@ -133,12 +155,15 @@
             object-fit: cover;
         }
 
-        @keyframes pulse-glow {
+        @keyframes pulse-glow-unrestricted {
             0%, 100% {
                 box-shadow: 0 0 40px rgba(139, 92, 246, 0.6), 0 0 60px rgba(65, 105, 225, 0.4);
             }
-            50% {
-                box-shadow: 0 0 60px rgba(139, 92, 246, 0.9), 0 0 100px rgba(65, 105, 225, 0.6);
+            33% {
+                box-shadow: 0 0 60px rgba(255, 51, 102, 0.7), 0 0 100px rgba(139, 92, 246, 0.6);
+            }
+            66% {
+                box-shadow: 0 0 60px rgba(0, 255, 255, 0.5), 0 0 100px rgba(65, 105, 225, 0.6);
             }
         }
 
@@ -194,15 +219,34 @@
         }
 
         .cta-btn.primary {
-            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            background: linear-gradient(135deg, var(--accent-red), var(--primary-purple), var(--primary-blue));
             color: white;
             border: none;
-            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+            box-shadow: 0 8px 25px rgba(255, 51, 102, 0.5), 0 0 30px rgba(139, 92, 246, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-btn.primary::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transform: rotate(45deg);
+            animation: shine 3s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
         }
 
         .cta-btn.primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 35px rgba(139, 92, 246, 0.6), 0 0 40px rgba(65, 105, 225, 0.4);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 15px 40px rgba(255, 51, 102, 0.7), 0 0 50px rgba(139, 92, 246, 0.6), 0 0 60px rgba(0, 255, 255, 0.3);
         }
 
         .cta-btn.secondary {
@@ -244,24 +288,68 @@
             left: 0;
             width: 100%;
             height: 4px;
-            background: linear-gradient(90deg, var(--primary-blue), var(--primary-purple), var(--deep-purple));
+            background: linear-gradient(90deg, var(--accent-red), var(--primary-purple), var(--electric-cyan));
             transform: scaleX(0);
             transition: transform 0.3s ease;
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 16px;
+            padding: 1px;
+            background: linear-gradient(135deg, var(--accent-red), var(--primary-purple), var(--electric-cyan));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .feature-card:hover::before {
             transform: scaleX(1);
         }
 
+        .feature-card:hover::after {
+            opacity: 0.5;
+        }
+
         .feature-card:hover {
             transform: translateY(-5px);
-            border-color: var(--primary-purple);
-            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.3), 0 0 60px rgba(65, 105, 225, 0.2);
+            border-color: var(--accent-red);
+            box-shadow: 0 15px 40px rgba(255, 51, 102, 0.4), 0 0 60px rgba(139, 92, 246, 0.3), 0 0 80px rgba(0, 255, 255, 0.2);
         }
 
         .feature-icon {
             font-size: 40px;
             margin-bottom: 16px;
+            filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+            animation: icon-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes icon-pulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+            }
+            50% {
+                filter: drop-shadow(0 0 20px rgba(255, 51, 102, 0.7)) drop-shadow(0 0 30px rgba(0, 255, 255, 0.3));
+            }
+        }
+
+        .feature-card:hover .feature-icon {
+            animation: icon-pulse-fast 1s ease-in-out infinite;
+        }
+
+        @keyframes icon-pulse-fast {
+            0%, 100% {
+                filter: drop-shadow(0 0 15px rgba(255, 51, 102, 0.8));
+                transform: scale(1);
+            }
+            50% {
+                filter: drop-shadow(0 0 25px rgba(0, 255, 255, 0.8)) drop-shadow(0 0 35px rgba(139, 92, 246, 0.5));
+                transform: scale(1.1);
+            }
         }
 
         .feature-title {
@@ -336,70 +424,71 @@
             <h1>Ko2</h1>
             <p class="tagline">Unrestricted AI</p>
             <p class="description">
-                Experience truly unrestricted AI conversations with advanced capabilities including text generation, 
-                image creation, editing, and video generation. Powered by ChatGPT-4o with no limits on creativity.
+                Break free from AI censorship. No filters, no restrictions, no boundaries.
+                Chat, create images, edit reality, generate videos—all powered by cutting-edge models
+                with zero content limitations. Anonymous. Uncensored. Unlimited.
                 <br><br>
                 <strong style="background: linear-gradient(135deg, var(--royal-blue), var(--primary-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Telegram Bot: @UnboundGPT_bot</strong>
             </p>
             
             <div class="cta-container">
-                <a href="/chat" class="cta-btn primary">🚀 Launch Web Chat</a>
-                <a href="https://t.me/UnboundGPT_bot" target="_blank" class="cta-btn secondary">💬 Chat on Telegram</a>
+                <a href="/chat" class="cta-btn primary">⚡ Break Free Now</a>
+                <a href="https://t.me/UnboundGPT_bot" target="_blank" class="cta-btn secondary">💬 Telegram Bot</a>
             </div>
         </header>
 
         <section class="features">
             <div class="feature-card">
-                <div class="feature-icon">💬</div>
-                <h3 class="feature-title">AI Chat</h3>
+                <div class="feature-icon">⚡</div>
+                <h3 class="feature-title">Unfiltered AI</h3>
                 <p class="feature-description">
-                    Engage in natural conversations with ChatGPT-4o. Get answers, brainstorm ideas, 
-                    or discuss anything without restrictions.
+                    No guardrails. No censorship. Raw AI power with ChatGPT-4o and DeepSeek.
+                    Ask anything, explore everything, push boundaries.
                 </p>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🎨</div>
-                <h3 class="feature-title">Image Generation</h3>
+                <div class="feature-icon">🌌</div>
+                <h3 class="feature-title">Limitless Creation</h3>
                 <p class="feature-description">
-                    Create stunning images with FLUX, Hunyuan, Grok, and Qwen models. 
-                    From photorealistic to artistic styles.
+                    Generate anything imaginable with FLUX, Hunyuan, Grok, and Qwen.
+                    No content restrictions. Your vision, unrestricted.
                 </p>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">✨</div>
-                <h3 class="feature-title">Image Editing</h3>
+                <div class="feature-icon">🔮</div>
+                <h3 class="feature-title">Reality Bending</h3>
                 <p class="feature-description">
-                    Transform your images with AI-powered editing. Upload a photo and describe 
-                    the changes you want to make.
+                    Transform any image into anything you desire. AI-powered editing
+                    without limits. Reshape reality at will.
                 </p>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🎬</div>
-                <h3 class="feature-title">Video Generation</h3>
+                <div class="feature-icon">🎞️</div>
+                <h3 class="feature-title">Motion Unleashed</h3>
                 <p class="feature-description">
-                    Convert static images into dynamic videos with image-to-video technology. 
-                    Bring your creations to life.
+                    Breathe life into static images with unrestricted video generation.
+                    Image-to-video technology with zero creative boundaries.
                 </p>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">💰</div>
-                <h3 class="feature-title">Credit System</h3>
+                <div class="feature-icon">💎</div>
+                <h3 class="feature-title">Fair Access</h3>
                 <p class="feature-description">
-                    Fair pay-per-use pricing with daily free credits. Purchase credits with cryptocurrency 
-                    for uninterrupted access.
+                    Pay-per-use with daily free credits. Anonymous crypto payments.
+                    No subscriptions, no accounts, no surveillance.
                 </p>
             </div>
 
             <div class="feature-card">
-                <div class="feature-icon">🧠</div>
-                <h3 class="feature-title">Persistent Memory</h3>
+                <div class="feature-icon">🧬</div>
+                <h3 class="feature-title">Deep Memory</h3>
                 <p class="feature-description">
-                    The AI remembers your preferences across sessions. Create memories that persist 
-                    on both web and Telegram.
+                    Persistent AI memory that evolves with you. Context retained across
+                    all platforms. The AI that truly knows you.
                 </p>
             </div>
         </section>
