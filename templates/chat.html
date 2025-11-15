@@ -388,6 +388,8 @@
             max-width: 500px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.3);
+            position: relative;
+            z-index: 10001;
         }
 
         .memory-modal-header {
@@ -435,6 +437,8 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
+            position: relative;
+            z-index: 1;
         }
 
         .memory-modal-btn.cancel {
@@ -825,11 +829,14 @@
             gap: 6px;
             opacity: 0;
             transition: all 0.3s ease;
+            z-index: 10;
+            pointer-events: none;
         }
 
         .message:hover .message-actions {
             display: flex;
             opacity: 1;
+            pointer-events: auto;
         }
 
         .message-action-btn {
@@ -844,6 +851,7 @@
             transition: all 0.2s ease;
             font-weight: 600;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            pointer-events: auto;
         }
 
         .message-action-btn:hover {
@@ -919,6 +927,8 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
+            position: relative;
+            z-index: 1;
         }
 
         .message-edit-btn.cancel {
