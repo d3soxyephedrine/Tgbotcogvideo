@@ -1251,9 +1251,14 @@ if DATABASE_URL and DB_AVAILABLE:
 
 # Register Telegram webhook and commands on startup
 # (Previously in gunicorn.conf.py, but we removed gunicorn)
-logger.info("Registering Telegram commands and webhook...")
-register_telegram_commands()
-register_telegram_webhook()
+# Wrapped in try-except to prevent startup crashes
+try:
+    logger.info("Registering Telegram commands and webhook...")
+    register_telegram_commands()
+    register_telegram_webhook()
+except Exception as e:
+    logger.error(f"Failed to register webhook/commands (app will continue): {str(e)}")
+    logger.warning("You may need to set webhook manually using set_webhook.py")
 
 # Periodic lock cleanup function
 def periodic_lock_cleanup():
