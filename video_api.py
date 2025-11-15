@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 VIDEO_API_URL = os.getenv("VIDEO_API_URL")
 VIDEO_API_KEY = os.getenv("VIDEO_API_KEY")
 
+# Wan 2.1 T2V specific endpoints
+WAN_API_URL = os.getenv("WAN_API_URL", "http://proxy.us-ca-6.gpu-instance.novita.ai:51348/generate_video")
+WAN_API_KEY = os.getenv("WAN_API_KEY", "7b5c51509b35da994eb1ce034dfd7d5d3f28b04e8c9c822778a61bdb1424dede")
+
 def check_video_api_health() -> Tuple[bool, str]:
     """
     Check if the VIDEO API server is accessible and healthy.
@@ -187,3 +191,64 @@ def get_video_bytes(result: Dict) -> Optional[bytes]:
     except Exception as e:
         logger.error(f"Failed to extract video from response: {type(e).__name__}: {str(e)}")
         return None
+
+
+def generate_wan_t2v(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
+    """
+    Generate video using Wan 2.1 T2V (Text-to-Video) NSFW model.
+    Completely separate from /video command - uses WAN_API_URL and WAN_API_KEY.
+
+    Args:
+        prompt: Text description for video generation
+        frames: Number of frames (default: 25, max: 33)
+        steps: Inference steps (default: 25, max: 30)
+
+    Returns:
+        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": ..., "frames": ...}
+        or {"status": "error", "error": "message"}
+    """
+    logger.info(f"🎬 Wan 2.1 T2V generation started")
+    logger.info(f"   URL: {WAN_API_URL}")
+    logger.info(f"   Prompt: {prompt[:50]}...")
+
+    try:
+        payload = {
+            "prompt": prompt,
+            "frames": frames,
+            "fps": 8,
+            "steps": steps,
+            "guidance_scale": 7.5
+        }
+
+        logger.info(f"   Payload: {payload}")
+
+        response = requests.post(
+            WAN_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": WAN_API_KEY
+            },
+            json=payload,
+            timeout=120
+        )
+
+        logger.info(f"   Response status: {response.status_code}")
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"   Result status: {result.get('status', 'unknown')}")
+
+        return result
+
+    except requests.Timeout:
+        error_msg = "Wan 2.1 T2V generation timed out after 120s"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
+    except requests.HTTPError as e:
+        error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
