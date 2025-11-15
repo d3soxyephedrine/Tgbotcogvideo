@@ -69,15 +69,13 @@ def generate_video(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
         logger.info(f"Calling Wan 2.1 T2V NSFW API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
 
-        # Build request payload
+        # Build request payload (for CogVideoX server)
         payload = {
             "prompt": prompt,
             "frames": frames,
             "fps": 8,
             "steps": steps,
-            "guidance_scale": 7.5,
-            "height": 384,
-            "width": 640
+            "guidance_scale": 7.5
         }
 
         # Add optional seed if provided (don't send null)
