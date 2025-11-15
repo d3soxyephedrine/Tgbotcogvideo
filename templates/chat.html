@@ -1416,8 +1416,6 @@
                         <select id="model-selector">
                             <option value="deepseek/deepseek-chat-v3-0324">⚡ DeepSeek</option>
                             <option value="openai/gpt-4o-2024-11-20">🧠 GPT-4o</option>
-                            <option value="anthropic/claude-3.5-sonnet">💎 Claude 3.5</option>
-                            <option value="x-ai/grok-2-1212">🚀 Grok-2</option>
                         </select>
                     </div>
                     <div class="toggle-container">
@@ -1523,6 +1521,10 @@
                 selectedModel = e.target.value;
                 localStorage.setItem('selected_model', selectedModel);
                 console.log('Model changed to:', selectedModel);
+
+                // Show visual feedback
+                const modelName = e.target.options[e.target.selectedIndex].text;
+                showToast(`Switched to ${modelName}`, 'success');
             });
         }
 
@@ -1535,6 +1537,9 @@
                 localStorage.setItem('writing_mode', writingMode.toString());
                 writingModeToggle.classList.toggle('active', writingMode);
                 console.log('Writing mode:', writingMode);
+
+                // Show visual feedback
+                showToast(`Writing mode ${writingMode ? 'enabled' : 'disabled'}`, 'success');
             });
         }
 
