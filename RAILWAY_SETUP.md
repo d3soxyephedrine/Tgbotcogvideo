@@ -1,23 +1,29 @@
 # Railway Deployment Setup
 
-## Required Environment Variables
+## ⚠️ CRITICAL: Required Environment Variables
 
-Set these in Railway dashboard under **Variables**:
+Set these in Railway dashboard under **Variables** tab:
 
-### 1. RAILWAY_PUBLIC_DOMAIN
-**Required for webhook to work**
+### 1. RAILWAY_PUBLIC_DOMAIN (REQUIRED)
+**Without this variable, the bot will NOT receive Telegram messages!**
 
-Set this to your Railway-assigned domain:
+Go to Railway dashboard → Your service → **Variables** → **New Variable**
+
+**Variable name:** `RAILWAY_PUBLIC_DOMAIN`
+
+**Variable value:** Your Railway domain (one of these):
+- Railway auto domain: `cke-production.up.railway.app`
+- Custom domain: `ko2bot.com` (if you configured one)
+
+**How to find your domain:**
+- Railway dashboard shows it under **Settings** → **Domains**
+- Or in **Deployments** logs, look for the public URL
+
 ```
 RAILWAY_PUBLIC_DOMAIN=cke-production.up.railway.app
 ```
 
-Or if you have a custom domain:
-```
-RAILWAY_PUBLIC_DOMAIN=ko2bot.com
-```
-
-**⚠️ Without this, the webhook will fail and Telegram messages won't reach your bot.**
+**⚠️ The app will start but webhook will NOT be registered without this variable.**
 
 ### 2. BOT_TOKEN
 Your Telegram bot token from @BotFather:
