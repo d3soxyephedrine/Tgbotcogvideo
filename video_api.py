@@ -229,7 +229,7 @@ def generate_wan_t2v(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
                 "x-api-key": WAN_API_KEY
             },
             json=payload,
-            timeout=120
+            timeout=360
         )
 
         logger.info(f"   Response status: {response.status_code}")
@@ -241,7 +241,7 @@ def generate_wan_t2v(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
         return result
 
     except requests.Timeout:
-        error_msg = "Wan 2.1 T2V generation timed out after 120s"
+        error_msg = "Wan 2.1 T2V generation timed out after 360s (6 minutes)"
         logger.error(f"   ❌ {error_msg}")
         return {"status": "error", "error": error_msg}
     except requests.HTTPError as e:
