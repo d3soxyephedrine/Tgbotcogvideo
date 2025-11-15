@@ -529,6 +529,129 @@ def delete_conversation(conversation_id, **kwargs):
             "error": "Internal server error"
         }), 500
 
+@app.route('/api/memories', methods=['GET'])
+@require_api_key
+def get_memories(**kwargs):
+    user = kwargs['user']
+    """Get all memories for the current user"""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+
+    try:
+        from memory_utils import get_user_memories
+        memories = get_user_memories(user.id)
+
+        return jsonify({
+            "memories": [{
+                "id": mem.id,
+                "content": mem.content,
+                "platform": mem.platform,
+                "created_at": mem.created_at.isoformat()
+            } for mem in memories]
+        })
+    except Exception as e:
+        logger.error(f"Error fetching memories: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/memories', methods=['POST'])
+@require_api_key
+def create_memory(**kwargs):
+    user = kwargs['user']
+    """Create a new memory"""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+
+    try:
+        data = request.get_json()
+        content = data.get('content', '').strip()
+
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+
+        from memory_utils import store_memory
+        memory = store_memory(user.id, content, platform='web')
+
+        return jsonify({
+            "success": True,
+            "memory": {
+                "id": memory.id,
+                "content": memory.content,
+                "platform": memory.platform,
+                "created_at": memory.created_at.isoformat()
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error creating memory: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/memories/<int:memory_id>', methods=['PUT'])
+@require_api_key
+def update_memory(memory_id, **kwargs):
+    user = kwargs['user']
+    """Update an existing memory"""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+
+    try:
+        data = request.get_json()
+        content = data.get('content', '').strip()
+
+        if not content:
+            return jsonify({"error": "Content is required"}), 400
+
+        memory = Memory.query.filter_by(id=memory_id, user_id=user.id).first()
+        if not memory:
+            return jsonify({"error": "Memory not found"}), 404
+
+        memory.content = content
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "memory": {
+                "id": memory.id,
+                "content": memory.content,
+                "platform": memory.platform,
+                "created_at": memory.created_at.isoformat()
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error updating memory: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/memories/<int:memory_id>', methods=['DELETE'])
+@require_api_key
+def delete_memory_api(memory_id, **kwargs):
+    user = kwargs['user']
+    """Delete a memory"""
+    if not DB_AVAILABLE:
+        return jsonify({"error": "Service temporarily unavailable"}), 503
+
+    try:
+        from memory_utils import delete_memory
+        success = delete_memory(user.id, memory_id)
+
+        if not success:
+            return jsonify({"error": "Memory not found"}), 404
+
+        return jsonify({"success": True, "message": "Memory deleted"})
+    except Exception as e:
+        logger.error(f"Error deleting memory: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/settings', methods=['GET'])
+@require_api_key
+def get_settings(**kwargs):
+    user = kwargs['user']
+    """Get user settings (model preference, writing mode)"""
+    # For now, return defaults - we can add a UserSettings table later if needed
+    # Currently storing in session/localStorage on frontend
+    return jsonify({
+        "model": "deepseek/deepseek-chat-v3-0324",
+        "writing_mode": False
+    })
+
 @app.route('/stats')
 def stats():
     """Endpoint to view basic statistics about the bot usage with enhanced lock monitoring"""

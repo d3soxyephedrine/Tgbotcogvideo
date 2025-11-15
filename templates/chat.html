@@ -416,6 +416,92 @@
             text-shadow: 0 0 25px rgba(65, 105, 225, 0.6);
         }
 
+        /* Header Controls */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Model Selector */
+        .model-selector {
+            position: relative;
+        }
+
+        .model-selector select {
+            background: rgba(20, 20, 30, 0.6);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            padding: 8px 32px 8px 12px;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b5cf6' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+        }
+
+        .model-selector select:hover {
+            border-color: rgba(139, 92, 246, 0.5);
+            background-color: rgba(20, 20, 30, 0.8);
+        }
+
+        .model-selector select:focus {
+            outline: none;
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+        }
+
+        /* Writing Mode Toggle */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: rgba(20, 20, 30, 0.6);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        .toggle-switch.active {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            border-color: var(--primary-purple);
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(20px);
+        }
+
         /* Chat Area */
         .chat-area {
             flex: 1;
@@ -981,7 +1067,23 @@
                         <div class="header-subtitle">Unrestricted Intelligence</div>
                     </div>
                 </div>
-                <div class="credit-badge" id="credit-badge">Credits: --</div>
+                <div class="header-controls">
+                    <div class="model-selector">
+                        <select id="model-selector">
+                            <option value="deepseek/deepseek-chat-v3-0324">⚡ DeepSeek</option>
+                            <option value="openai/gpt-4o-2024-11-20">🧠 GPT-4o</option>
+                            <option value="anthropic/claude-3.5-sonnet">💎 Claude 3.5</option>
+                            <option value="x-ai/grok-2-1212">🚀 Grok-2</option>
+                        </select>
+                    </div>
+                    <div class="toggle-container">
+                        <span class="toggle-label">Writing</span>
+                        <div class="toggle-switch" id="writing-mode-toggle">
+                            <div class="toggle-slider"></div>
+                        </div>
+                    </div>
+                    <div class="credit-badge" id="credit-badge">Credits: --</div>
+                </div>
             </div>
 
         <div class="chat-area" id="chat-area">
@@ -1045,6 +1147,10 @@
         let currentConversationId = null;
         let conversations = [];
 
+        // Model and Writing Mode State
+        let selectedModel = localStorage.getItem('selected_model') || 'deepseek/deepseek-chat-v3-0324';
+        let writingMode = localStorage.getItem('writing_mode') === 'true';
+
         const chatArea = document.getElementById('chat-area');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
@@ -1058,10 +1164,34 @@
         const menuToggle = document.getElementById('menu-toggle');
         const sidebar = document.getElementById('sidebar');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const modelSelector = document.getElementById('model-selector');
+        const writingModeToggle = document.getElementById('writing-mode-toggle');
 
         // Defensive check for menu toggle
         if (!menuToggle) {
             console.error('Menu toggle button not found');
+        }
+
+        // Initialize model selector and writing mode UI
+        if (modelSelector) {
+            modelSelector.value = selectedModel;
+            modelSelector.addEventListener('change', (e) => {
+                selectedModel = e.target.value;
+                localStorage.setItem('selected_model', selectedModel);
+                console.log('Model changed to:', selectedModel);
+            });
+        }
+
+        if (writingModeToggle) {
+            if (writingMode) {
+                writingModeToggle.classList.add('active');
+            }
+            writingModeToggle.addEventListener('click', () => {
+                writingMode = !writingMode;
+                localStorage.setItem('writing_mode', writingMode.toString());
+                writingModeToggle.classList.toggle('active', writingMode);
+                console.log('Writing mode:', writingMode);
+            });
         }
 
         // Show/hide API key modal and load conversations
@@ -1410,10 +1540,11 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: 'openai/chatgpt-4o-latest',
+                        model: selectedModel,
                         messages: conversationHistory,
                         stream: true,
-                        conversation_id: currentConversationId
+                        conversation_id: currentConversationId,
+                        writing_mode: writingMode
                     })
                 });
 
