@@ -69,22 +69,29 @@ def generate_video(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
         logger.info(f"Calling Wan 2.1 T2V NSFW API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
 
+        # Build request payload
+        payload = {
+            "prompt": prompt,
+            "frames": frames,
+            "fps": 8,
+            "steps": steps,
+            "guidance_scale": 7.5,
+            "height": 384,
+            "width": 640
+        }
+
+        # Add optional seed if provided (don't send null)
+        # seed can be added later if needed
+
+        logger.info(f"[DEBUG] Request payload: {payload}")
+
         response = requests.post(
             VIDEO_API_URL,
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": VIDEO_API_KEY
             },
-            json={
-                "prompt": prompt,
-                "frames": frames,
-                "fps": 8,
-                "steps": steps,
-                "guidance_scale": 7.5,
-                "height": 384,
-                "width": 640,
-                "seed": None
-            },
+            json=payload,
             timeout=120  # Increased timeout for Wan 2.1 T2V
         )
         response.raise_for_status()
