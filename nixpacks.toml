@@ -5,4 +5,4 @@ nixPkgs = ["python311", "python311Packages.pip"]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "bash railway_start.sh"
+cmd = "gunicorn --config gunicorn.conf.py main:app"
