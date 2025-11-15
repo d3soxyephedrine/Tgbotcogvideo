@@ -1059,10 +1059,25 @@ def chat_completions_proxy():
             }), 401
         
         logger.info(f"Authenticated web user: {user.telegram_id} (username: {user.username})")
-        
-        # Calculate credit cost based on user's preferred model (DeepSeek=1, GPT-4o=3)
-        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-        credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+
+        # Get payload early to check for model override
+        payload = request.get_json()
+
+        # Use model from request payload if provided, otherwise use user's preference
+        selected_model = payload.get('model', user.preferred_model) if payload else user.preferred_model
+        if not selected_model:
+            selected_model = 'deepseek/deepseek-chat-v3-0324'
+
+        # Get kimi_mode from payload (default to 'apex')
+        kimi_mode = payload.get('kimi_mode', 'apex') if payload else 'apex'
+
+        # Calculate credit cost based on model (DeepSeek=1, Kimi=2, GPT-4o=3)
+        if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower():
+            credits_to_deduct = 3
+        elif 'kimi' in selected_model.lower() or 'moonshot' in selected_model.lower():
+            credits_to_deduct = 2
+        else:
+            credits_to_deduct = 1
         
         from telegram_handler import deduct_credits
         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
@@ -1088,8 +1103,7 @@ def chat_completions_proxy():
         
         db.session.commit()
         logger.info(f"Deducted {credits_to_deduct} credit(s) (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-        
-        payload = request.get_json()
+
         if not payload:
             return jsonify({
                 "error": {
@@ -1327,8 +1341,7 @@ def chat_completions_proxy():
                 nonlocal accumulated_response
                 accumulated_response += chunk
             
-            # Call generate_response with streaming callback (include user_id for memory injection and user's preferred model)
-            selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+            # Call generate_response with streaming callback (include user_id for memory injection, model, and kimi_mode)
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
@@ -1336,7 +1349,8 @@ def chat_completions_proxy():
                 update_callback=update_callback,
                 writing_mode=False,
                 user_id=user.id,
-                model=selected_model
+                model=selected_model,
+                kimi_mode=kimi_mode
             )
             
             # Auto-title if first message
@@ -1414,7 +1428,9 @@ def chat_completions_proxy():
                 conversation_history=conversation_history,
                 use_streaming=False,
                 writing_mode=False,
-                user_id=user.id
+                user_id=user.id,
+                model=selected_model,
+                kimi_mode=kimi_mode
             )
             
             # Auto-title if first message

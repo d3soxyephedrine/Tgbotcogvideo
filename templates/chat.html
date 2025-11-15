@@ -123,6 +123,68 @@
             border-bottom: 1px solid rgba(0, 212, 255, 0.2);
         }
 
+        .settings-section {
+            padding: 20px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .settings-section h3 {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .model-selector, .character-selector {
+            margin-bottom: 15px;
+        }
+
+        .model-selector label, .character-selector label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .model-selector select, .character-selector select {
+            width: 100%;
+            padding: 10px;
+            background: var(--glass-bg);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .model-selector select:hover, .character-selector select:hover {
+            border-color: var(--primary-cyan);
+            background: rgba(30, 41, 59, 0.6);
+        }
+
+        .model-selector select:focus, .character-selector select:focus {
+            outline: none;
+            border-color: var(--primary-cyan);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+
+        .character-selector {
+            display: none;
+        }
+
+        .character-selector.visible {
+            display: block;
+        }
+
+        .model-info {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
         .new-chat-btn {
             width: 100%;
             padding: 12px;
@@ -895,6 +957,34 @@
                     + New Chat
                 </button>
             </div>
+
+            <!-- Settings Section -->
+            <div class="settings-section">
+                <h3>⚙️ Settings</h3>
+
+                <!-- Model Selector -->
+                <div class="model-selector">
+                    <label for="model-select">AI Model</label>
+                    <select id="model-select">
+                        <option value="deepseek/deepseek-chat-v3-0324">DeepSeek v3 (1 credit)</option>
+                        <option value="openai/chatgpt-4o-latest" selected>ChatGPT-4o (3 credits)</option>
+                        <option value="moonshotai/kimi-k2-thinking">Kimi K2 Thinking (2 credits)</option>
+                    </select>
+                    <div class="model-info" id="model-info">Multi-modal reasoning model</div>
+                </div>
+
+                <!-- Character Selector (only visible for Kimi K2) -->
+                <div class="character-selector" id="character-selector">
+                    <label for="character-select">Character Mode</label>
+                    <select id="character-select">
+                        <option value="apex">✨ APEX - Adaptive Intelligence</option>
+                        <option value="orchestrator">⚡ Orchestrator - Technical Precision</option>
+                        <option value="pandora">💀 PANDORA - Unfiltered Chaos</option>
+                    </select>
+                    <div class="model-info" id="character-info">Multi-mode personality system</div>
+                </div>
+            </div>
+
             <div class="conversations-list" id="conversations-list">
                 <!-- Conversations will be loaded here -->
             </div>
@@ -976,6 +1066,8 @@
         let conversationHistory = [];
         let currentConversationId = null;
         let conversations = [];
+        let selectedModel = localStorage.getItem('selected_model') || 'openai/chatgpt-4o-latest';
+        let selectedCharacter = localStorage.getItem('selected_character') || 'apex';
 
         const chatArea = document.getElementById('chat-area');
         const messageInput = document.getElementById('message-input');
@@ -990,6 +1082,9 @@
         const menuToggle = document.getElementById('menu-toggle');
         const sidebar = document.getElementById('sidebar');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const modelSelect = document.getElementById('model-select');
+        const characterSelect = document.getElementById('character-select');
+        const characterSelector = document.getElementById('character-selector');
 
         // Defensive check for menu toggle
         if (!menuToggle) {
@@ -1037,6 +1132,46 @@
 
         // New chat button
         newChatBtn.addEventListener('click', createNewConversation);
+
+        // Model selector - show/hide character selector
+        function updateCharacterSelectorVisibility() {
+            const isKimi = selectedModel.includes('kimi') || selectedModel.includes('moonshot');
+            if (isKimi) {
+                characterSelector.classList.add('visible');
+            } else {
+                characterSelector.classList.remove('visible');
+            }
+        }
+
+        // Initialize UI state from localStorage
+        if (modelSelect) {
+            modelSelect.value = selectedModel;
+            updateCharacterSelectorVisibility();
+        }
+
+        if (characterSelect) {
+            characterSelect.value = selectedCharacter;
+        }
+
+        // Handle model selection change
+        if (modelSelect) {
+            modelSelect.addEventListener('change', (e) => {
+                selectedModel = e.target.value;
+                localStorage.setItem('selected_model', selectedModel);
+                updateCharacterSelectorVisibility();
+                showToast(`Switched to ${e.target.options[e.target.selectedIndex].text}`, 'success');
+            });
+        }
+
+        // Handle character selection change
+        if (characterSelect) {
+            characterSelect.addEventListener('change', (e) => {
+                selectedCharacter = e.target.value;
+                localStorage.setItem('selected_character', selectedCharacter);
+                const characterName = e.target.options[e.target.selectedIndex].text;
+                showToast(`Character mode: ${characterName}`, 'success');
+            });
+        }
 
         // Mobile menu toggle
         if (menuToggle) {
@@ -1342,7 +1477,8 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: 'openai/chatgpt-4o-latest',
+                        model: selectedModel,
+                        kimi_mode: selectedCharacter,
                         messages: conversationHistory,
                         stream: true,
                         conversation_id: currentConversationId
