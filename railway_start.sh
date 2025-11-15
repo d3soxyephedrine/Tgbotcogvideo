@@ -4,15 +4,35 @@
 echo "🚀 Railway Startup Script"
 echo "=========================="
 
-# Set webhook
-echo "📡 Setting Telegram webhook..."
-python3 set_webhook.py
+# Get environment variables
+BOT_TOKEN="${BOT_TOKEN}"
+DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-tgbotcogvideo-production.up.railway.app}"
 
-# Check if webhook setup succeeded
-if [ $? -eq 0 ]; then
-    echo "✅ Webhook configured successfully"
+if [ -z "$BOT_TOKEN" ]; then
+    echo "⚠️  BOT_TOKEN not set, skipping webhook setup"
 else
-    echo "⚠️  Webhook setup failed, but continuing with server startup..."
+    # Construct webhook URL
+    WEBHOOK_URL="https://${DOMAIN}/${BOT_TOKEN}"
+    TELEGRAM_API="https://api.telegram.org/bot${BOT_TOKEN}/setWebhook"
+
+    echo "📡 Setting Telegram webhook..."
+    echo "🔗 Webhook URL: ${WEBHOOK_URL}"
+
+    # Set webhook using curl (always available on Railway)
+    RESPONSE=$(curl -s -X POST "${TELEGRAM_API}" \
+        -H "Content-Type: application/json" \
+        -d "{\"url\":\"${WEBHOOK_URL}\"}" \
+        --max-time 10)
+
+    # Check if successful
+    if echo "$RESPONSE" | grep -q '"ok":true'; then
+        echo "✅ Webhook set successfully!"
+        echo "   Response: $RESPONSE"
+    else
+        echo "❌ Webhook setup failed"
+        echo "   Response: $RESPONSE"
+        echo "⚠️  Continuing with server startup anyway..."
+    fi
 fi
 
 echo ""
