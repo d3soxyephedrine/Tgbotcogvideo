@@ -1,5 +1,6 @@
 # Gunicorn configuration file
 # This prevents worker timeout crashes during long-running requests
+import os
 
 # Worker timeout (5 minutes instead of default 30 seconds)
 # This allows time for:
@@ -13,8 +14,9 @@ timeout = 300
 # Prevents one slow request from blocking all traffic
 workers = 3
 
-# Bind address
-bind = "0.0.0.0:5000"
+# Bind address - Railway provides PORT env var
+port = os.environ.get("PORT", "5000")
+bind = f"0.0.0.0:{port}"
 
 # Reload on code changes - DISABLED FOR PRODUCTION STABILITY
 # Enabling this causes workers to restart mid-request, losing user data

@@ -175,11 +175,6 @@ if NOWPAYMENTS_IPN_SECRET:
 else:
     logger.warning("NOWPAYMENTS_IPN_SECRET not set - IPN callbacks will not be verified")
 
-# Keepalive URL (pings local server to keep it awake)
-# Use the same port that gunicorn is bound to (from PORT env var or default 5000)
-KEEPALIVE_PORT = os.environ.get("PORT", "5000")
-KEEPALIVE_URL = f"http://localhost:{KEEPALIVE_PORT}"
-
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -894,11 +889,11 @@ def register_telegram_webhook():
     if not BOT_TOKEN:
         logger.warning("Cannot register webhook - BOT_TOKEN not configured")
         return
-    
+
     try:
-        # Use production domain (ko2bot.com) - locked in for production deployment
-        domain = "ko2bot.com"
-        
+        # Use RAILWAY_PUBLIC_DOMAIN if set, otherwise fall back to production domain
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+
         # Build webhook URL
         webhook_url = f"https://{domain}/{BOT_TOKEN}"
         
@@ -947,24 +942,7 @@ def periodic_lock_cleanup():
         except Exception as e:
             logger.error(f"Error in periodic lock cleanup: {str(e)}")
 
-# Keepalive function
-def keep_alive():
-    """Function to ping the app every 4 minutes to prevent Replit from sleeping"""
-    while True:
-        try:
-            logger.info("Pinging server to keep it alive...")
-            requests.get(KEEPALIVE_URL, timeout=10)
-            logger.info("Ping successful")
-        except Exception as e:
-            logger.error(f"Error pinging server: {str(e)}")
-        # Sleep for 4 minutes (240 seconds)
-        time.sleep(240)
-
 # Start background threads
-keepalive_thread = threading.Thread(target=keep_alive, daemon=True)
-keepalive_thread.start()
-logger.info("Started keepalive thread")
-
 if DATABASE_URL and DB_AVAILABLE:
     lock_cleanup_thread = threading.Thread(target=periodic_lock_cleanup, daemon=True)
     lock_cleanup_thread.start()
@@ -1070,9 +1048,9 @@ def chat_completions_proxy():
         if not success:
             total_credits = user.daily_credits + user.credits
             logger.warning(f"Insufficient credits for user {user.telegram_id}: {total_credits} credits")
-            
-            domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
-            buy_url = f"https://{domain}/buy?telegram_id={user.telegram_id}" if domain else f"/buy?telegram_id={user.telegram_id}"
+
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            buy_url = f"https://{domain}/buy?telegram_id={user.telegram_id}"
             
             return jsonify({
                 "error": {
@@ -1568,15 +1546,12 @@ def set_webhook():
         # Get domain from environment or request parameter
         url = request.args.get('url')
         if not url:
-            # Try to auto-detect domain from Replit environment
-            domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
-            if domain:
-                if not domain.startswith('http'):
-                    url = f"https://{domain}"
-                else:
-                    url = domain
+            # Try to auto-detect domain from Railway environment
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            if not domain.startswith('http'):
+                url = f"https://{domain}"
             else:
-                return jsonify({"error": "URL parameter is required or REPLIT_DOMAINS must be set"}), 400
+                url = domain
             
         webhook_url = f"{url}/{BOT_TOKEN}"
         telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
@@ -1945,8 +1920,8 @@ def create_crypto_payment():
         order_id = f"crypto_order_{user_telegram_id}_{int(datetime.utcnow().timestamp())}"
         
         # Get domain for IPN callback
-        domain = os.environ.get("REPLIT_DOMAINS", "").split(',')[0] if os.environ.get("REPLIT_DOMAINS") else os.environ.get("REPLIT_DEV_DOMAIN")
-        
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+
         if not domain:
             logger.error("No domain configured for IPN callback")
             return jsonify({"error": "Domain not configured"}), 500
@@ -2367,5 +2342,5 @@ def internal_error(e):
 
 if __name__ == '__main__':
     # Run the Flask application
-    # Note: keepalive thread is already started in global scope
+    # Note: Production deployment uses Gunicorn (see Procfile)
     app.run(host='0.0.0.0', port=5000, debug=True)
