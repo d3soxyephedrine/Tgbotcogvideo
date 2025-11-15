@@ -744,16 +744,19 @@ def process_update(update):
                         )
                         db.session.add(user)
                         db.session.commit()
-                        logger.info(f"New user created: {user}")
+                        logger.info(f"✅ New user created: telegram_id={telegram_id}, user_id={user.id}")
                     else:
                         # Update last interaction
                         user.last_interaction = datetime.utcnow()
                         db.session.commit()
-                    
+                        logger.debug(f"✅ Existing user updated: telegram_id={telegram_id}, user_id={user.id}")
+
                     user_id = user.id
+                    logger.info(f"✅ User ID set: user_id={user_id} for telegram_id={telegram_id}")
             except Exception as db_error:
-                logger.error(f"Database error while storing user: {str(db_error)}")
-                logger.warning("Continuing without database storage")
+                logger.error(f"❌ Database error while storing user: {str(db_error)}", exc_info=True)
+                logger.warning("⚠️ Continuing without database storage - user_id will be None")
+                user_id = None  # Explicitly set to None
         else:
             logger.debug("Skipping user storage - database not available")
         
@@ -792,6 +795,7 @@ def process_update(update):
         
         # Check for /balance or /credits commands
         if text.lower() == '/balance' or text.lower() == '/credits':
+            logger.info(f"🔍 /balance command: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}, telegram_id={telegram_id}")
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -801,8 +805,11 @@ def process_update(update):
                         # Reload user in this context to avoid detached object issues
                         user = User.query.filter_by(telegram_id=telegram_id).first()
                         if not user:
+                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
                             send_message(chat_id, "❌ User not found. Please try again.")
                             return
+
+                        logger.info(f"✅ User loaded for /balance: user_id={user.id}, credits={user.credits}, daily={user.daily_credits}")
 
                         # Check if daily credits are expired
                         now = datetime.utcnow()
@@ -832,18 +839,22 @@ def process_update(update):
                         )
                         db.session.add(message_record)
                         db.session.commit()
+                        logger.info(f"✅ /balance response prepared: total_credits={total_credits}")
                 except Exception as db_error:
-                    logger.error(f"Database error processing /balance: {str(db_error)}", exc_info=True)
+                    logger.error(f"❌ Database error processing /balance: {str(db_error)}", exc_info=True)
                     response = "❌ Error retrieving balance. Please try again."
             else:
+                logger.warning(f"⚠️ /balance failed: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}")
                 response = "💳 Credit system requires database access."
 
             # Send response
             send_message(chat_id, response)
+            logger.info(f"✅ /balance response sent to chat_id={chat_id}")
             return
         
         # Check for /daily command
         if text.lower() == '/daily':
+            logger.info(f"🔍 /daily command: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}, telegram_id={telegram_id}")
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
@@ -853,8 +864,11 @@ def process_update(update):
                         # Reload user in this context to avoid detached object issues
                         user = User.query.filter_by(telegram_id=telegram_id).first()
                         if not user:
+                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
                             send_message(chat_id, "❌ User not found. Please try again.")
                             return
+
+                        logger.info(f"✅ User loaded for /daily: user_id={user.id}, last_claim={user.last_daily_claim_at}")
 
                         now = datetime.utcnow()
 
@@ -883,16 +897,18 @@ def process_update(update):
 
                         response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
 
-                        logger.info(f"User {telegram_id} claimed daily credits: +25 credits")
+                        logger.info(f"✅ User {telegram_id} claimed daily credits: +25 credits, new total={user.credits + user.daily_credits}")
                 except Exception as db_error:
-                    logger.error(f"Database error processing /daily: {str(db_error)}", exc_info=True)
+                    logger.error(f"❌ Database error processing /daily: {str(db_error)}", exc_info=True)
                     db.session.rollback()
                     response = "❌ Error processing daily claim. Please try again."
             else:
+                logger.warning(f"⚠️ /daily failed: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}")
                 response = "💳 Daily credits require database access."
 
             # Send response
             send_message(chat_id, response)
+            logger.info(f"✅ /daily response sent to chat_id={chat_id}")
             return
         
         # Check for /buy command
