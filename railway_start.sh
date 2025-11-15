@@ -18,11 +18,24 @@ else
     echo "📡 Setting Telegram webhook..."
     echo "🔗 Webhook URL: ${WEBHOOK_URL}"
 
-    # Set webhook using curl (always available on Railway)
-    RESPONSE=$(curl -s -X POST "${TELEGRAM_API}" \
-        -H "Content-Type: application/json" \
-        -d "{\"url\":\"${WEBHOOK_URL}\"}" \
-        --max-time 10)
+    # Set webhook using Python (guaranteed to be available with requests library)
+    RESPONSE=$(python3 -c "
+import requests
+import json
+import sys
+
+try:
+    response = requests.post(
+        '${TELEGRAM_API}',
+        json={'url': '${WEBHOOK_URL}'},
+        timeout=10
+    )
+    print(response.text)
+    sys.exit(0 if response.json().get('ok') else 1)
+except Exception as e:
+    print(json.dumps({'ok': False, 'error': str(e)}))
+    sys.exit(1)
+" 2>&1)
 
     # Check if successful
     if echo "$RESPONSE" | grep -q '"ok":true'; then
