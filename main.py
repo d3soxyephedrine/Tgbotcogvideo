@@ -1249,8 +1249,11 @@ if DATABASE_URL and DB_AVAILABLE:
     with app.app_context():
         cleanup_stuck_processing_locks()
 
-# Note: Webhook and commands registration moved to gunicorn.conf.py
-# to avoid multiple workers registering simultaneously (rate limiting)
+# Register Telegram webhook and commands on startup
+# (Previously in gunicorn.conf.py, but we removed gunicorn)
+logger.info("Registering Telegram commands and webhook...")
+register_telegram_commands()
+register_telegram_webhook()
 
 # Periodic lock cleanup function
 def periodic_lock_cleanup():
