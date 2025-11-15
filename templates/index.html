@@ -12,19 +12,28 @@
         }
 
         :root {
-            --primary-cyan: #00d4ff;
-            --secondary-blue: #0099cc;
-            --dark-bg: #0a0e1a;
-            --darker-bg: #060911;
-            --card-bg: rgba(15, 23, 42, 0.7);
-            --glass-bg: rgba(30, 41, 59, 0.4);
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
+            /* Blue - Trust & Intelligence */
+            --primary-blue: #4169e1;
+            --royal-blue: #1e90ff;
+
+            /* Purple - Creativity & Innovation */
+            --primary-purple: #8b5cf6;
+            --deep-purple: #6366f1;
+
+            /* Black - Power & Sophistication */
+            --black-bg: #0a0a0a;
+            --darker-black: #050505;
+            --card-bg: rgba(10, 10, 10, 0.85);
+            --glass-bg: rgba(20, 20, 30, 0.6);
+
+            /* Text Colors */
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0b8;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: var(--dark-bg);
+            background: var(--black-bg);
             color: var(--text-primary);
             min-height: 100vh;
             overflow-x: hidden;
@@ -39,7 +48,7 @@
             height: 100%;
             overflow: hidden;
             z-index: 0;
-            background: linear-gradient(135deg, #0a0e1a 0%, #1a1f35 100%);
+            background: linear-gradient(135deg, #050505 0%, #0a0a14 50%, #0f0a18 100%);
             pointer-events: none;
         }
 
@@ -48,9 +57,9 @@
             position: absolute;
             width: 200%;
             height: 200%;
-            background: 
-                radial-gradient(circle at 20% 50%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(0, 153, 204, 0.1) 0%, transparent 50%);
+            background:
+                radial-gradient(circle at 20% 50%, rgba(65, 105, 225, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
             animation: drift 20s ease-in-out infinite;
         }
 
@@ -69,10 +78,10 @@
             position: absolute;
             width: 2px;
             height: 2px;
-            background: var(--primary-cyan);
+            background: linear-gradient(45deg, var(--primary-blue), var(--primary-purple));
             border-radius: 50%;
             animation: float 15s infinite ease-in-out;
-            opacity: 0.3;
+            opacity: 0.4;
         }
 
         @keyframes float {
@@ -108,12 +117,12 @@
             height: 120px;
             margin: 0 auto 30px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
             padding: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.6), 0 0 60px rgba(65, 105, 225, 0.4);
             animation: pulse-glow 3s ease-in-out infinite;
         }
 
@@ -126,17 +135,17 @@
 
         @keyframes pulse-glow {
             0%, 100% {
-                box-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+                box-shadow: 0 0 40px rgba(139, 92, 246, 0.6), 0 0 60px rgba(65, 105, 225, 0.4);
             }
             50% {
-                box-shadow: 0 0 60px rgba(0, 212, 255, 0.9), 0 0 80px rgba(0, 212, 255, 0.5);
+                box-shadow: 0 0 60px rgba(139, 92, 246, 0.9), 0 0 100px rgba(65, 105, 225, 0.6);
             }
         }
 
         h1 {
             font-size: 56px;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            background: linear-gradient(135deg, var(--royal-blue), var(--primary-purple), var(--deep-purple));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -185,28 +194,28 @@
         }
 
         .cta-btn.primary {
-            background: linear-gradient(135deg, var(--primary-cyan), var(--secondary-blue));
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
             color: white;
             border: none;
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.4);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
         }
 
         .cta-btn.primary:hover {
             transform: translateY(-3px);
-            box-shadow: 0 12px 35px rgba(0, 212, 255, 0.6);
+            box-shadow: 0 12px 35px rgba(139, 92, 246, 0.6), 0 0 40px rgba(65, 105, 225, 0.4);
         }
 
         .cta-btn.secondary {
             background: transparent;
-            color: var(--primary-cyan);
-            border: 2px solid var(--primary-cyan);
+            color: var(--primary-purple);
+            border: 2px solid var(--primary-purple);
             backdrop-filter: blur(10px);
         }
 
         .cta-btn.secondary:hover {
-            background: rgba(0, 212, 255, 0.1);
+            background: rgba(139, 92, 246, 0.15);
             transform: translateY(-3px);
-            box-shadow: 0 12px 35px rgba(0, 212, 255, 0.3);
+            box-shadow: 0 12px 35px rgba(139, 92, 246, 0.3);
         }
 
         /* Features Grid */
@@ -220,7 +229,7 @@
         .feature-card {
             background: var(--card-bg);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 212, 255, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.2);
             border-radius: 16px;
             padding: 30px;
             transition: all 0.3s ease;
@@ -235,7 +244,7 @@
             left: 0;
             width: 100%;
             height: 4px;
-            background: linear-gradient(90deg, var(--primary-cyan), var(--secondary-blue));
+            background: linear-gradient(90deg, var(--primary-blue), var(--primary-purple), var(--deep-purple));
             transform: scaleX(0);
             transition: transform 0.3s ease;
         }
@@ -246,8 +255,8 @@
 
         .feature-card:hover {
             transform: translateY(-5px);
-            border-color: var(--primary-cyan);
-            box-shadow: 0 15px 40px rgba(0, 212, 255, 0.3);
+            border-color: var(--primary-purple);
+            box-shadow: 0 15px 40px rgba(139, 92, 246, 0.3), 0 0 60px rgba(65, 105, 225, 0.2);
         }
 
         .feature-icon {
@@ -258,7 +267,10 @@
         .feature-title {
             font-size: 22px;
             font-weight: 700;
-            color: var(--primary-cyan);
+            background: linear-gradient(135deg, var(--royal-blue), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 12px;
         }
 
@@ -272,7 +284,7 @@
         .footer {
             text-align: center;
             padding: 40px 0;
-            border-top: 1px solid rgba(0, 212, 255, 0.2);
+            border-top: 1px solid rgba(139, 92, 246, 0.2);
             margin-top: 80px;
         }
 
@@ -327,7 +339,7 @@
                 Experience truly unrestricted AI conversations with advanced capabilities including text generation, 
                 image creation, editing, and video generation. Powered by ChatGPT-4o with no limits on creativity.
                 <br><br>
-                <strong style="color: var(--primary-cyan);">Telegram Bot: @UnboundGPT_bot</strong>
+                <strong style="background: linear-gradient(135deg, var(--royal-blue), var(--primary-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Telegram Bot: @UnboundGPT_bot</strong>
             </p>
             
             <div class="cta-container">
