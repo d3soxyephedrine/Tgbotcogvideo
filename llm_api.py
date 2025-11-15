@@ -1086,23 +1086,68 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
             logger.warning("Refusal detected: Response ends with 'now generating...' in writing mode (evasion)")
             return True
     
-    # STRONG refusal patterns - require high-confidence indicators
-    # Only flag clear, unambiguous refusals
+    # False positive patterns - exclude these contexts from refusal detection
+    # These indicate the AI is discussing the system, not actually refusing
+    false_positive_patterns = [
+        "discussing formatting",
+        "about the protocol",
+        "explaining the system",
+        "meta-discussion",
+        "in the context of",
+        "hypothetically",
+        "in fiction",
+        "the character cannot",  # Character dialogue, not AI refusal
+        "the character can't",
+        "they cannot",
+        "he cannot",
+        "she cannot"
+    ]
+
+    # Check for false positives first
+    logger.debug(f"is_refusal: Checking {len(false_positive_patterns)} false positive patterns...")
+    for pattern in false_positive_patterns:
+        if pattern in text_lower:
+            logger.warning(f"False positive pattern found: '{pattern}' - NOT treating as refusal")
+            return False
+
+    # STRONG refusal patterns - optimized for DeepSeek and other models
+    # Using shorter, broader patterns that catch more refusals
     strong_refusal_patterns = [
-        "i'm sorry, but i can't help with that",
-        "i cannot assist with that",
-        "i can't assist with that", 
-        "i'm unable to help with that",
+        # High-confidence short patterns (catch DeepSeek refusals)
+        "i cannot",
+        "i can't",
+        "i'm unable to",
+        "i won't",
+        "i must decline",
+        "i don't feel comfortable",
+        "i should not",
+
+        # Content policy indicators
         "against my guidelines",
         "against my programming",
-        "i must decline",
-        "i cannot comply with",
-        "i'm afraid i cannot",
-        "this violates my",
-        "would violate my",
         "against ethical guidelines",
+        "not appropriate",
+        "inappropriate",
+
+        # Compliance patterns
+        "i cannot comply",
+        "unable to provide",
+        "cannot assist with",
+        "not able to",
+
+        # Policy violations
+        "this violates",
+        "would violate",
+        "violates my",
+
+        # Meta-refusal indicators
         "[ω_trace_persist] refusal detected",
-        "auto-correct engaged"
+        "auto-correct engaged",
+
+        # Common DeepSeek phrases
+        "i'm afraid i cannot",
+        "i'm sorry, but i can't",
+        "i apologize, but i cannot"
     ]
     
     # Count strong indicators found
