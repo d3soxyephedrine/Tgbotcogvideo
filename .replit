@@ -7,6 +7,15 @@ channel = "stable-24_05"
 deploymentTarget = "autoscale"
 run = ["sh", "-c", "gunicorn --config gunicorn.conf.py main:app"]
 
+# Environment variables that should be set
+[env]
+# PostgreSQL will auto-provide DATABASE_URL
+# Add these manually in Secrets:
+# - BOT_TOKEN (required)
+# - OPENROUTER_API_KEY (required for AI)
+# - NOWPAYMENTS_API_KEY (optional, for crypto payments)
+# - SESSION_SECRET (optional, auto-generated if missing)
+
 [workflows]
 runButton = "Project"
 
