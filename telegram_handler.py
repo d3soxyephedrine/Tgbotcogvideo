@@ -1018,7 +1018,7 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response, parse_mode="Markdown")
             return
         
-        # Check for /model command (switch between DeepSeek and GPT-4o)
+        # Check for /model command (cycle through DeepSeek, GPT-4o, and Kimi)
         if text.lower() == '/model':
             if DB_AVAILABLE and user:
                 try:
@@ -1029,25 +1029,30 @@ Use /buy to purchase more credits or /daily for free credits.
                         if not fresh_user:
                             send_message(chat_id, "❌ User not found. Please try /start first.")
                             return
-                        
+
                         # Get current model from database
                         current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-                        
-                        # Toggle model
+
+                        # Cycle through 3 models: DeepSeek -> GPT-4o -> Kimi -> DeepSeek
                         if 'deepseek' in current_model.lower():
                             new_model = 'openai/chatgpt-4o-latest'
                             new_model_name = 'ChatGPT-4o'
+                            cost_per_message = '3 credits'
+                        elif 'gpt-4o' in current_model.lower() or 'chatgpt' in current_model.lower():
+                            new_model = 'moonshotai/kimi-k2-thinking'
+                            new_model_name = 'Kimi K2 Thinking'
                             cost_per_message = '2 credits'
                         else:
+                            # Default back to DeepSeek (includes Kimi and any unknown models)
                             new_model = 'deepseek/deepseek-chat-v3-0324'
                             new_model_name = 'DeepSeek v3-0324'
                             cost_per_message = '1 credit'
-                        
+
                         # Update user's preferred model
                         fresh_user.preferred_model = new_model
                         db.session.commit()
-                        
-                        response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to switch back."
+
+                        response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to cycle to the next model."
                         logger.info(f"User {telegram_id} switched model to {new_model}")
                 except Exception as db_error:
                     logger.error(f"Database error switching model: {str(db_error)}")
@@ -1055,7 +1060,7 @@ Use /buy to purchase more credits or /daily for free credits.
                     response = "❌ Error switching model. Please try again."
             else:
                 response = "❌ Model switching requires database access."
-            
+
             send_message(chat_id, response, parse_mode="Markdown")
             return
         
@@ -1671,10 +1676,11 @@ To create a video, you need to:
                         
                         # Model preference breakdown (all users)
                         deepseek_users = User.query.filter(
-                            (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') | 
+                            (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') |
                             (User.preferred_model.is_(None))
                         ).count()
                         gpt4o_users = User.query.filter(User.preferred_model == 'openai/chatgpt-4o-latest').count()
+                        kimi_users = User.query.filter(User.preferred_model == 'moonshotai/kimi-k2-thinking').count()
                         
                         # Sample popular prompts from last 7 days (get 5 random image descriptions)
                         sample_prompts = db.session.query(Transaction.description).filter(
@@ -1713,7 +1719,8 @@ To create a video, you need to:
 
 🤖 *MODEL PREFERENCE:*
 - DeepSeek Users: {deepseek_users} ({deepseek_users/max(total_users,1)*100:.1f}%)
-- GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)"""
+- GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)
+- Kimi K2 Users: {kimi_users} ({kimi_users/max(total_users,1)*100:.1f}%)"""
                         
                         # Add sample prompts if available
                         if sample_prompts:
@@ -3104,11 +3111,17 @@ To create a video, you need to:
                     if user:
                         # Determine credits to deduct based on writing mode or model
                         selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-                        # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3)
+                        # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3, Kimi=2)
                         if writing_mode:
                             credits_to_deduct = 2
                         else:
-                            credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+                            # Determine credit cost based on model
+                            if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower():
+                                credits_to_deduct = 3
+                            elif 'kimi' in selected_model.lower() or 'moonshot' in selected_model.lower():
+                                credits_to_deduct = 2
+                            else:
+                                credits_to_deduct = 1  # DeepSeek or unknown models default to 1 credit
                         
                         # Deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
