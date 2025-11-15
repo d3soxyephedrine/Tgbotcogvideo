@@ -178,7 +178,7 @@ else:
 # Keepalive URL (pings local server to keep it awake)
 # Use the same port that gunicorn is bound to (from PORT env var or default 5000)
 KEEPALIVE_PORT = os.environ.get("PORT", "5000")
-KEEPALIVE_URL = f"http://localhost:{KEEPALIVE_PORT}"
+KEEPALIVE_URL = f"http://localhost:{KEEPALIVE_PORT}/health"
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -704,9 +704,9 @@ def export_conversations():
         }), 503
     
     try:
-        # Query all messages with eager loading to prevent N+1 queries
+        # Query all messages with user relationship
         from sqlalchemy.orm import joinedload
-        messages = Message.query.options(joinedload(Message.user)).order_by(Message.user_id, Message.created_at).all()
+        messages = Message.query.options(joinedload('user')).order_by(Message.user_id, Message.created_at).all()
         
         if not messages:
             return jsonify({"error": "No conversations found"}), 404
@@ -953,7 +953,7 @@ def keep_alive():
     while True:
         try:
             logger.info("Pinging server to keep it alive...")
-            requests.get(KEEPALIVE_URL, timeout=10)
+            requests.get(KEEPALIVE_URL, timeout=30)
             logger.info("Ping successful")
         except Exception as e:
             logger.error(f"Error pinging server: {str(e)}")
@@ -1478,15 +1478,8 @@ def chat_completions_proxy():
         request_time_ms = (time.time() - request_start_time) * 1000
         logger.error(f"Web chat request failed after {request_time_ms:.2f}ms: {str(e)}", exc_info=True)
         
-        # Refund credits on error (only if they were deducted)
-        try:
-            if 'user' in locals() and 'purchased_used' in locals() and 'daily_used' in locals():
-                user.credits += purchased_used
-                user.daily_credits += daily_used
-                db.session.commit()
-                logger.info(f"Refunded {purchased_used + daily_used} credits due to error")
-        except:
-            pass
+        # Note: Credit refund not needed for web chat as credits are charged after successful response
+        pass
         
         return jsonify({
             "error": {
@@ -2266,14 +2259,15 @@ def broadcast_message():
         }), 503
     
     # Verify admin token
-    admin_token = request.json.get('token')
+    request_data = request.get_json() or {}
+    admin_token = request_data.get('token')
     expected_token = os.environ.get('ADMIN_EXPORT_TOKEN')
     
     if not expected_token or admin_token != expected_token:
         return jsonify({"error": "Unauthorized"}), 401
     
-    message = request.json.get('message')
-    exclude_stars_today = request.json.get('exclude_stars_purchasers_today', False)
+    message = request_data.get('message')
+    exclude_stars_today = request_data.get('exclude_stars_purchasers_today', False)
     
     if not message:
         return jsonify({"error": "message field is required"}), 400
@@ -2302,11 +2296,12 @@ def broadcast_message():
         for i, user in enumerate(eligible_users):
             try:
                 result = send_message(user.telegram_id, message)
-                if result and result.get('ok'):
+                if result and isinstance(result, dict) and result.get('ok'):
                     success_count += 1
                 else:
                     error_count += 1
-                    errors.append(f"User {user.telegram_id}: {result.get('description', 'Unknown error')}")
+                    error_desc = result.get('description', 'Unknown error') if isinstance(result, dict) else 'Unknown error'
+                    errors.append(f"User {user.telegram_id}: {error_desc}")
                 
                 # Rate limiting: 30 messages/second = ~33ms between messages
                 if (i + 1) % 30 == 0:

@@ -28,7 +28,9 @@ Preferred communication style: Simple, everyday language.
 - **Generative AI Models**:
   - **Image Generation**: FLUX.1 Kontext Max, Hunyuan-Image-3, Grok-2-Image.
   - **Image Editing**: FLUX.1 Kontext Max, Qwen-Image.
-  - **Video Generation (Text-to-Video & Image-to-Video)**: CogVideoX-5B, WAN 2.2, WAN 2.5 I2V Preview.
+  - **Video Generation**:
+    - **Text-to-Video**: WAN 2.1 T2V with NSFW LoRA (safety checker disabled for uncensored content).
+    - **Image-to-Video**: WAN 2.2, WAN 2.5 I2V Preview.
 
 ### Pay-Per-Use Credit System
 - **Credit Types**: Daily free credits and purchased credits with volume bonuses.
@@ -62,7 +64,7 @@ Preferred communication style: Simple, everyday language.
 
 - **Telegram Bot API**: Core platform for user interaction.
 - **OpenRouter**: Aggregated LLM provider for DeepSeek-Chat-V3.1 and ChatGPT-4o.
-- **Novita AI**: Provides image generation (FLUX.1 Kontext Max, Hunyuan-Image-3, Qwen-Image) and image-to-video (WAN 2.2, WAN 2.5 I2V Preview) services.
+- **Novita AI**: Provides image generation (FLUX.1 Kontext Max, Hunyuan-Image-3, Qwen-Image), text-to-video (WAN 2.1 T2V NSFW LoRA), and image-to-video (WAN 2.2, WAN 2.5 I2V Preview) services.
 - **xAI API**: For Grok-2-Image generation.
 - **SQL Database**: Persistent data storage.
 - **Python Libraries**: Flask, SQLAlchemy/Flask-SQLAlchemy, requests, logging.

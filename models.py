@@ -1,5 +1,9 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import List
 
 # Initialize SQLAlchemy
 db = SQLAlchemy()
@@ -42,13 +46,17 @@ class User(db.Model):
     deepseek_primed = db.Column(db.Boolean, default=False, nullable=False)
     
     # One-to-many relationships
-    messages = db.relationship('Message', backref='user', lazy=True)
-    payments = db.relationship('Payment', backref='user', lazy=True)
-    transactions = db.relationship('Transaction', backref='user', lazy=True)
-    crypto_payments = db.relationship('CryptoPayment', backref='user', lazy=True)
-    telegram_payments = db.relationship('TelegramPayment', backref='user', lazy=True)
-    conversations = db.relationship('Conversation', backref='user', lazy=True, cascade='all, delete-orphan')
-    memories = db.relationship('Memory', backref='user', lazy=True, cascade='all, delete-orphan')
+    messages = db.relationship('Message', back_populates='user', lazy=True)
+    payments = db.relationship('Payment', back_populates='user', lazy=True)
+    transactions = db.relationship('Transaction', back_populates='user', lazy=True)
+    crypto_payments = db.relationship('CryptoPayment', back_populates='user', lazy=True)
+    telegram_payments = db.relationship('TelegramPayment', back_populates='user', lazy=True)
+    conversations = db.relationship('Conversation', back_populates='user', lazy=True, cascade='all, delete-orphan')
+    memories = db.relationship('Memory', back_populates='user', lazy=True, cascade='all, delete-orphan')
+
+    def __init__(self, **kwargs):
+        """Initialize User with keyword arguments"""
+        super(User, self).__init__(**kwargs)
 
     def __repr__(self):
         return f'<User {self.telegram_id}>'
@@ -68,6 +76,10 @@ class Conversation(db.Model):
     
     # One-to-many relationship with messages
     messages = db.relationship('Message', backref='conversation', lazy=True, cascade='all, delete-orphan')
+    
+    def __init__(self, **kwargs):
+        """Initialize Conversation with keyword arguments"""
+        super(Conversation, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<Conversation {self.id}: {self.title}>'
@@ -90,6 +102,10 @@ class Message(db.Model):
     model_used = db.Column(db.String(100), nullable=True)
     credits_charged = db.Column(db.Integer, default=1, nullable=False)
     platform = db.Column(db.String(20), default='telegram', nullable=False, index=True)
+    
+    def __init__(self, **kwargs):
+        """Initialize Message with keyword arguments"""
+        super(Message, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<Message {self.id} from user {self.user_id}>'
@@ -143,6 +159,10 @@ class CryptoPayment(db.Model):
     processed_at = db.Column(db.DateTime, nullable=True)  # Timestamp when credits were added
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __init__(self, **kwargs):
+        """Initialize CryptoPayment with keyword arguments"""
+        super(CryptoPayment, self).__init__(**kwargs)
     
     def __repr__(self):
         return f'<CryptoPayment {self.payment_id} for user {self.user_id}>'
