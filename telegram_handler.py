@@ -1582,8 +1582,8 @@ To create a video, you need to:
                 return
 
             # Check prompt length
-            if len(prompt) > 200:
-                send_message(chat_id, "❌ Prompt too long. Maximum 200 characters.")
+            if len(prompt) > 2000:
+                send_message(chat_id, "❌ Prompt too long. Maximum 2000 characters.")
                 return
 
             logger.info(f"🎬 /wan command: {prompt[:50]}...")
