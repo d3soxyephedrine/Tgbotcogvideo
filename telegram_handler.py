@@ -3120,19 +3120,27 @@ To create a video, you need to:
                         # This ensures we always have context even if credit deduction fails
                         logger.info(f"Loading conversation history for user_id={user_id}")
                         from sqlalchemy import desc
-                        subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
+
+                        # Load last 10 COMPLETE message exchanges (where bot_response is not null)
+                        # This prevents incomplete conversations from breaking context
+                        subquery = db.session.query(Message.id).filter(
+                            Message.user_id == user_id,
+                            Message.bot_response.isnot(None),
+                            Message.bot_response != ''
+                        ).order_by(desc(Message.created_at)).limit(10).subquery()
                         recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
 
                         # Format as conversation history (already in chronological order)
+                        # Only include messages with both user_message AND bot_response
                         for msg in recent_messages:
-                            conversation_history.append({"role": "user", "content": msg.user_message})
-                            if msg.bot_response:
+                            if msg.user_message and msg.bot_response:
+                                conversation_history.append({"role": "user", "content": msg.user_message})
                                 conversation_history.append({"role": "assistant", "content": msg.bot_response})
 
-                        logger.info(f"✓ Loaded {len(recent_messages)} message records = {len(conversation_history)} conversation turns for user_id={user_id}")
+                        logger.info(f"✓ Loaded {len(recent_messages)} complete message exchanges = {len(conversation_history)} turns for user_id={user_id}")
                         if conversation_history:
-                            logger.debug(f"First message preview: {conversation_history[0]['content'][:100]}...")
-                            logger.debug(f"Last message preview: {conversation_history[-1]['content'][:100]}...")
+                            logger.debug(f"First history message: role={conversation_history[0]['role']}, preview={conversation_history[0]['content'][:100]}...")
+                            logger.debug(f"Last history message: role={conversation_history[-1]['role']}, preview={conversation_history[-1]['content'][:100]}...")
 
                         # Now deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
@@ -3214,7 +3222,12 @@ To create a video, you need to:
                 # Text fits in one message, just update with cursor
                 display_text = accumulated_text + " ▌"
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
-        
+
+        # CRITICAL DEBUG: Log conversation_history state before calling generate_response
+        logger.info(f"🔎 About to call generate_response with conversation_history length: {len(conversation_history)}")
+        if conversation_history:
+            logger.debug(f"conversation_history preview: first message role={conversation_history[0].get('role')}")
+
         # Generate response with streaming and progressive updates (include user_id for memory injection and model selection)
         llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model)
         
@@ -3283,9 +3296,11 @@ To create a video, you need to:
                     db.session.add(message_record)
                     db.session.commit()
                     message_id = message_record.id
-                    logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
+                    logger.info(f"✅ Message stored for user_id={user_id}, message_id={message_id}")
+                    logger.debug(f"Stored user_message preview: {text[:100]}...")
+                    logger.debug(f"Stored bot_response preview: {llm_response[:100]}...")
             except Exception as db_error:
-                logger.error(f"Database error storing message: {str(db_error)}")
+                logger.error(f"❌ Database error storing message: {str(db_error)}", exc_info=True)
                 # Flask-SQLAlchemy automatically rolls back on exception within app context
         
         # Store transaction record in BACKGROUND THREAD (non-critical for memory)

@@ -624,10 +624,22 @@ def estimate_messages_tokens(messages: list) -> int:
 
 def create_request_data(user_message: str, model: Optional[str] = None, conversation_history: Optional[List] = None) -> Dict[str, Any]:
     """Create request data with token budget management"""
-    
+
     if model is None:
         model = os.environ.get('MODEL', DEFAULT_MODEL)
-    
+
+    # CRITICAL DEBUG: Log what conversation_history we received
+    if conversation_history is None:
+        logger.warning(f"⚠️ create_request_data received conversation_history=None")
+        conversation_history = []
+    elif len(conversation_history) == 0:
+        logger.info(f"📝 create_request_data received empty conversation_history")
+    else:
+        logger.info(f"📚 create_request_data received {len(conversation_history)} history messages")
+        # Log the roles to see the structure
+        roles_summary = [msg.get('role', 'unknown') for msg in conversation_history]
+        logger.debug(f"History roles: {roles_summary}")
+
     # Token budget configuration
     SAFE_INPUT_BUDGET = 16000  # Safe total for system + history + user message
     MAX_OUTPUT_TOKENS = 16000  # Maximum output tokens for long-form content
@@ -699,7 +711,13 @@ def create_request_data(user_message: str, model: Optional[str] = None, conversa
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(trimmed_history)
     messages.append({"role": "user", "content": user_message})
-    
+
+    # CRITICAL DEBUG: Log final message structure being sent to LLM
+    logger.info(f"🔍 Final messages to LLM: {len(messages)} total (1 system + {len(trimmed_history)} history + 1 user)")
+    if len(trimmed_history) > 0:
+        logger.debug(f"First history message role: {trimmed_history[0].get('role')}, content preview: {trimmed_history[0].get('content', '')[:100]}")
+        logger.debug(f"Last history message role: {trimmed_history[-1].get('role')}, content preview: {trimmed_history[-1].get('content', '')[:100]}")
+
     # Calculate final token estimate and verify budget
     total_input_tokens = estimate_messages_tokens(messages)
     
