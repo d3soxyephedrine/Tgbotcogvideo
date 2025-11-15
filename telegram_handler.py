@@ -3141,7 +3141,7 @@ To create a video, you need to:
                         # This prevents incomplete conversations from breaking context
                         subquery = db.session.query(Message.id).filter(
                             Message.user_id == user_id,
-                            Message.bot_response.isnot(None),
+                            Message.bot_response.is_not(None),
                             Message.bot_response != ''
                         ).order_by(desc(Message.created_at)).limit(10).subquery()
                         recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
