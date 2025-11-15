@@ -445,62 +445,61 @@ def handle_successful_payment(message):
             send_message(chat_id, "❌ Database not available. Please try again later.")
             return
         
-        with current_app.app_context():
-            # Get user
-            user = User.query.filter_by(telegram_id=telegram_id).first()
-            if not user:
-                logger.error(f"User not found: {telegram_id}")
-                send_message(chat_id, "❌ User not found. Please contact support.")
+        # Get user
+        user = User.query.filter_by(telegram_id=telegram_id).first()
+        if not user:
+            logger.error(f"User not found: {telegram_id}")
+            send_message(chat_id, "❌ User not found. Please contact support.")
+            return
+            
+        # Check if payment already processed (idempotency)
+        existing_payment = TelegramPayment.query.filter_by(
+            telegram_payment_charge_id=telegram_payment_charge_id
+        ).first()
+            
+        if existing_payment:
+            if existing_payment.credits_added:
+                logger.warning(f"Payment already processed: {telegram_payment_charge_id}")
+                send_message(chat_id, f"✅ Payment already credited! You have {user.credits} credits.")
                 return
-            
-            # Check if payment already processed (idempotency)
-            existing_payment = TelegramPayment.query.filter_by(
-                telegram_payment_charge_id=telegram_payment_charge_id
-            ).first()
-            
-            if existing_payment:
-                if existing_payment.credits_added:
-                    logger.warning(f"Payment already processed: {telegram_payment_charge_id}")
-                    send_message(chat_id, f"✅ Payment already credited! You have {user.credits} credits.")
-                    return
-                else:
-                    # Payment exists but credits not added - add them now
-                    logger.info(f"Completing partially processed payment: {telegram_payment_charge_id}")
             else:
-                # Create new payment record
-                existing_payment = TelegramPayment(
-                    user_id=user.id,
-                    telegram_payment_charge_id=telegram_payment_charge_id,
-                    invoice_payload=invoice_payload,
-                    credits_purchased=credits_purchased,
-                    stars_amount=stars_amount,
-                    status='completed'
-                )
-                db.session.add(existing_payment)
-            
-            # Add credits to user
-            user.credits += credits_purchased
-            user.last_purchase_at = datetime.utcnow()
-            
-            # Mark payment as processed
-            existing_payment.credits_added = True
-            existing_payment.processed_at = datetime.utcnow()
-            
-            # Create transaction record
-            transaction = Transaction(
+                # Payment exists but credits not added - add them now
+                logger.info(f"Completing partially processed payment: {telegram_payment_charge_id}")
+        else:
+            # Create new payment record
+            existing_payment = TelegramPayment(
                 user_id=user.id,
-                credits_used=-credits_purchased,  # Negative for credit addition
-                transaction_type='telegram_stars_purchase',
-                description=f"Purchased {credits_purchased} credits via Telegram Stars ({stars_amount} ⭐)"
+                telegram_payment_charge_id=telegram_payment_charge_id,
+                invoice_payload=invoice_payload,
+                credits_purchased=credits_purchased,
+                stars_amount=stars_amount,
+                status='completed'
             )
-            db.session.add(transaction)
+            db.session.add(existing_payment)
             
-            db.session.commit()
+        # Add credits to user
+        user.credits += credits_purchased
+        user.last_purchase_at = datetime.utcnow()
             
-            logger.info(f"Payment processed successfully: {credits_purchased} credits added to user {telegram_id}")
+        # Mark payment as processed
+        existing_payment.credits_added = True
+        existing_payment.processed_at = datetime.utcnow()
             
-            # Send success message
-            response = f"""✅ Payment Successful!
+        # Create transaction record
+        transaction = Transaction(
+            user_id=user.id,
+            credits_used=-credits_purchased,  # Negative for credit addition
+            transaction_type='telegram_stars_purchase',
+            description=f"Purchased {credits_purchased} credits via Telegram Stars ({stars_amount} ⭐)"
+        )
+        db.session.add(transaction)
+            
+        db.session.commit()
+            
+        logger.info(f"Payment processed successfully: {credits_purchased} credits added to user {telegram_id}")
+            
+        # Send success message
+        response = f"""✅ Payment Successful!
 
 {stars_amount} ⭐ → {credits_purchased} credits
 
@@ -668,24 +667,48 @@ Send any message to get an uncensored AI response!
 
 def process_update(update):
     """Process an update from Telegram
-    
+
+    CRITICAL: This function MUST be called from within a Flask app context.
+    It will clean up database sessions when done to prevent connection pool exhaustion.
+
     Args:
         update (dict): The update object from Telegram
     """
-    # Handle pre-checkout query (validate payment before processing)
-    if "pre_checkout_query" in update:
-        handle_pre_checkout_query(update["pre_checkout_query"])
-        return
-    
-    # Handle successful payment
-    if "message" in update and "successful_payment" in update["message"]:
-        handle_successful_payment(update["message"])
-        return
-    
-    # Check if the update contains a message
-    if "message" not in update:
-        logger.debug("Update does not contain a message")
-        return
+    try:
+        # Handle pre-checkout query (validate payment before processing)
+        if "pre_checkout_query" in update:
+            handle_pre_checkout_query(update["pre_checkout_query"])
+            return
+
+        # Handle successful payment
+        if "message" in update and "successful_payment" in update["message"]:
+            handle_successful_payment(update["message"])
+            return
+
+        # Check if the update contains a message
+        if "message" not in update:
+            logger.debug("Update does not contain a message")
+            return
+
+        # Process the update (main logic below)
+        _process_update_impl(update)
+
+    finally:
+        # CRITICAL: Always clean up database session to prevent connection pool exhaustion
+        if DB_AVAILABLE:
+            try:
+                db.session.remove()
+                logger.debug("Database session cleaned up successfully")
+            except Exception as cleanup_error:
+                logger.error(f"Error cleaning up database session: {str(cleanup_error)}")
+
+
+def _process_update_impl(update):
+    """Internal implementation of process_update
+
+    CRITICAL: Must be called from within app context (via process_update wrapper).
+    DO NOT call this directly - always use process_update() wrapper.
+    """
     
     message = update.get("message", {})
     chat_id = message.get("chat", {}).get("id")
@@ -693,19 +716,19 @@ def process_update(update):
     text = message.get("text", "")
     caption = message.get("caption", "")
     photo = message.get("photo")
-    
+
     # Get user information
     user_info = message.get("from", {})
     telegram_id = user_info.get("id")
     username = user_info.get("username")
     first_name = user_info.get("first_name")
     last_name = user_info.get("last_name")
-    
+
     # If no chat_id, ignore
     if not chat_id:
         logger.debug(f"Missing chat_id: {chat_id}")
         return
-    
+
     # If there's a photo with caption, check if it's a command or generic image editing
     if photo and caption:
         # Skip for video/edit commands - they have their own handlers
@@ -716,9 +739,9 @@ def process_update(update):
     elif not text:
         logger.debug(f"Missing text and no photo with caption")
         return
-    
+
     logger.debug(f"Processing message from chat {chat_id}: {text}")
-    
+
     try:
         # First, send a "typing" action to indicate the bot is processing
         requests.post(
@@ -726,40 +749,41 @@ def process_update(update):
             json={
                 "chat_id": chat_id,
                 "action": "typing"
-            }
+            },
+            timeout=TELEGRAM_TIMEOUT
         )
-        
+
         # Store user in database if database is available
+        # CRITICAL: No nested app_context() - we're already in app context from webhook handler
         user_id = None
         user = None
         if DB_AVAILABLE:
             try:
-                from flask import current_app
-                with current_app.app_context():
-                    # Get or create user
-                    user = User.query.filter_by(telegram_id=telegram_id).first()
-                    if not user:
-                        user = User(
-                            telegram_id=telegram_id,
-                            username=username,
-                            first_name=first_name,
-                            last_name=last_name,
-                            credits=100
-                        )
-                        db.session.add(user)
-                        db.session.commit()
-                        logger.info(f"✅ New user created: telegram_id={telegram_id}, user_id={user.id}")
-                    else:
-                        # Update last interaction
-                        user.last_interaction = datetime.utcnow()
-                        db.session.commit()
-                        logger.debug(f"✅ Existing user updated: telegram_id={telegram_id}, user_id={user.id}")
+                # Get or create user (already in app context)
+                user = User.query.filter_by(telegram_id=telegram_id).first()
+                if not user:
+                    user = User(
+                        telegram_id=telegram_id,
+                        username=username,
+                        first_name=first_name,
+                        last_name=last_name,
+                        credits=100
+                    )
+                    db.session.add(user)
+                    db.session.commit()
+                    logger.info(f"✅ New user created: telegram_id={telegram_id}, user_id={user.id}")
+                else:
+                    # Update last interaction
+                    user.last_interaction = datetime.utcnow()
+                    db.session.commit()
+                    logger.debug(f"✅ Existing user updated: telegram_id={telegram_id}, user_id={user.id}")
 
-                    user_id = user.id
-                    logger.info(f"✅ User ID set: user_id={user_id} for telegram_id={telegram_id}")
+                user_id = user.id
+                logger.info(f"✅ User ID set: user_id={user_id} for telegram_id={telegram_id}")
             except Exception as db_error:
                 logger.error(f"❌ Database error while storing user: {str(db_error)}", exc_info=True)
                 logger.warning("⚠️ Continuing without database storage - user_id will be None")
+                db.session.rollback()  # Rollback failed transaction
                 user_id = None  # Explicitly set to None
         else:
             logger.debug("Skipping user storage - database not available")
@@ -780,16 +804,15 @@ def process_update(update):
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        message_record = Message(
-                            user_id=user_id,
-                            user_message=text,
-                            bot_response=response,
-                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
-                            credits_charged=0
-                        )
-                        db.session.add(message_record)
-                        db.session.commit()
+                    message_record = Message(
+                        user_id=user_id,
+                        user_message=text,
+                        bot_response=response,
+                        model_used=os.environ.get('MODEL', DEFAULT_MODEL),
+                        credits_charged=0
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
                 except Exception as db_error:
                     logger.error(f"Database error storing command: {str(db_error)}")
             
@@ -805,45 +828,44 @@ def process_update(update):
                     from flask import current_app
                     from datetime import timedelta
 
-                    with current_app.app_context():
-                        # Reload user in this context to avoid detached object issues
-                        user = User.query.filter_by(telegram_id=telegram_id).first()
-                        if not user:
-                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
-                            send_message(chat_id, "❌ User not found. Please try again.")
-                            return
+                    # Reload user in this context to avoid detached object issues
+                    user = User.query.filter_by(telegram_id=telegram_id).first()
+                    if not user:
+                        logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
+                        send_message(chat_id, "❌ User not found. Please try again.")
+                        return
 
-                        logger.info(f"✅ User loaded for /balance: user_id={user.id}, credits={user.credits}, daily={user.daily_credits}")
+                    logger.info(f"✅ User loaded for /balance: user_id={user.id}, credits={user.credits}, daily={user.daily_credits}")
 
-                        # Check if daily credits are expired
-                        now = datetime.utcnow()
-                        if user.daily_credits_expiry and now > user.daily_credits_expiry:
-                            user.daily_credits = 0
-                            user.daily_credits_expiry = None
-                            db.session.commit()
-
-                        total_credits = user.credits + user.daily_credits
-
-                        if user.daily_credits > 0:
-                            # Show breakdown when there are daily credits
-                            time_until_expiry = user.daily_credits_expiry - now
-                            hours = int(time_until_expiry.total_seconds() // 3600)
-                            response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-                        else:
-                            # Show simple balance when no daily credits
-                            response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-
-                        # Store command in database
-                        message_record = Message(
-                            user_id=user.id,
-                            user_message=text,
-                            bot_response=response,
-                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
-                            credits_charged=0
-                        )
-                        db.session.add(message_record)
+                    # Check if daily credits are expired
+                    now = datetime.utcnow()
+                    if user.daily_credits_expiry and now > user.daily_credits_expiry:
+                        user.daily_credits = 0
+                        user.daily_credits_expiry = None
                         db.session.commit()
-                        logger.info(f"✅ /balance response prepared: total_credits={total_credits}")
+
+                    total_credits = user.credits + user.daily_credits
+
+                    if user.daily_credits > 0:
+                        # Show breakdown when there are daily credits
+                        time_until_expiry = user.daily_credits_expiry - now
+                        hours = int(time_until_expiry.total_seconds() // 3600)
+                        response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+                    else:
+                        # Show simple balance when no daily credits
+                        response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+
+                    # Store command in database
+                    message_record = Message(
+                        user_id=user.id,
+                        user_message=text,
+                        bot_response=response,
+                        model_used=os.environ.get('MODEL', DEFAULT_MODEL),
+                        credits_charged=0
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
+                    logger.info(f"✅ /balance response prepared: total_credits={total_credits}")
                 except Exception as db_error:
                     logger.error(f"❌ Database error processing /balance: {str(db_error)}", exc_info=True)
                     response = "❌ Error retrieving balance. Please try again."
@@ -864,44 +886,43 @@ def process_update(update):
                     from flask import current_app
                     from datetime import timedelta
 
-                    with current_app.app_context():
-                        # Reload user in this context to avoid detached object issues
-                        user = User.query.filter_by(telegram_id=telegram_id).first()
-                        if not user:
-                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
-                            send_message(chat_id, "❌ User not found. Please try again.")
+                    # Reload user in this context to avoid detached object issues
+                    user = User.query.filter_by(telegram_id=telegram_id).first()
+                    if not user:
+                        logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
+                        send_message(chat_id, "❌ User not found. Please try again.")
+                        return
+
+                    logger.info(f"✅ User loaded for /daily: user_id={user.id}, last_claim={user.last_daily_claim_at}")
+
+                    now = datetime.utcnow()
+
+                    # Check if user can claim (24h cooldown)
+                    if user.last_daily_claim_at:
+                        time_since_last_claim = now - user.last_daily_claim_at
+                        if time_since_last_claim < timedelta(hours=24):
+                            # Calculate time until next claim
+                            time_until_next = timedelta(hours=24) - time_since_last_claim
+                            hours = int(time_until_next.total_seconds() // 3600)
+                            minutes = int((time_until_next.total_seconds() % 3600) // 60)
+                            response = f"⏰ Daily credits already claimed!\n\nYou can claim again in {hours}h {minutes}m."
+                            send_message(chat_id, response)
                             return
 
-                        logger.info(f"✅ User loaded for /daily: user_id={user.id}, last_claim={user.last_daily_claim_at}")
+                    # Grant 25 daily credits with 48h expiry
+                    user.daily_credits = 25
+                    user.daily_credits_expiry = now + timedelta(hours=48)
+                    user.last_daily_claim_at = now
+                    db.session.commit()
 
-                        now = datetime.utcnow()
+                    # Calculate expiry countdown
+                    expiry_time = user.daily_credits_expiry
+                    time_until_expiry = expiry_time - now
+                    hours = int(time_until_expiry.total_seconds() // 3600)
 
-                        # Check if user can claim (24h cooldown)
-                        if user.last_daily_claim_at:
-                            time_since_last_claim = now - user.last_daily_claim_at
-                            if time_since_last_claim < timedelta(hours=24):
-                                # Calculate time until next claim
-                                time_until_next = timedelta(hours=24) - time_since_last_claim
-                                hours = int(time_until_next.total_seconds() // 3600)
-                                minutes = int((time_until_next.total_seconds() % 3600) // 60)
-                                response = f"⏰ Daily credits already claimed!\n\nYou can claim again in {hours}h {minutes}m."
-                                send_message(chat_id, response)
-                                return
+                    response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
 
-                        # Grant 25 daily credits with 48h expiry
-                        user.daily_credits = 25
-                        user.daily_credits_expiry = now + timedelta(hours=48)
-                        user.last_daily_claim_at = now
-                        db.session.commit()
-
-                        # Calculate expiry countdown
-                        expiry_time = user.daily_credits_expiry
-                        time_until_expiry = expiry_time - now
-                        hours = int(time_until_expiry.total_seconds() // 3600)
-
-                        response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
-
-                        logger.info(f"✅ User {telegram_id} claimed daily credits: +25 credits, new total={user.credits + user.daily_credits}")
+                    logger.info(f"✅ User {telegram_id} claimed daily credits: +25 credits, new total={user.credits + user.daily_credits}")
                 except Exception as db_error:
                     logger.error(f"❌ Database error processing /daily: {str(db_error)}", exc_info=True)
                     db.session.rollback()
@@ -966,16 +987,15 @@ Visit: https://{domain}/buy?telegram_id={telegram_id}
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        message_record = Message(
-                            user_id=user_id,
-                            user_message=text,
-                            bot_response=response + crypto_msg,
-                            model_used=os.environ.get('MODEL', DEFAULT_MODEL),
-                            credits_charged=0
-                        )
-                        db.session.add(message_record)
-                        db.session.commit()
+                    message_record = Message(
+                        user_id=user_id,
+                        user_message=text,
+                        bot_response=response + crypto_msg,
+                        model_used=os.environ.get('MODEL', DEFAULT_MODEL),
+                        credits_charged=0
+                    )
+                    db.session.add(message_record)
+                    db.session.commit()
                 except Exception as db_error:
                     logger.error(f"Database error storing buy command: {str(db_error)}")
             
@@ -1000,20 +1020,19 @@ Please send me a direct message (DM) and use /getapikey there to receive your AP
                     from flask import current_app
                     import secrets
                     
-                    with current_app.app_context():
-                        # Reload user in this context
-                        user = User.query.filter_by(telegram_id=telegram_id).first()
+                    # Reload user in this context
+                    user = User.query.filter_by(telegram_id=telegram_id).first()
                         
-                        if not user:
-                            response = "❌ User not found. Please use /start first."
-                        else:
-                            # Generate API key if not exists
-                            if not user.api_key:
-                                user.api_key = secrets.token_urlsafe(48)
-                                db.session.commit()
-                                logger.info(f"Generated new API key for user {telegram_id}")
+                    if not user:
+                        response = "❌ User not found. Please use /start first."
+                    else:
+                        # Generate API key if not exists
+                        if not user.api_key:
+                            user.api_key = secrets.token_urlsafe(48)
+                            db.session.commit()
+                            logger.info(f"Generated new API key for user {telegram_id}")
                             
-                            response = f"""🔑 Your API Key:
+                        response = f"""🔑 Your API Key:
 
 `{user.api_key}`
 
@@ -1049,32 +1068,31 @@ Use /buy to purchase more credits or /daily for free credits.
             if DB_AVAILABLE and user:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        # Reload user to get CURRENT preferred_model from database (not stale value)
-                        fresh_user = User.query.filter_by(telegram_id=telegram_id).first()
-                        if not fresh_user:
-                            send_message(chat_id, "❌ User not found. Please try /start first.")
-                            return
+                    # Reload user to get CURRENT preferred_model from database (not stale value)
+                    fresh_user = User.query.filter_by(telegram_id=telegram_id).first()
+                    if not fresh_user:
+                        send_message(chat_id, "❌ User not found. Please try /start first.")
+                        return
                         
-                        # Get current model from database
-                        current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+                    # Get current model from database
+                    current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
                         
-                        # Toggle model
-                        if 'deepseek' in current_model.lower():
-                            new_model = 'openai/chatgpt-4o-latest'
-                            new_model_name = 'ChatGPT-4o'
-                            cost_per_message = '2 credits'
-                        else:
-                            new_model = 'deepseek/deepseek-chat-v3-0324'
-                            new_model_name = 'DeepSeek v3-0324'
-                            cost_per_message = '1 credit'
+                    # Toggle model
+                    if 'deepseek' in current_model.lower():
+                        new_model = 'openai/chatgpt-4o-latest'
+                        new_model_name = 'ChatGPT-4o'
+                        cost_per_message = '2 credits'
+                    else:
+                        new_model = 'deepseek/deepseek-chat-v3-0324'
+                        new_model_name = 'DeepSeek v3-0324'
+                        cost_per_message = '1 credit'
                         
-                        # Update user's preferred model
-                        fresh_user.preferred_model = new_model
-                        db.session.commit()
+                    # Update user's preferred model
+                    fresh_user.preferred_model = new_model
+                    db.session.commit()
                         
-                        response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to switch back."
-                        logger.info(f"User {telegram_id} switched model to {new_model}")
+                    response = f"✅ Model switched to *{new_model_name}*\n\n💬 Cost: {cost_per_message} per message\n\nUse /model again to switch back."
+                    logger.info(f"User {telegram_id} switched model to {new_model}")
                 except Exception as db_error:
                     logger.error(f"Database error switching model: {str(db_error)}")
                     db.session.rollback()
@@ -1090,21 +1108,20 @@ Use /buy to purchase more credits or /daily for free credits.
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        # First, delete all transactions that reference messages for this user
-                        # Get all message IDs for this user
-                        message_ids = [msg.id for msg in Message.query.filter_by(user_id=user_id).all()]
+                    # First, delete all transactions that reference messages for this user
+                    # Get all message IDs for this user
+                    message_ids = [msg.id for msg in Message.query.filter_by(user_id=user_id).all()]
                         
-                        # Delete transactions that reference these messages
-                        if message_ids:
-                            Transaction.query.filter(Transaction.message_id.in_(message_ids)).delete(synchronize_session=False)
+                    # Delete transactions that reference these messages
+                    if message_ids:
+                        Transaction.query.filter(Transaction.message_id.in_(message_ids)).delete(synchronize_session=False)
                         
-                        # Now delete all messages for this user
-                        deleted_count = Message.query.filter_by(user_id=user_id).delete()
-                        db.session.commit()
+                    # Now delete all messages for this user
+                    deleted_count = Message.query.filter_by(user_id=user_id).delete()
+                    db.session.commit()
                         
-                        response = f"✅ Conversation history cleared!\n\n{deleted_count} messages deleted from your history.\n\nYou can now start a fresh conversation with full system prompt effectiveness."
-                        logger.info(f"Cleared {deleted_count} messages for user {user_id}")
+                    response = f"✅ Conversation history cleared!\n\n{deleted_count} messages deleted from your history.\n\nYou can now start a fresh conversation with full system prompt effectiveness."
+                    logger.info(f"Cleared {deleted_count} messages for user {user_id}")
                 except Exception as db_error:
                     logger.error(f"Database error clearing history: {str(db_error)}")
                     db.session.rollback()
@@ -1762,115 +1779,114 @@ To create a video, you need to:
                     from sqlalchemy import func
                     from datetime import timedelta
                     
-                    with current_app.app_context():
-                        # Time window: Last 7 days
-                        now = datetime.utcnow()
-                        cutoff_time = now - timedelta(days=7)
+                    # Time window: Last 7 days
+                    now = datetime.utcnow()
+                    cutoff_time = now - timedelta(days=7)
                         
-                        # Core platform stats
-                        total_users = User.query.count()
-                        total_messages = Message.query.count()
+                    # Core platform stats
+                    total_users = User.query.count()
+                    total_messages = Message.query.count()
                         
-                        # Revenue stats - Last 7 days (convert Telegram Stars to USD: 1 Star ≈ $0.013)
-                        telegram_stars_7d = db.session.query(func.sum(TelegramPayment.stars_amount)).filter(
-                            TelegramPayment.created_at >= cutoff_time
-                        ).scalar() or 0
-                        revenue_telegram_7d = telegram_stars_7d * 0.013
-                        revenue_crypto_7d = db.session.query(func.sum(CryptoPayment.price_amount)).filter(
-                            CryptoPayment.created_at >= cutoff_time,
-                            CryptoPayment.payment_status.in_(['confirmed', 'finished'])
-                        ).scalar() or 0
-                        revenue_7d = revenue_telegram_7d + revenue_crypto_7d
+                    # Revenue stats - Last 7 days (convert Telegram Stars to USD: 1 Star ≈ $0.013)
+                    telegram_stars_7d = db.session.query(func.sum(TelegramPayment.stars_amount)).filter(
+                        TelegramPayment.created_at >= cutoff_time
+                    ).scalar() or 0
+                    revenue_telegram_7d = telegram_stars_7d * 0.013
+                    revenue_crypto_7d = db.session.query(func.sum(CryptoPayment.price_amount)).filter(
+                        CryptoPayment.created_at >= cutoff_time,
+                        CryptoPayment.payment_status.in_(['confirmed', 'finished'])
+                    ).scalar() or 0
+                    revenue_7d = revenue_telegram_7d + revenue_crypto_7d
                         
-                        # Credits sold - Last 7 days
-                        credits_telegram_7d = db.session.query(func.sum(TelegramPayment.credits_purchased)).filter(
-                            TelegramPayment.created_at >= cutoff_time
-                        ).scalar() or 0
-                        credits_crypto_7d = db.session.query(func.sum(CryptoPayment.credits_purchased)).filter(
-                            CryptoPayment.created_at >= cutoff_time,
-                            CryptoPayment.payment_status.in_(['confirmed', 'finished'])
-                        ).scalar() or 0
-                        credits_sold_7d = credits_telegram_7d + credits_crypto_7d
+                    # Credits sold - Last 7 days
+                    credits_telegram_7d = db.session.query(func.sum(TelegramPayment.credits_purchased)).filter(
+                        TelegramPayment.created_at >= cutoff_time
+                    ).scalar() or 0
+                    credits_crypto_7d = db.session.query(func.sum(CryptoPayment.credits_purchased)).filter(
+                        CryptoPayment.created_at >= cutoff_time,
+                        CryptoPayment.payment_status.in_(['confirmed', 'finished'])
+                    ).scalar() or 0
+                    credits_sold_7d = credits_telegram_7d + credits_crypto_7d
                         
-                        # Lock health
-                        users_with_locks = User.query.filter(User.processing_since.isnot(None)).all()
-                        total_locks = len(users_with_locks)
-                        stuck_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() > 300)
-                        active_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() <= 60)
-                        warning_locks = total_locks - stuck_locks - active_locks
+                    # Lock health
+                    users_with_locks = User.query.filter(User.processing_since.isnot(None)).all()
+                    total_locks = len(users_with_locks)
+                    stuck_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() > 300)
+                    active_locks = sum(1 for u in users_with_locks if (now - u.processing_since).total_seconds() <= 60)
+                    warning_locks = total_locks - stuck_locks - active_locks
                         
-                        if stuck_locks > 0:
-                            lock_status = "🔴 NEEDS ATTENTION"
-                        elif warning_locks > 0:
-                            lock_status = "🟡 MONITORING"
-                        else:
-                            lock_status = "🟢 HEALTHY"
+                    if stuck_locks > 0:
+                        lock_status = "🔴 NEEDS ATTENTION"
+                    elif warning_locks > 0:
+                        lock_status = "🟡 MONITORING"
+                    else:
+                        lock_status = "🟢 HEALTHY"
                         
-                        # Content generation stats - Last 7 days (using Transaction for accuracy)
-                        videos_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type == 'video_generation'
-                        ).count()
+                    # Content generation stats - Last 7 days (using Transaction for accuracy)
+                    videos_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type == 'video_generation'
+                    ).count()
                         
-                        images_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation'])
-                        ).count()
+                    images_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation'])
+                    ).count()
                         
-                        edits_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type.in_(['image_editing', 'qwen_image_editing'])
-                        ).count()
+                    edits_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type.in_(['image_editing', 'qwen_image_editing'])
+                    ).count()
                         
-                        texts_7d = Message.query.filter(
-                            Message.created_at >= cutoff_time,
-                            Message.model_used.in_(['deepseek/deepseek-chat-v3-0324', 'openai/chatgpt-4o-latest'])
-                        ).count()
+                    texts_7d = Message.query.filter(
+                        Message.created_at >= cutoff_time,
+                        Message.model_used.in_(['deepseek/deepseek-chat-v3-0324', 'openai/chatgpt-4o-latest'])
+                    ).count()
                         
-                        # Image style breakdown - Last 7 days
-                        flux_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type == 'image_generation'
-                        ).count()
-                        qwen_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type == 'qwen_image_generation'
-                        ).count()
-                        grok_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type == 'grok_image_generation'
-                        ).count()
-                        hunyuan_7d = Transaction.query.filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type == 'hunyuan_image_generation'
-                        ).count()
+                    # Image style breakdown - Last 7 days
+                    flux_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type == 'image_generation'
+                    ).count()
+                    qwen_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type == 'qwen_image_generation'
+                    ).count()
+                    grok_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type == 'grok_image_generation'
+                    ).count()
+                    hunyuan_7d = Transaction.query.filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type == 'hunyuan_image_generation'
+                    ).count()
                         
-                        # Content type breakdown (percentages)
-                        total_content = images_7d + videos_7d + edits_7d + texts_7d
-                        if total_content > 0:
-                            img_pct = (images_7d / total_content) * 100
-                            vid_pct = (videos_7d / total_content) * 100
-                            edit_pct = (edits_7d / total_content) * 100
-                            text_pct = (texts_7d / total_content) * 100
-                        else:
-                            img_pct = vid_pct = edit_pct = text_pct = 0
+                    # Content type breakdown (percentages)
+                    total_content = images_7d + videos_7d + edits_7d + texts_7d
+                    if total_content > 0:
+                        img_pct = (images_7d / total_content) * 100
+                        vid_pct = (videos_7d / total_content) * 100
+                        edit_pct = (edits_7d / total_content) * 100
+                        text_pct = (texts_7d / total_content) * 100
+                    else:
+                        img_pct = vid_pct = edit_pct = text_pct = 0
                         
-                        # Model preference breakdown (all users)
-                        deepseek_users = User.query.filter(
-                            (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') | 
-                            (User.preferred_model.is_(None))
-                        ).count()
-                        gpt4o_users = User.query.filter(User.preferred_model == 'openai/chatgpt-4o-latest').count()
+                    # Model preference breakdown (all users)
+                    deepseek_users = User.query.filter(
+                        (User.preferred_model == 'deepseek/deepseek-chat-v3-0324') | 
+                        (User.preferred_model.is_(None))
+                    ).count()
+                    gpt4o_users = User.query.filter(User.preferred_model == 'openai/chatgpt-4o-latest').count()
                         
-                        # Sample popular prompts from last 7 days (get 5 random image descriptions)
-                        sample_prompts = db.session.query(Transaction.description).filter(
-                            Transaction.created_at >= cutoff_time,
-                            Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation']),
-                            Transaction.description.isnot(None)
-                        ).order_by(func.random()).limit(5).all()
+                    # Sample popular prompts from last 7 days (get 5 random image descriptions)
+                    sample_prompts = db.session.query(Transaction.description).filter(
+                        Transaction.created_at >= cutoff_time,
+                        Transaction.transaction_type.in_(['image_generation', 'qwen_image_generation', 'grok_image_generation', 'hunyuan_image_generation']),
+                        Transaction.description.isnot(None)
+                    ).order_by(func.random()).limit(5).all()
                         
-                        # Format response with content-focused analytics
-                        response = f"""🔥 *CONTENT INTELLIGENCE - LAST 7 DAYS* 🔥
+                    # Format response with content-focused analytics
+                    response = f"""🔥 *CONTENT INTELLIGENCE - LAST 7 DAYS* 🔥
 
 💎 *SYSTEM STATUS:*
 - Mode: *FULLY OPERATIONAL*
@@ -1952,28 +1968,27 @@ To create a video, you need to:
                         send_message(chat_id, "❌ Usage: /unlock_video [telegram_id]\n\nOmit telegram_id to unlock yourself.")
                         return
 
-                    with current_app.app_context():
-                        user = User.query.filter_by(telegram_id=target_telegram_id).first()
+                    user = User.query.filter_by(telegram_id=target_telegram_id).first()
 
-                        if not user:
-                            send_message(chat_id, f"❌ User with Telegram ID {target_telegram_id} not found.")
-                            return
+                    if not user:
+                        send_message(chat_id, f"❌ User with Telegram ID {target_telegram_id} not found.")
+                        return
 
-                        if user.last_purchase_at:
-                            send_message(
-                                chat_id,
-                                f"✓ User @{user.username or 'unknown'} (ID: {target_telegram_id}) already has video unlocked.\n"
-                                f"Last purchase: {user.last_purchase_at}"
-                            )
-                        else:
-                            user.last_purchase_at = datetime.utcnow()
-                            db.session.commit()
-                            send_message(
-                                chat_id,
-                                f"✅ Video generation unlocked for @{user.username or 'unknown'} (ID: {target_telegram_id})\n"
-                                f"Set last_purchase_at to {user.last_purchase_at}"
-                            )
-                            logger.info(f"Admin {telegram_id} unlocked video for user {target_telegram_id}")
+                    if user.last_purchase_at:
+                        send_message(
+                            chat_id,
+                            f"✓ User @{user.username or 'unknown'} (ID: {target_telegram_id}) already has video unlocked.\n"
+                            f"Last purchase: {user.last_purchase_at}"
+                        )
+                    else:
+                        user.last_purchase_at = datetime.utcnow()
+                        db.session.commit()
+                        send_message(
+                            chat_id,
+                            f"✅ Video generation unlocked for @{user.username or 'unknown'} (ID: {target_telegram_id})\n"
+                            f"Set last_purchase_at to {user.last_purchase_at}"
+                        )
+                        logger.info(f"Admin {telegram_id} unlocked video for user {target_telegram_id}")
 
                 except Exception as db_error:
                     logger.error(f"Error unlocking video: {str(db_error)}")
@@ -1988,7 +2003,6 @@ To create a video, you need to:
         # if DB_AVAILABLE and user:
         #     try:
         #         from flask import current_app
-        #         with current_app.app_context():
         #             # Reload user to get fresh processing_since value
         #             user = User.query.filter_by(telegram_id=telegram_id).first()
         #             if user:
@@ -2024,32 +2038,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for image generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for image generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 1:
-                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_generated >= 1:
+                        response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 10 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 10 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"10 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"10 credits deducted for image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2081,37 +2094,36 @@ To create a video, you need to:
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
-                            with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/imagine {prompt}",
-                                    bot_response=image_url,
-                                    model_used="flux-1-kontext-max",
-                                    credits_charged=5
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Image message stored synchronously for user {user_id}: {message_id}")
+                            # Create message record immediately for conversation history
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=f"/imagine {prompt}",
+                                bot_response=image_url,
+                                model_used="flux-1-kontext-max",
+                                credits_charged=5
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            message_id = message_record.id
+                            logger.info(f"Image message stored synchronously for user {user_id}: {message_id}")
                                 
-                                # Also store transaction synchronously for reliability
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=5,
-                                    message_id=message_id,
-                                    transaction_type='image_generation',
-                                    description=f"Image generation: {prompt[:100]}"
-                                )
-                                db.session.add(transaction)
+                            # Also store transaction synchronously for reliability
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=5,
+                                message_id=message_id,
+                                transaction_type='image_generation',
+                                description=f"Image generation: {prompt[:100]}"
+                            )
+                            db.session.add(transaction)
                                 
-                                # Increment images_generated counter
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.images_generated += 1
+                            # Increment images_generated counter
+                            user = User.query.get(user_id)
+                            if user:
+                                user.images_generated += 1
                                 
-                                db.session.commit()
-                                logger.debug(f"Image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
+                            db.session.commit()
+                            logger.debug(f"Image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -2130,12 +2142,11 @@ To create a video, you need to:
                 if DB_AVAILABLE and user_id:
                     try:
                         from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += 10
-                                db.session.commit()
-                                logger.info(f"Refunded 10 credits due to failed FLUX generation. New balance: {user.credits}")
+                        user = User.query.get(user_id)
+                        if user:
+                            user.credits += 10
+                            db.session.commit()
+                            logger.info(f"Refunded 10 credits due to failed FLUX generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
@@ -2156,32 +2167,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for Qwen image generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for Qwen image generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 1:
-                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_generated >= 1:
+                        response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 8 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 8 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"8 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"8 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2213,37 +2223,36 @@ To create a video, you need to:
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
-                            with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/qwen {prompt}",
-                                    bot_response=image_url,
-                                    model_used="qwen-image",
-                                    credits_charged=8
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Qwen image message stored synchronously for user {user_id}: {message_id}")
+                            # Create message record immediately for conversation history
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=f"/qwen {prompt}",
+                                bot_response=image_url,
+                                model_used="qwen-image",
+                                credits_charged=8
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            message_id = message_record.id
+                            logger.info(f"Qwen image message stored synchronously for user {user_id}: {message_id}")
                                 
-                                # Also store transaction synchronously for reliability
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=8,
-                                    message_id=message_id,
-                                    transaction_type='qwen_image_generation',
-                                    description=f"Qwen image generation: {prompt[:100]}"
-                                )
-                                db.session.add(transaction)
+                            # Also store transaction synchronously for reliability
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=8,
+                                message_id=message_id,
+                                transaction_type='qwen_image_generation',
+                                description=f"Qwen image generation: {prompt[:100]}"
+                            )
+                            db.session.add(transaction)
                                 
-                                # Increment images_generated counter
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.images_generated += 1
+                            # Increment images_generated counter
+                            user = User.query.get(user_id)
+                            if user:
+                                user.images_generated += 1
                                 
-                                db.session.commit()
-                                logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
+                            db.session.commit()
+                            logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Qwen image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -2262,12 +2271,11 @@ To create a video, you need to:
                 if DB_AVAILABLE and user_id:
                     try:
                         from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += 8
-                                db.session.commit()
-                                logger.info(f"Refunded 8 credits due to failed Qwen generation. New balance: {user.credits}")
+                        user = User.query.get(user_id)
+                        if user:
+                            user.credits += 8
+                            db.session.commit()
+                            logger.info(f"Refunded 8 credits due to failed Qwen generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
@@ -2288,32 +2296,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for Qwen image generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for Qwen image generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 1:
-                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_generated >= 1:
+                        response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 8 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 8 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Qwen image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"8 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"8 credits deducted for Qwen image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2345,37 +2352,36 @@ To create a video, you need to:
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
-                            with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/qwen {prompt}",
-                                    bot_response=image_url,
-                                    model_used="qwen-image",
-                                    credits_charged=3
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Qwen image message stored synchronously for user {user_id}: {message_id}")
+                            # Create message record immediately for conversation history
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=f"/qwen {prompt}",
+                                bot_response=image_url,
+                                model_used="qwen-image",
+                                credits_charged=3
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            message_id = message_record.id
+                            logger.info(f"Qwen image message stored synchronously for user {user_id}: {message_id}")
                                 
-                                # Also store transaction synchronously for reliability
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=3,
-                                    message_id=message_id,
-                                    transaction_type='qwen_image_generation',
-                                    description=f"Qwen image generation: {prompt[:100]}"
-                                )
-                                db.session.add(transaction)
+                            # Also store transaction synchronously for reliability
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=3,
+                                message_id=message_id,
+                                transaction_type='qwen_image_generation',
+                                description=f"Qwen image generation: {prompt[:100]}"
+                            )
+                            db.session.add(transaction)
                                 
-                                # Increment images_generated counter
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.images_generated += 1
+                            # Increment images_generated counter
+                            user = User.query.get(user_id)
+                            if user:
+                                user.images_generated += 1
                                 
-                                db.session.commit()
-                                logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
+                            db.session.commit()
+                            logger.debug(f"Qwen image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Qwen image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -2394,12 +2400,11 @@ To create a video, you need to:
                 if DB_AVAILABLE and user_id:
                     try:
                         from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += 8
-                                db.session.commit()
-                                logger.info(f"Refunded 8 credits due to failed Qwen generation. New balance: {user.credits}")
+                        user = User.query.get(user_id)
+                        if user:
+                            user.credits += 8
+                            db.session.commit()
+                            logger.info(f"Refunded 8 credits due to failed Qwen generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
@@ -2420,32 +2425,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for Grok image generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for Grok image generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 1:
-                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_generated >= 1:
+                        response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 8 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 8 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 8)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 8 credits to generate a Grok image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"8 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"8 credits deducted for Grok image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2477,37 +2481,36 @@ To create a video, you need to:
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
-                            with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/grok {prompt}",
-                                    bot_response=image_url,
-                                    model_used="grok-2-image-1212",
-                                    credits_charged=4
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Grok image message stored synchronously for user {user_id}: {message_id}")
+                            # Create message record immediately for conversation history
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=f"/grok {prompt}",
+                                bot_response=image_url,
+                                model_used="grok-2-image-1212",
+                                credits_charged=4
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            message_id = message_record.id
+                            logger.info(f"Grok image message stored synchronously for user {user_id}: {message_id}")
                                 
-                                # Also store transaction synchronously for reliability
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=4,
-                                    message_id=message_id,
-                                    transaction_type='grok_image_generation',
-                                    description=f"Grok image generation: {prompt[:100]}"
-                                )
-                                db.session.add(transaction)
+                            # Also store transaction synchronously for reliability
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=4,
+                                message_id=message_id,
+                                transaction_type='grok_image_generation',
+                                description=f"Grok image generation: {prompt[:100]}"
+                            )
+                            db.session.add(transaction)
                                 
-                                # Increment images_generated counter
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.images_generated += 1
+                            # Increment images_generated counter
+                            user = User.query.get(user_id)
+                            if user:
+                                user.images_generated += 1
                                 
-                                db.session.commit()
-                                logger.debug(f"Grok image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
+                            db.session.commit()
+                            logger.debug(f"Grok image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Grok image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -2526,12 +2529,11 @@ To create a video, you need to:
                 if DB_AVAILABLE and user_id:
                     try:
                         from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += 8
-                                db.session.commit()
-                                logger.info(f"Refunded 8 credits due to failed Grok generation. New balance: {user.credits}")
+                        user = User.query.get(user_id)
+                        if user:
+                            user.credits += 8
+                            db.session.commit()
+                            logger.info(f"Refunded 8 credits due to failed Grok generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
@@ -2552,32 +2554,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for Hunyuan image generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for Hunyuan image generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE GENERATION PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_generated >= 1:
-                            response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE GENERATION PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_generated >= 1:
+                        response = "🔒 Image generation requires purchase!\n\nImage generation is locked until you make your first purchase. Make a purchase to unlock all image generation features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 10 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 10 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 10)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 10 credits to generate an uncensored image.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"10 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"10 credits deducted for Hunyuan image (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2609,37 +2610,36 @@ To create a video, you need to:
                     if DB_AVAILABLE and user_id:
                         try:
                             from flask import current_app
-                            with current_app.app_context():
-                                # Create message record immediately for conversation history
-                                message_record = Message(
-                                    user_id=user_id,
-                                    user_message=f"/hunyuan {prompt}",
-                                    bot_response=image_url,
-                                    model_used="hunyuan-image-3",
-                                    credits_charged=5
-                                )
-                                db.session.add(message_record)
-                                db.session.commit()
-                                message_id = message_record.id
-                                logger.info(f"Hunyuan image message stored synchronously for user {user_id}: {message_id}")
+                            # Create message record immediately for conversation history
+                            message_record = Message(
+                                user_id=user_id,
+                                user_message=f"/hunyuan {prompt}",
+                                bot_response=image_url,
+                                model_used="hunyuan-image-3",
+                                credits_charged=5
+                            )
+                            db.session.add(message_record)
+                            db.session.commit()
+                            message_id = message_record.id
+                            logger.info(f"Hunyuan image message stored synchronously for user {user_id}: {message_id}")
                                 
-                                # Also store transaction synchronously for reliability
-                                transaction = Transaction(
-                                    user_id=user_id,
-                                    credits_used=5,
-                                    message_id=message_id,
-                                    transaction_type='hunyuan_image_generation',
-                                    description=f"Hunyuan image generation: {prompt[:100]}"
-                                )
-                                db.session.add(transaction)
+                            # Also store transaction synchronously for reliability
+                            transaction = Transaction(
+                                user_id=user_id,
+                                credits_used=5,
+                                message_id=message_id,
+                                transaction_type='hunyuan_image_generation',
+                                description=f"Hunyuan image generation: {prompt[:100]}"
+                            )
+                            db.session.add(transaction)
                                 
-                                # Increment images_generated counter
-                                user = User.query.get(user_id)
-                                if user:
-                                    user.images_generated += 1
+                            # Increment images_generated counter
+                            user = User.query.get(user_id)
+                            if user:
+                                user.images_generated += 1
                                 
-                                db.session.commit()
-                                logger.debug(f"Hunyuan image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
+                            db.session.commit()
+                            logger.debug(f"Hunyuan image transaction stored synchronously: message_id={message_id}, images_generated={user.images_generated if user else 'N/A'}")
                         except Exception as db_error:
                             logger.error(f"Database error storing Hunyuan image message/transaction: {str(db_error)}")
                             # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -2658,12 +2658,11 @@ To create a video, you need to:
                 if DB_AVAILABLE and user_id:
                     try:
                         from flask import current_app
-                        with current_app.app_context():
-                            user = User.query.get(user_id)
-                            if user:
-                                user.credits += 10
-                                db.session.commit()
-                                logger.info(f"Refunded 10 credits due to failed Hunyuan generation. New balance: {user.credits}")
+                        user = User.query.get(user_id)
+                        if user:
+                            user.credits += 10
+                            db.session.commit()
+                            logger.info(f"Refunded 10 credits due to failed Hunyuan generation. New balance: {user.credits}")
                     except Exception as db_error:
                         logger.error(f"Database error refunding credits: {str(db_error)}")
                 
@@ -2729,32 +2728,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for video generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for video generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # VIDEO PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at:
-                            response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # VIDEO PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at:
+                        response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits for video generation ({resolution}, {duration}s).\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits for video generation ({resolution}, {duration}s).\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"{credits_required} credits deducted for WAN 2.2 video (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"{credits_required} credits deducted for WAN 2.2 video (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -2898,32 +2896,31 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for video generation: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for video generation: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # VIDEO PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at:
-                            response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # VIDEO PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at:
+                        response = "🔒 Video generation is locked!\n\nTo unlock video generation, make your first purchase.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct 50 credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, 50)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 50 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct 50 credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, 50)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need 50 credits to generate a video.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful generation
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful generation
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"50 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"50 credits deducted for video generation (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -3090,33 +3087,32 @@ To create a video, you need to:
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        user = User.query.get(user_id)
-                        if not user:
-                            logger.error(f"User not found for image editing: {user_id}")
-                            send_message(chat_id, "❌ User account not found. Please try /start first.")
-                            return
+                    user = User.query.get(user_id)
+                    if not user:
+                        logger.error(f"User not found for image editing: {user_id}")
+                        send_message(chat_id, "❌ User account not found. Please try /start first.")
+                        return
                         
-                        # IMAGE EDITING PAYWALL: Check if user has ever purchased
-                        if not user.last_purchase_at and user.images_edited >= 1:
-                            response = "🔒 Image editing requires purchase!\n\nImage editing is locked until you make your first purchase. Make a purchase to unlock all image editing features.\n\nUse /buy to get started with credits."
-                            send_message(chat_id, response)
-                            return
+                    # IMAGE EDITING PAYWALL: Check if user has ever purchased
+                    if not user.last_purchase_at and user.images_edited >= 1:
+                        response = "🔒 Image editing requires purchase!\n\nImage editing is locked until you make your first purchase. Make a purchase to unlock all image editing features.\n\nUse /buy to get started with credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Deduct credits immediately (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
-                        if not success:
-                            total = user.credits + user.daily_credits
-                            model_display = "Qwen" if use_qwen else "FLUX"
-                            response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits to edit with {model_display}.\n\nUse /buy to purchase more credits or /daily to claim free credits."
-                            send_message(chat_id, response)
-                            return
+                    # Deduct credits immediately (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_required)
+                    if not success:
+                        total = user.credits + user.daily_credits
+                        model_display = "Qwen" if use_qwen else "FLUX"
+                        response = f"⚠️ Insufficient credits!\n\nYou have {total} credits but need {credits_required} credits to edit with {model_display}.\n\nUse /buy to purchase more credits or /daily to claim free credits."
+                        send_message(chat_id, response)
+                        return
                         
-                        # Store warning to send after successful editing
-                        pending_credit_warning = credit_warning
+                    # Store warning to send after successful editing
+                    pending_credit_warning = credit_warning
                         
-                        db.session.commit()
-                        logger.debug(f"{credits_required} credits deducted for {model_name} editing (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    db.session.commit()
+                    logger.debug(f"{credits_required} credits deducted for {model_name} editing (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
                 except Exception as db_error:
                     logger.error(f"Database error checking/deducting credits: {str(db_error)}")
             
@@ -3277,11 +3273,10 @@ To create a video, you need to:
             if DB_AVAILABLE and user:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        memory = store_memory(user.id, command_data, platform='telegram')
-                        response = f"✅ Memory saved! (ID: {memory.id})\n\n📝 {command_data}\n\n💡 Use `! memories` to view all saved memories."
-                        send_message(chat_id, response, parse_mode="Markdown")
-                        return
+                    memory = store_memory(user.id, command_data, platform='telegram')
+                    response = f"✅ Memory saved! (ID: {memory.id})\n\n📝 {command_data}\n\n💡 Use `! memories` to view all saved memories."
+                    send_message(chat_id, response, parse_mode="Markdown")
+                    return
                 except Exception as e:
                     logger.error(f"Failed to store memory: {e}")
                     send_message(chat_id, "❌ Failed to save memory. Please try again.")
@@ -3294,11 +3289,10 @@ To create a video, you need to:
             if DB_AVAILABLE and user:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        memories = get_user_memories(user.id)
-                        response = format_memories_for_display(memories)
-                        send_message(chat_id, response, parse_mode="Markdown")
-                        return
+                    memories = get_user_memories(user.id)
+                    response = format_memories_for_display(memories)
+                    send_message(chat_id, response, parse_mode="Markdown")
+                    return
                 except Exception as e:
                     logger.error(f"Failed to list memories: {e}")
                     send_message(chat_id, "❌ Failed to retrieve memories. Please try again.")
@@ -3311,15 +3305,14 @@ To create a video, you need to:
             if DB_AVAILABLE and user:
                 try:
                     from flask import current_app
-                    with current_app.app_context():
-                        memory_id = command_data
-                        success = delete_memory(user.id, memory_id)
-                        if success:
-                            response = f"🗑️ Memory [{memory_id}] deleted successfully."
-                        else:
-                            response = f"❌ Memory [{memory_id}] not found or doesn't belong to you."
-                        send_message(chat_id, response)
-                        return
+                    memory_id = command_data
+                    success = delete_memory(user.id, memory_id)
+                    if success:
+                        response = f"🗑️ Memory [{memory_id}] deleted successfully."
+                    else:
+                        response = f"❌ Memory [{memory_id}] not found or doesn't belong to you."
+                    send_message(chat_id, response)
+                    return
                 except Exception as e:
                     logger.error(f"Failed to delete memory: {e}")
                     send_message(chat_id, "❌ Failed to delete memory. Please try again.")
@@ -3343,58 +3336,57 @@ To create a video, you need to:
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
-                with current_app.app_context():
-                    # Fetch user and deduct credit immediately (must be synchronous)
-                    user = User.query.get(user_id)
-                    if user:
-                        # Determine credits to deduct based on writing mode or model
-                        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-                        # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3)
-                        if writing_mode:
-                            credits_to_deduct = 2
-                        else:
-                            credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+                # Fetch user and deduct credit immediately (must be synchronous)
+                user = User.query.get(user_id)
+                if user:
+                    # Determine credits to deduct based on writing mode or model
+                    selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+                    # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3)
+                    if writing_mode:
+                        credits_to_deduct = 2
+                    else:
+                        credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
 
-                        # CRITICAL FIX: Load conversation history BEFORE deducting credits
-                        # This ensures we always have context even if credit deduction fails
-                        logger.info(f"Loading conversation history for user_id={user_id}")
-                        from sqlalchemy import desc
+                    # CRITICAL FIX: Load conversation history BEFORE deducting credits
+                    # This ensures we always have context even if credit deduction fails
+                    logger.info(f"Loading conversation history for user_id={user_id}")
+                    from sqlalchemy import desc
 
-                        # Load last 10 COMPLETE message exchanges (where bot_response is not null)
-                        # This prevents incomplete conversations from breaking context
-                        subquery = db.session.query(Message.id).filter(
-                            Message.user_id == user_id,
-                            Message.bot_response.is_not(None),
-                            Message.bot_response != ''
-                        ).order_by(desc(Message.created_at)).limit(10).subquery()
-                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+                    # Load last 10 COMPLETE message exchanges (where bot_response is not null)
+                    # This prevents incomplete conversations from breaking context
+                    subquery = db.session.query(Message.id).filter(
+                        Message.user_id == user_id,
+                        Message.bot_response.is_not(None),
+                        Message.bot_response != ''
+                    ).order_by(desc(Message.created_at)).limit(10).subquery()
+                    recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
 
-                        # Format as conversation history (already in chronological order)
-                        # Only include messages with both user_message AND bot_response
-                        for msg in recent_messages:
-                            if msg.user_message and msg.bot_response:
-                                conversation_history.append({"role": "user", "content": msg.user_message})
-                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
+                    # Format as conversation history (already in chronological order)
+                    # Only include messages with both user_message AND bot_response
+                    for msg in recent_messages:
+                        if msg.user_message and msg.bot_response:
+                            conversation_history.append({"role": "user", "content": msg.user_message})
+                            conversation_history.append({"role": "assistant", "content": msg.bot_response})
 
-                        logger.info(f"✓ Loaded {len(recent_messages)} complete message exchanges = {len(conversation_history)} turns for user_id={user_id}")
-                        if conversation_history:
-                            logger.debug(f"First history message: role={conversation_history[0]['role']}, preview={conversation_history[0]['content'][:100]}...")
-                            logger.debug(f"Last history message: role={conversation_history[-1]['role']}, preview={conversation_history[-1]['content'][:100]}...")
+                    logger.info(f"✓ Loaded {len(recent_messages)} complete message exchanges = {len(conversation_history)} turns for user_id={user_id}")
+                    if conversation_history:
+                        logger.debug(f"First history message: role={conversation_history[0]['role']}, preview={conversation_history[0]['content'][:100]}...")
+                        logger.debug(f"Last history message: role={conversation_history[-1]['role']}, preview={conversation_history[-1]['content'][:100]}...")
 
-                        # Now deduct credits (daily credits first, then purchased)
-                        success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
-                        if success:
-                            db.session.commit()
-                            logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
+                    # Now deduct credits (daily credits first, then purchased)
+                    success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
+                    if success:
+                        db.session.commit()
+                        logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
 
-                            # Store credit warning to append to response later
-                            if credit_warning:
-                                user._credit_warning = credit_warning
-                        else:
-                            credits_available = False
+                        # Store credit warning to append to response later
+                        if credit_warning:
+                            user._credit_warning = credit_warning
                     else:
                         credits_available = False
-                        logger.warning(f"User not found for user_id={user_id}")
+                else:
+                    credits_available = False
+                    logger.warning(f"User not found for user_id={user_id}")
             except Exception as db_error:
                 logger.error(f"Error in consolidated DB operations: {str(db_error)}", exc_info=True)
                 conversation_history = []
@@ -3510,10 +3502,9 @@ To create a video, you need to:
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
-                with current_app.app_context():
-                    user = User.query.get(user_id)
-                    if user and hasattr(user, '_credit_warning') and user._credit_warning:
-                        send_message(chat_id, user._credit_warning)
+                user = User.query.get(user_id)
+                if user and hasattr(user, '_credit_warning') and user._credit_warning:
+                    send_message(chat_id, user._credit_warning)
             except Exception as e:
                 logger.debug(f"Error sending credit warning: {e}")
         
@@ -3523,21 +3514,20 @@ To create a video, you need to:
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
-                with current_app.app_context():
-                    # Create message record immediately for conversation history
-                    message_record = Message(
-                        user_id=user_id,
-                        user_message=text,
-                        bot_response=llm_response,
-                        model_used=selected_model,
-                        credits_charged=1
-                    )
-                    db.session.add(message_record)
-                    db.session.commit()
-                    message_id = message_record.id
-                    logger.info(f"✅ Message stored for user_id={user_id}, message_id={message_id}")
-                    logger.debug(f"Stored user_message preview: {text[:100]}...")
-                    logger.debug(f"Stored bot_response preview: {llm_response[:100]}...")
+                # Create message record immediately for conversation history
+                message_record = Message(
+                    user_id=user_id,
+                    user_message=text,
+                    bot_response=llm_response,
+                    model_used=selected_model,
+                    credits_charged=1
+                )
+                db.session.add(message_record)
+                db.session.commit()
+                message_id = message_record.id
+                logger.info(f"✅ Message stored for user_id={user_id}, message_id={message_id}")
+                logger.debug(f"Stored user_message preview: {text[:100]}...")
+                logger.debug(f"Stored bot_response preview: {llm_response[:100]}...")
             except Exception as db_error:
                 logger.error(f"❌ Database error storing message: {str(db_error)}", exc_info=True)
                 # Flask-SQLAlchemy automatically rolls back on exception within app context
@@ -3582,14 +3572,13 @@ To create a video, you need to:
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
-                with current_app.app_context():
-                    user = User.query.get(user_id)
-                    if user and user.processing_since:
-                        lock_duration = (datetime.utcnow() - user.processing_since).total_seconds()
-                        user.processing_since = None
-                        db.session.commit()
-                        logger.debug(f"Rate limit: Cleared processing lock for user {telegram_id} (held for {lock_duration:.2f}s)")
-                    elif user:
-                        logger.debug(f"Rate limit: No lock to clear for user {telegram_id}")
+                user = User.query.get(user_id)
+                if user and user.processing_since:
+                    lock_duration = (datetime.utcnow() - user.processing_since).total_seconds()
+                    user.processing_since = None
+                    db.session.commit()
+                    logger.debug(f"Rate limit: Cleared processing lock for user {telegram_id} (held for {lock_duration:.2f}s)")
+                elif user:
+                    logger.debug(f"Rate limit: No lock to clear for user {telegram_id}")
             except Exception as cleanup_error:
                 logger.error(f"Error in finally block clearing processing lock: {cleanup_error}")

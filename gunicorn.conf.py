@@ -67,7 +67,7 @@ def when_ready(server):
     except Exception as e:
         logger.error(f"Error during webhook registration: {str(e)}")
 
-# Worker lifecycle hooks for monitoring
+# Worker lifecycle hooks for monitoring and crash recovery
 def worker_int(worker):
     """Called when worker receives INT or QUIT signal"""
     import logging
@@ -75,25 +75,76 @@ def worker_int(worker):
     logger.warning(f"Worker {worker.pid} received INT/QUIT signal - shutting down gracefully")
 
 def worker_abort(worker):
-    """Called when worker is aborted (timeout or crash)"""
+    """Called when worker is aborted (timeout or crash)
+
+    STABILITY FIX: Enhanced logging for debugging worker crashes
+    """
     import logging
+    import traceback
     logger = logging.getLogger(__name__)
     logger.error(f"⚠️ WORKER ABORT: Worker {worker.pid} aborted/timed out - will be restarted")
+    logger.error(f"Worker age: {worker.age}s")
+    logger.error(f"Worker tmp: {worker.tmp}")
+
+    # Try to get stack trace if available
+    try:
+        import sys
+        import threading
+        for thread_id, frame in sys._current_frames().items():
+            logger.error(f"Thread {thread_id} stack trace:")
+            logger.error(''.join(traceback.format_stack(frame)))
+    except Exception as e:
+        logger.error(f"Could not get stack trace: {str(e)}")
 
 def post_worker_init(worker):
-    """Called after a worker has been forked"""
+    """Called after a worker has been forked
+
+    STABILITY FIX: Clean up any inherited database connections
+    """
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"✓ Worker {worker.pid} initialized successfully")
 
+    # Dispose of any inherited database connections from parent process
+    try:
+        from main import app, db
+        with app.app_context():
+            db.engine.dispose()
+            logger.debug(f"Worker {worker.pid}: Disposed inherited database connections")
+    except Exception as e:
+        logger.debug(f"Worker {worker.pid}: Could not dispose database connections: {str(e)}")
+
 def worker_exit(server, worker):
-    """Called when a worker exits"""
+    """Called when a worker exits
+
+    STABILITY FIX: Clean up database connections on worker exit
+    """
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"Worker {worker.pid} exited (normal shutdown)")
+    logger.info(f"Worker {worker.pid} exiting (age: {worker.age}s)")
+
+    # Clean up database connections
+    try:
+        from main import app, db
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+            logger.debug(f"Worker {worker.pid}: Cleaned up database connections")
+    except Exception as e:
+        logger.debug(f"Worker {worker.pid}: Could not clean up database connections: {str(e)}")
 
 def on_exit(server):
     """Called when gunicorn is shutting down"""
     import logging
     logger = logging.getLogger(__name__)
     logger.info("Gunicorn master process shutting down")
+
+    # Final cleanup
+    try:
+        from main import app, db
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+            logger.info("Master process: Cleaned up all database connections")
+    except Exception as e:
+        logger.debug(f"Master process: Could not clean up database connections: {str(e)}")
