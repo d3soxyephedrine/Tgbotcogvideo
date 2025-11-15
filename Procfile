@@ -1,1 +1,1 @@
-web: bash railway_start.sh
+web: gunicorn --config gunicorn.conf.py main:app
