@@ -247,6 +247,216 @@
             border-color: var(--error-red);
         }
 
+        /* Memories Section */
+        .memories-section {
+            border-top: 1px solid rgba(139, 92, 246, 0.2);
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .memories-section::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .memories-section::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .memories-section::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--primary-blue), var(--primary-purple));
+            border-radius: 3px;
+        }
+
+        .memories-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .memories-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .add-memory-btn {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 18px;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+        }
+
+        .add-memory-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.5);
+        }
+
+        .memory-item {
+            background: rgba(20, 20, 30, 0.3);
+            border: 1px solid rgba(139, 92, 246, 0.1);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .memory-item:hover {
+            background: rgba(20, 20, 30, 0.6);
+            border-color: rgba(139, 92, 246, 0.4);
+            backdrop-filter: blur(15px);
+        }
+
+        .memory-content {
+            font-size: 12px;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .memory-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .memory-btn {
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 4px;
+            color: var(--primary-purple);
+            font-size: 11px;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .memory-btn:hover {
+            background: rgba(139, 92, 246, 0.3);
+            border-color: var(--primary-purple);
+        }
+
+        .memory-btn.delete {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--error-red);
+        }
+
+        .memory-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: var(--error-red);
+        }
+
+        /* Memory Modal */
+        .memory-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .memory-modal.active {
+            display: flex;
+        }
+
+        .memory-modal-content {
+            background: var(--card-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.3);
+        }
+
+        .memory-modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .memory-textarea {
+            width: 100%;
+            min-height: 120px;
+            background: rgba(20, 20, 30, 0.6);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .memory-textarea:focus {
+            outline: none;
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .memory-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .memory-modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .memory-modal-btn.cancel {
+            background: rgba(160, 160, 184, 0.2);
+            color: var(--text-secondary);
+        }
+
+        .memory-modal-btn.cancel:hover {
+            background: rgba(160, 160, 184, 0.3);
+        }
+
+        .memory-modal-btn.save {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: white;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .memory-modal-btn.save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.6);
+        }
+
         .container {
             position: relative;
             display: flex;
@@ -1052,6 +1262,15 @@
             <div class="conversations-list" id="conversations-list">
                 <!-- Conversations will be loaded here -->
             </div>
+            <div class="memories-section">
+                <div class="memories-header">
+                    <span class="memories-title">🧬 Memories</span>
+                    <button class="add-memory-btn" id="add-memory-btn" title="Add Memory">+</button>
+                </div>
+                <div id="memories-list">
+                    <!-- Memories will be loaded here -->
+                </div>
+            </div>
         </div>
 
         <!-- Main Chat Container -->
@@ -1201,6 +1420,7 @@
             apiKeyModal.style.display = 'none';
             updateCreditBalance();
             loadConversations();
+            loadMemories();
         }
 
         // Toast notification function
@@ -1227,6 +1447,7 @@
                 apiKeyModal.style.display = 'none';
                 updateCreditBalance();
                 loadConversations();
+                loadMemories();
                 showToast('API key saved successfully!', 'success');
             } else {
                 showToast('Please enter a valid API key', 'error');
@@ -1317,6 +1538,180 @@
                 creditBadge.textContent = 'Credits: --';
             }
         }
+
+        // Memory Management Functions
+        let currentEditMemoryId = null;
+
+        async function loadMemories() {
+            if (!apiKey) return;
+
+            try {
+                const response = await fetch('/api/memories', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayMemories(data.memories || []);
+                } else {
+                    console.error('Failed to load memories');
+                }
+            } catch (error) {
+                console.error('Error loading memories:', error);
+            }
+        }
+
+        function displayMemories(memories) {
+            const memoriesList = document.getElementById('memories-list');
+
+            if (memories.length === 0) {
+                memoriesList.innerHTML = '<div style="font-size: 11px; color: var(--text-secondary); text-align: center; padding: 10px;">No memories yet</div>';
+                return;
+            }
+
+            memoriesList.innerHTML = memories.map(memory => `
+                <div class="memory-item" data-id="${memory.id}">
+                    <div class="memory-content">${escapeHtml(memory.content)}</div>
+                    <div class="memory-actions">
+                        <button class="memory-btn edit" onclick="editMemory(${memory.id}, '${escapeHtml(memory.content).replace(/'/g, "\\'")}')">Edit</button>
+                        <button class="memory-btn delete" onclick="deleteMemory(${memory.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function openMemoryModal(title, content = '', memoryId = null) {
+            const modal = document.getElementById('memory-modal');
+            const modalTitle = document.getElementById('memory-modal-title');
+            const textarea = document.getElementById('memory-textarea');
+
+            modalTitle.textContent = title;
+            textarea.value = content;
+            currentEditMemoryId = memoryId;
+            modal.classList.add('active');
+            textarea.focus();
+        }
+
+        function closeMemoryModal() {
+            const modal = document.getElementById('memory-modal');
+            const textarea = document.getElementById('memory-textarea');
+
+            modal.classList.remove('active');
+            textarea.value = '';
+            currentEditMemoryId = null;
+        }
+
+        async function saveMemory() {
+            const textarea = document.getElementById('memory-textarea');
+            const content = textarea.value.trim();
+
+            if (!content) {
+                showToast('Memory content cannot be empty', 'error');
+                return;
+            }
+
+            try {
+                let response;
+                if (currentEditMemoryId) {
+                    // Update existing memory
+                    response = await fetch(`/api/memories/${currentEditMemoryId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ content })
+                    });
+                } else {
+                    // Create new memory
+                    response = await fetch('/api/memories', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ content })
+                    });
+                }
+
+                if (response.ok) {
+                    showToast(currentEditMemoryId ? 'Memory updated' : 'Memory added', 'success');
+                    closeMemoryModal();
+                    await loadMemories();
+                } else {
+                    const errorData = await response.json();
+                    showToast(errorData.error || 'Failed to save memory', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving memory:', error);
+                showToast('Error saving memory', 'error');
+            }
+        }
+
+        async function deleteMemory(memoryId) {
+            if (!confirm('Are you sure you want to delete this memory?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/memories/${memoryId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    showToast('Memory deleted', 'success');
+                    await loadMemories();
+                } else {
+                    const errorData = await response.json();
+                    showToast(errorData.error || 'Failed to delete memory', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting memory:', error);
+                showToast('Error deleting memory', 'error');
+            }
+        }
+
+        function editMemory(memoryId, content) {
+            openMemoryModal('Edit Memory', content, memoryId);
+        }
+
+        // Memory UI Event Listeners
+        document.getElementById('add-memory-btn').addEventListener('click', () => {
+            openMemoryModal('Add Memory');
+        });
+
+        document.getElementById('memory-modal-cancel').addEventListener('click', closeMemoryModal);
+        document.getElementById('memory-modal-save').addEventListener('click', saveMemory);
+
+        // Close modal on backdrop click
+        document.getElementById('memory-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'memory-modal') {
+                closeMemoryModal();
+            }
+        });
+
+        // Allow Enter to save memory (Shift+Enter for new line)
+        document.getElementById('memory-textarea').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveMemory();
+            }
+            if (e.key === 'Escape') {
+                closeMemoryModal();
+            }
+        });
 
         async function loadConversations() {
             if (!apiKey) return;
@@ -1654,5 +2049,17 @@
         }
     </script>
     </div> <!-- end main-wrapper -->
+
+    <!-- Memory Modal -->
+    <div class="memory-modal" id="memory-modal">
+        <div class="memory-modal-content">
+            <div class="memory-modal-header" id="memory-modal-title">Add Memory</div>
+            <textarea class="memory-textarea" id="memory-textarea" placeholder="Enter memory content..."></textarea>
+            <div class="memory-modal-actions">
+                <button class="memory-modal-btn cancel" id="memory-modal-cancel">Cancel</button>
+                <button class="memory-modal-btn save" id="memory-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
