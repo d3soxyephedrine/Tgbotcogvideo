@@ -2328,29 +2328,35 @@ def generate_wan21_t2v_video(
     if not prompt or not prompt.strip():
         return {"status": "error", "error": "Prompt cannot be empty"}
 
-    if len(prompt) > 1000:
-        logger.warning(f"Prompt too long ({len(prompt)} chars), truncating to 1000")
-        prompt = prompt[:1000]
+    if len(prompt) > 2000:
+        logger.warning(f"Prompt too long ({len(prompt)} chars), truncating to 2000")
+        prompt = prompt[:2000]
 
-    # Build payload
+    # Map resolution to width/height
+    resolution_map = {
+        "480p": {"width": 720, "height": 480},
+        "720p": {"width": 1280, "height": 720}
+    }
+    
+    dims = resolution_map.get(resolution, resolution_map["480p"])
+
+    # Build payload with correct Novita API structure
     payload = {
-        "input": {
-            "text": prompt.strip()
-        },
-        "parameters": {
-            "resolution": resolution,
-            "num_inference_steps": num_inference_steps,
-            "guidance_scale": guidance_scale,
-            "enable_safety_checker": enable_safety_checker
-        }
+        "prompt": prompt.strip(),
+        "width": dims["width"],
+        "height": dims["height"],
+        "steps": num_inference_steps,
+        "guidance_scale": guidance_scale,
+        "enable_safety_checker": enable_safety_checker
     }
 
     # Add optional parameters
     if seed is not None:
-        payload["parameters"]["seed"] = seed
+        payload["seed"] = seed
 
+    # Add NSFW LoRA if specified
     if lora_path:
-        payload["input"]["loras"] = [{
+        payload["loras"] = [{
             "path": lora_path,
             "scale": lora_scale
         }]
