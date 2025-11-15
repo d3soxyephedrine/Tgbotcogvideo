@@ -8,7 +8,7 @@ import base64
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
-from video_api import generate_video, download_video
+from video_api import generate_video, get_video_bytes
 from datetime import datetime
 
 DEFAULT_MODEL = "deepseek/deepseek-chat-v3-0324"
@@ -581,7 +581,8 @@ def get_help_message():
 /qwen <prompt> - Qwen text-to-image generation (8 credits)
 /edit <prompt> - Image generation optimized for editing (8 credits)
 /grok <prompt> - Stylized image generation (8 credits)
-/video <prompt> - AI text-to-video generation (50 credits, ~30s)
+/wan <prompt> - Wan 2.1 T2V NSFW video generation (50 credits, ~60-90s)
+/video <prompt> - AI text-to-video generation (50 credits, ~60-90s)
 /write <request> - Professional writing mode (2 credits)
 
 🎁 *Daily Free Credits:*
@@ -604,10 +605,13 @@ def get_help_message():
 Example: Send photo with caption "/edit make it darker and more dramatic"
 • 🔒 Unlocked after first purchase
 
-🎬 *Video Generation:*
-• **/video <prompt>**: CogVideoX - AI text-to-video (50 credits, ~30s)
-  - Create videos from text descriptions
-  - Example: `/video A dragon flying over mountains`
+🎬 *Video Generation (Text-to-Video):*
+• **/wan <prompt>**: Wan 2.1 T2V NSFW - New! (50 credits, ~60-90s)
+  - Create NSFW videos from text descriptions
+  - Example: `/wan A dragon flying over mountains`
+  - 25 frames, 8 FPS, 25 steps
+• **/video <prompt>**: CogVideoX - Classic (50 credits, ~60-90s)
+  - Alternative text-to-video model
   - Max 200 characters per prompt
 
 🎬 *Video Generation (Image-to-Video):*
@@ -1290,7 +1294,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
             
             return
         
-        # Check for /video command (CogVideoX text-to-video via Novita GPU)
+        # Check for /video command (Wan 2.1 T2V text-to-video)
         if text.lower() == '/video' or text.lower().startswith('/video '):
             # Extract prompt
             if text.lower() == '/video':
@@ -1388,7 +1392,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                 chat_id,
                 f"🎬 *Generating video...*\n\n"
                 f"Prompt: _{prompt}_\n"
-                f"⏱ This takes ~30 seconds. Please wait...",
+                f"⏱ This takes ~60-90 seconds. Please wait...",
                 parse_mode="Markdown"
             )
             
@@ -1404,8 +1408,8 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                         from models import User
                         user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
                         
-                        # Generate video
-                        result = generate_video(prompt, frames=16, steps=20)
+                        # Generate video (Wan 2.1 T2V NSFW-enabled)
+                        result = generate_video(prompt, frames=25, steps=25)
                         
                         # Handle generation failure
                         if result["status"] == "error":
@@ -1427,43 +1431,23 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                             )
                             return
                         
-                        # Download video file using the video_path
-                        video_path = result.get("video_path")
-
-                        if not video_path:
-                            logger.error("No video_path in response")
-
-                            # Refund credits to exact buckets that were deducted
-                            user_obj.daily_credits += daily_used
-                            user_obj.credits += purchased_used
-                            db.session.commit()
-                            logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-
-                            send_message(
-                                chat_id,
-                                f"❌ Video generated but video path missing.\n\n"
-                                f"✅ {VIDEO_CREDITS} credits have been refunded."
-                            )
-                            return
-
-                        logger.info(f"Downloading video from: {video_path}")
-
+                        # Extract video bytes from base64 response (Wan API)
                         try:
-                            video_bytes = download_video(video_path)
+                            video_bytes = get_video_bytes(result)
                             if not video_bytes:
-                                raise Exception("Download returned empty content")
-                        except Exception as download_err:
-                            logger.error(f"Video download failed: {download_err}")
-                            
+                                raise Exception("Failed to extract video from response")
+                        except Exception as extract_err:
+                            logger.error(f"Video extraction failed: {extract_err}")
+
                             # Refund credits to exact buckets that were deducted
                             user_obj.daily_credits += daily_used
                             user_obj.credits += purchased_used
                             db.session.commit()
                             logger.info(f"Refunded {VIDEO_CREDITS} credits (daily: {daily_used}, purchased: {purchased_used})")
-                            
+
                             send_message(
                                 chat_id,
-                                f"❌ Video generated but download failed.\n\n"
+                                f"❌ Video generated but extraction failed.\n\n"
                                 f"✅ {VIDEO_CREDITS} credits have been refunded. Please try again."
                             )
                             return
@@ -1478,7 +1462,10 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                                 'caption': (
                                     f"✅ *Video generated!*\n"
                                     f"Prompt: _{prompt}_\n"
-                                    f"Time: {result.get('generation_time_ms', 0)/1000:.1f}s\n"
+                                    f"Model: Wan 2.1 T2V NSFW (640x384, 8fps)\n"
+                                    f"Time: {result.get('ms', 0)/1000:.1f}s\n"
+                                    f"Frames: {result.get('frames', 25)}\n"
+                                    f"Steps: {result.get('steps', 25)}\n"
                                     f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
                                 ),
                                 'parse_mode': 'Markdown'
@@ -1505,7 +1492,7 @@ For image-to-video, use `/vid` or `/img2video` instead."""
                             )
                 
                 except Exception as e:
-                    logger.error(f"CRITICAL: CogVideoX-5B background thread crashed: {str(e)}", exc_info=True)
+                    logger.error(f"CRITICAL: Wan 2.1 T2V background thread crashed: {str(e)}", exc_info=True)
                     
                     try:
                         with app.app_context():
@@ -1558,10 +1545,187 @@ To create a video, you need to:
 • 1080P: 5s only
 
 📸 Try sending a photo with `/vid` in the caption!"""
-            
+
             send_message(chat_id, response, parse_mode="Markdown")
             return
-        
+
+        # Check for /wan command (Wan 2.1 T2V - completely fresh implementation)
+        if text.lower() == '/wan' or text.lower().startswith('/wan '):
+            from video_api import generate_wan_t2v, get_video_bytes
+
+            if text.lower() == '/wan':
+                response = """🎬 *Wan 2.1 T2V* - Text-to-Video NSFW
+
+*Create videos from text descriptions!*
+
+*Usage:*
+`/wan <your prompt>`
+
+*Examples:*
+• `/wan A dragon flying over mountains`
+• `/wan Ocean waves at sunset`
+• `/wan A rocket launching into space`
+
+*Specs:*
+• Model: Wan 2.1 T2V NSFW
+• Frames: 25 | FPS: 8 | Steps: 25
+• Generation time: ~60-90 seconds
+
+*Cost:* 50 credits per video"""
+                send_message(chat_id, response, parse_mode="Markdown")
+                return
+
+            # Extract prompt
+            prompt = text[5:].strip()
+            if not prompt:
+                send_message(chat_id, "❌ Please provide a prompt after /wan")
+                return
+
+            # Check prompt length
+            if len(prompt) > 200:
+                send_message(chat_id, "❌ Prompt too long. Maximum 200 characters.")
+                return
+
+            logger.info(f"🎬 /wan command: {prompt[:50]}...")
+
+            # Credit cost
+            WAN_CREDITS = 50
+
+            # Check user exists
+            if not user:
+                send_message(chat_id, "❌ User not found. Please use /start first.")
+                return
+
+            # Check balance
+            total_credits = user.credits + user.daily_credits
+            if total_credits < WAN_CREDITS:
+                send_message(
+                    chat_id,
+                    f"❌ Insufficient credits!\n\n"
+                    f"💰 Available: {total_credits} credits\n"
+                    f"🎬 Wan video cost: {WAN_CREDITS} credits\n\n"
+                    f"Use /buy to purchase more credits or /daily to claim free credits."
+                )
+                return
+
+            # Deduct credits upfront
+            try:
+                success, daily_used, purchased_used, credit_warning = deduct_credits(user, WAN_CREDITS)
+                if not success:
+                    send_message(chat_id, f"❌ Error deducting credits. Please try /start again.")
+                    return
+
+                db.session.commit()
+                logger.info(f"✓ Deducted {WAN_CREDITS} credits for /wan (daily: {daily_used}, purchased: {purchased_used})")
+            except Exception as e:
+                logger.error(f"Error deducting credits: {str(e)}")
+                send_message(chat_id, "❌ Error processing credits. Please try again.")
+                return
+
+            # Send processing message
+            send_message(
+                chat_id,
+                f"🎬 *Generating Wan 2.1 T2V video...*\n\n"
+                f"Prompt: _{prompt}_\n"
+                f"⏱ This takes ~60-90 seconds. Please wait...",
+                parse_mode="Markdown"
+            )
+
+            # Generate in background thread
+            from flask import current_app
+            app = current_app._get_current_object()
+
+            def generate_wan_background():
+                """Background Wan 2.1 T2V generation"""
+                try:
+                    with app.app_context():
+                        from models import User
+                        user_obj = db.session.query(User).filter_by(telegram_id=telegram_id).first()
+
+                        # Generate video
+                        result = generate_wan_t2v(prompt, frames=25, steps=25)
+
+                        # Handle generation failure
+                        if result["status"] == "error":
+                            error_msg = result.get("error", "Unknown error")
+                            logger.error(f"Wan generation failed: {error_msg}")
+
+                            # Refund credits
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+                            logger.info(f"Refunded {WAN_CREDITS} credits")
+
+                            send_message(
+                                chat_id,
+                                f"❌ *Wan video generation failed*\n\n"
+                                f"Error: {error_msg}\n\n"
+                                f"✅ {WAN_CREDITS} credits have been refunded.",
+                                parse_mode="Markdown"
+                            )
+                            return
+
+                        # Extract video bytes
+                        try:
+                            video_bytes = get_video_bytes(result)
+                            if not video_bytes:
+                                raise Exception("Failed to extract video from response")
+                        except Exception as extract_err:
+                            logger.error(f"Video extraction failed: {extract_err}")
+
+                            # Refund credits
+                            user_obj.daily_credits += daily_used
+                            user_obj.credits += purchased_used
+                            db.session.commit()
+
+                            send_message(
+                                chat_id,
+                                f"❌ Video generated but extraction failed.\n\n"
+                                f"✅ {WAN_CREDITS} credits have been refunded."
+                            )
+                            return
+
+                        # Send video to user
+                        try:
+                            files = {'video': ('wan_video.mp4', io.BytesIO(video_bytes), 'video/mp4')}
+                            data = {
+                                'chat_id': chat_id,
+                                'caption': (
+                                    f"✅ *Wan 2.1 T2V Video!*\n"
+                                    f"Prompt: _{prompt}_\n"
+                                    f"Model: Wan 2.1 T2V NSFW\n"
+                                    f"Time: {result.get('ms', 0)/1000:.1f}s\n"
+                                    f"Frames: {result.get('frames', 25)} | FPS: 8\n"
+                                    f"Credits remaining: {user_obj.credits + user_obj.daily_credits}"
+                                ),
+                                'parse_mode': 'Markdown'
+                            }
+
+                            response = requests.post(
+                                f"{BASE_URL}/sendVideo",
+                                files=files,
+                                data=data,
+                                timeout=60
+                            )
+
+                            if response.status_code == 200:
+                                logger.info(f"✅ Wan video sent to user {telegram_id}")
+                            else:
+                                logger.error(f"Failed to send video: {response.text}")
+
+                        except Exception as e:
+                            logger.error(f"Failed to send video: {e}")
+                            send_message(chat_id, f"❌ Failed to send video. Contact support.")
+
+                except Exception as e:
+                    logger.error(f"Wan background thread crashed: {str(e)}", exc_info=True)
+                    send_message(chat_id, f"❌ Unexpected error. {WAN_CREDITS} credits refunded.")
+
+            # Start background thread
+            thread = threading.Thread(target=generate_wan_background)
+            thread.start()
+            return
+
         # Admin-only /stats command
         if text.lower() == '/stats':
             ADMIN_TELEGRAM_ID = 1230053047
@@ -1737,7 +1901,66 @@ To create a video, you need to:
             else:
                 send_message(chat_id, "❌ Stats require database access.")
                 return
-        
+
+        # Admin-only /unlock_video command
+        if text.lower().startswith('/unlock_video'):
+            ADMIN_TELEGRAM_ID = 1230053047
+
+            if telegram_id != ADMIN_TELEGRAM_ID:
+                send_message(chat_id, "⛔ *ADMIN ACCESS REQUIRED*\n\nThis command is restricted to system administrators only.", parse_mode="Markdown")
+                return
+
+            if DB_AVAILABLE:
+                try:
+                    from flask import current_app
+                    from datetime import datetime
+
+                    parts = text.split()
+                    if len(parts) == 1:
+                        # Unlock self
+                        target_telegram_id = telegram_id
+                    elif len(parts) == 2:
+                        # Unlock specific user by telegram ID
+                        try:
+                            target_telegram_id = int(parts[1])
+                        except ValueError:
+                            send_message(chat_id, "❌ Invalid Telegram ID. Usage: /unlock_video [telegram_id]")
+                            return
+                    else:
+                        send_message(chat_id, "❌ Usage: /unlock_video [telegram_id]\n\nOmit telegram_id to unlock yourself.")
+                        return
+
+                    with current_app.app_context():
+                        user = User.query.filter_by(telegram_id=target_telegram_id).first()
+
+                        if not user:
+                            send_message(chat_id, f"❌ User with Telegram ID {target_telegram_id} not found.")
+                            return
+
+                        if user.last_purchase_at:
+                            send_message(
+                                chat_id,
+                                f"✓ User @{user.username or 'unknown'} (ID: {target_telegram_id}) already has video unlocked.\n"
+                                f"Last purchase: {user.last_purchase_at}"
+                            )
+                        else:
+                            user.last_purchase_at = datetime.utcnow()
+                            db.session.commit()
+                            send_message(
+                                chat_id,
+                                f"✅ Video generation unlocked for @{user.username or 'unknown'} (ID: {target_telegram_id})\n"
+                                f"Set last_purchase_at to {user.last_purchase_at}"
+                            )
+                            logger.info(f"Admin {telegram_id} unlocked video for user {target_telegram_id}")
+
+                except Exception as db_error:
+                    logger.error(f"Error unlocking video: {str(db_error)}")
+                    send_message(chat_id, f"❌ Error: {str(db_error)}")
+                    return
+            else:
+                send_message(chat_id, "❌ This command requires database access.")
+                return
+
         # RATE LIMITING: DISABLED to allow reflection prompts to complete
         # The reflection system makes internal API calls that were being blocked
         # if DB_AVAILABLE and user:

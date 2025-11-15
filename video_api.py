@@ -2,11 +2,16 @@ import os
 import requests
 from typing import Optional, Dict, Tuple
 import logging
+import base64
 
 logger = logging.getLogger(__name__)
 
 VIDEO_API_URL = os.getenv("VIDEO_API_URL")
 VIDEO_API_KEY = os.getenv("VIDEO_API_KEY")
+
+# Wan 2.1 T2V specific endpoints
+WAN_API_URL = os.getenv("WAN_API_URL", "http://proxy.us-ca-6.gpu-instance.novita.ai:51348/generate_video")
+WAN_API_KEY = os.getenv("WAN_API_KEY", "7b5c51509b35da994eb1ce034dfd7d5d3f28b04e8c9c822778a61bdb1424dede")
 
 def check_video_api_health() -> Tuple[bool, str]:
     """
@@ -21,9 +26,12 @@ def check_video_api_health() -> Tuple[bool, str]:
     if not VIDEO_API_KEY:
         return False, "VIDEO_API_KEY environment variable not configured"
     
+    # Get base URL by removing /generate_video if present
+    base_url = VIDEO_API_URL.replace("/generate_video", "")
+    
     try:
         response = requests.get(
-            f"{VIDEO_API_URL}/health",
+            f"{base_url}/health",
             timeout=5
         )
         if response.status_code == 200:
@@ -37,54 +45,65 @@ def check_video_api_health() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"GPU server health check failed: {str(e)}"
 
-def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
+def generate_video(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
     """
-    Generate video via Novita GPU API.
-    Takes ~30 seconds.
-    
+    Generate video via Wan 2.1 T2V API (NSFW-enabled).
+    Takes ~60-90 seconds.
+
     Args:
         prompt: Text description for video generation
-        frames: Number of frames to generate (default: 16)
-        steps: Number of diffusion steps (default: 20)
-    
-    Returns: 
-        {"status": "ok", "video_path": "/root/.../xyz.mp4", "generation_time_ms": 28000}
+        frames: Number of frames to generate (default: 25, max: 33)
+        steps: Number of diffusion steps (default: 25, max: 30)
+
+    Returns:
+        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": 45000, "frames": 25}
         or {"status": "error", "error": "message"}
     """
     if not VIDEO_API_URL:
         logger.error("VIDEO_API_URL not configured")
         return {"status": "error", "error": "Video API URL not configured"}
-    
+
     if not VIDEO_API_KEY:
         logger.error("VIDEO_API_KEY not configured")
         return {"status": "error", "error": "Video API key not configured"}
-    
+
     try:
-        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}/generate_video")
+        logger.info(f"[DEBUG] VIDEO_API_URL = {VIDEO_API_URL}")
+        logger.info(f"[DEBUG] VIDEO_API_KEY = {VIDEO_API_KEY[:20]}...{VIDEO_API_KEY[-10:]}")
+        logger.info(f"Calling Wan 2.1 T2V NSFW API at {VIDEO_API_URL}")
         logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
-        
+
+        # Build request payload (for CogVideoX server)
+        payload = {
+            "prompt": prompt,
+            "frames": frames,
+            "fps": 8,
+            "steps": steps,
+            "guidance_scale": 7.5
+        }
+
+        # Add optional seed if provided (don't send null)
+        # seed can be added later if needed
+
+        logger.info(f"[DEBUG] Request payload: {payload}")
+
         response = requests.post(
-            f"{VIDEO_API_URL}/generate_video",
+            VIDEO_API_URL,
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": VIDEO_API_KEY
             },
-            json={
-                "prompt": prompt,
-                "frames": frames,
-                "fps": 8,
-                "steps": steps
-            },
-            timeout=90
+            json=payload,
+            timeout=120  # Increased timeout for Wan 2.1 T2V
         )
         response.raise_for_status()
-        
+
         result = response.json()
-        logger.info(f"VIDEO_API response: {result.get('status', 'unknown')}")
+        logger.info(f"Wan 2.1 T2V response: {result.get('status', 'unknown')}")
         return result
-        
+
     except requests.Timeout:
-        error_msg = f"Video generation timed out after 90s. GPU server at {VIDEO_API_URL} may be overloaded or down."
+        error_msg = f"Video generation timed out after 120s. GPU server at {VIDEO_API_URL} may be overloaded or down."
         logger.error(error_msg)
         return {"status": "error", "error": error_msg}
     except requests.ConnectionError as e:
@@ -102,38 +121,41 @@ def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
 def download_video(video_path: str) -> Optional[bytes]:
     """
     Download generated video file from Novita server.
-    
+
     Args:
         video_path: Full path like "/root/video_api/videos/abc123.mp4"
-    
+
     Returns:
         Video bytes or None if failed
     """
     if not VIDEO_API_URL:
         logger.error("VIDEO_API_URL not configured")
         return None
-    
+
     if not VIDEO_API_KEY:
         logger.error("VIDEO_API_KEY not configured")
         return None
-    
+
     # Extract filename from path
     filename = os.path.basename(video_path)
     
+    # Get base URL by removing /generate_video if present
+    base_url = VIDEO_API_URL.replace("/generate_video", "")
+
     try:
         logger.info(f"Video download started from: /get_video/{filename}")
-        
+
         response = requests.get(
-            f"{VIDEO_API_URL}/get_video/{filename}",
+            f"{base_url}/get_video/{filename}",
             headers={"x-api-key": VIDEO_API_KEY},
             timeout=30
         )
         response.raise_for_status()
-        
+
         video_bytes = response.content
         logger.info(f"Video downloaded successfully: {len(video_bytes)} bytes")
         return video_bytes
-        
+
     except requests.Timeout:
         logger.error(f"Video download timed out for {filename}")
         return None
@@ -143,3 +165,90 @@ def download_video(video_path: str) -> Optional[bytes]:
     except Exception as e:
         logger.error(f"Video download failed: {type(e).__name__}: {str(e)}")
         return None
+
+def get_video_bytes(result: Dict) -> Optional[bytes]:
+    """
+    Extract video bytes from Wan API response (base64 encoded).
+
+    Args:
+        result: API response dict containing base64-encoded video
+
+    Returns:
+        Video bytes or None if failed
+    """
+    try:
+        # Wan API returns video as base64 in the response
+        video_base64 = result.get("video_base64") or result.get("video")
+        if not video_base64:
+            logger.error("No 'video_base64' or 'video' field in response")
+            return None
+
+        # Decode base64 to bytes
+        video_bytes = base64.b64decode(video_base64)
+        logger.info(f"Video extracted successfully: {len(video_bytes)} bytes")
+        return video_bytes
+
+    except Exception as e:
+        logger.error(f"Failed to extract video from response: {type(e).__name__}: {str(e)}")
+        return None
+
+
+def generate_wan_t2v(prompt: str, frames: int = 25, steps: int = 25) -> Dict:
+    """
+    Generate video using Wan 2.1 T2V (Text-to-Video) NSFW model.
+    Completely separate from /video command - uses WAN_API_URL and WAN_API_KEY.
+
+    Args:
+        prompt: Text description for video generation
+        frames: Number of frames (default: 25, max: 33)
+        steps: Inference steps (default: 25, max: 30)
+
+    Returns:
+        {"status": "ok", "video_base64": "...", "video_url": "...", "ms": ..., "frames": ...}
+        or {"status": "error", "error": "message"}
+    """
+    logger.info(f"🎬 Wan 2.1 T2V generation started")
+    logger.info(f"   URL: {WAN_API_URL}")
+    logger.info(f"   Prompt: {prompt[:50]}...")
+
+    try:
+        payload = {
+            "prompt": prompt,
+            "frames": frames,
+            "fps": 8,
+            "steps": steps,
+            "guidance_scale": 7.5
+        }
+
+        logger.info(f"   Payload: {payload}")
+
+        response = requests.post(
+            WAN_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": WAN_API_KEY
+            },
+            json=payload,
+            timeout=120
+        )
+
+        logger.info(f"   Response status: {response.status_code}")
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"   Result status: {result.get('status', 'unknown')}")
+
+        return result
+
+    except requests.Timeout:
+        error_msg = "Wan 2.1 T2V generation timed out after 120s"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
+    except requests.HTTPError as e:
+        error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"   ❌ {error_msg}")
+        return {"status": "error", "error": error_msg}
