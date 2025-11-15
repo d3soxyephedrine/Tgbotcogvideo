@@ -748,16 +748,19 @@ def process_update(update):
                         )
                         db.session.add(user)
                         db.session.commit()
-                        logger.info(f"New user created: {user}")
+                        logger.info(f"✅ New user created: telegram_id={telegram_id}, user_id={user.id}")
                     else:
                         # Update last interaction
                         user.last_interaction = datetime.utcnow()
                         db.session.commit()
-                    
+                        logger.debug(f"✅ Existing user updated: telegram_id={telegram_id}, user_id={user.id}")
+
                     user_id = user.id
+                    logger.info(f"✅ User ID set: user_id={user_id} for telegram_id={telegram_id}")
             except Exception as db_error:
-                logger.error(f"Database error while storing user: {str(db_error)}")
-                logger.warning("Continuing without database storage")
+                logger.error(f"❌ Database error while storing user: {str(db_error)}", exc_info=True)
+                logger.warning("⚠️ Continuing without database storage - user_id will be None")
+                user_id = None  # Explicitly set to None
         else:
             logger.debug("Skipping user storage - database not available")
         
@@ -796,36 +799,43 @@ def process_update(update):
         
         # Check for /balance or /credits commands
         if text.lower() == '/balance' or text.lower() == '/credits':
-            if DB_AVAILABLE and user:
-                from datetime import timedelta
-                
-                # Check if daily credits are expired
-                now = datetime.utcnow()
-                if user.daily_credits_expiry and now > user.daily_credits_expiry:
-                    user.daily_credits = 0
-                    user.daily_credits_expiry = None
-                    db.session.commit()
-                
-                total_credits = user.credits + user.daily_credits
-                
-                if user.daily_credits > 0:
-                    # Show breakdown when there are daily credits
-                    time_until_expiry = user.daily_credits_expiry - now
-                    hours = int(time_until_expiry.total_seconds() // 3600)
-                    response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-                else:
-                    # Show simple balance when no daily credits
-                    response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
-            else:
-                response = "💳 Credit system requires database access."
-            
-            # Store command in database if available
+            logger.info(f"🔍 /balance command: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}, telegram_id={telegram_id}")
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
+                    from datetime import timedelta
+
                     with current_app.app_context():
+                        # Reload user in this context to avoid detached object issues
+                        user = User.query.filter_by(telegram_id=telegram_id).first()
+                        if not user:
+                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
+                            send_message(chat_id, "❌ User not found. Please try again.")
+                            return
+
+                        logger.info(f"✅ User loaded for /balance: user_id={user.id}, credits={user.credits}, daily={user.daily_credits}")
+
+                        # Check if daily credits are expired
+                        now = datetime.utcnow()
+                        if user.daily_credits_expiry and now > user.daily_credits_expiry:
+                            user.daily_credits = 0
+                            user.daily_credits_expiry = None
+                            db.session.commit()
+
+                        total_credits = user.credits + user.daily_credits
+
+                        if user.daily_credits > 0:
+                            # Show breakdown when there are daily credits
+                            time_until_expiry = user.daily_credits_expiry - now
+                            hours = int(time_until_expiry.total_seconds() // 3600)
+                            response = f"💳 Your credit balance: {total_credits} credits\n\n• Daily: {user.daily_credits} credits (expires in {hours}h)\n• Purchased: {user.credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+                        else:
+                            # Show simple balance when no daily credits
+                            response = f"💳 Your credit balance: {total_credits} credits\n\nUse /daily to claim free credits (once per 24h)\nUse /buy to purchase more credits"
+
+                        # Store command in database
                         message_record = Message(
-                            user_id=user_id,
+                            user_id=user.id,
                             user_message=text,
                             bot_response=response,
                             model_used=os.environ.get('MODEL', DEFAULT_MODEL),
@@ -833,29 +843,39 @@ def process_update(update):
                         )
                         db.session.add(message_record)
                         db.session.commit()
+                        logger.info(f"✅ /balance response prepared: total_credits={total_credits}")
                 except Exception as db_error:
-                    logger.error(f"Database error storing balance command: {str(db_error)}")
-            
+                    logger.error(f"❌ Database error processing /balance: {str(db_error)}", exc_info=True)
+                    response = "❌ Error retrieving balance. Please try again."
+            else:
+                logger.warning(f"⚠️ /balance failed: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}")
+                response = "💳 Credit system requires database access."
+
             # Send response
             send_message(chat_id, response)
+            logger.info(f"✅ /balance response sent to chat_id={chat_id}")
             return
         
         # Check for /daily command
         if text.lower() == '/daily':
-            if DB_AVAILABLE and user:
+            logger.info(f"🔍 /daily command: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}, telegram_id={telegram_id}")
+            if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
                     from datetime import timedelta
-                    
+
                     with current_app.app_context():
                         # Reload user in this context to avoid detached object issues
                         user = User.query.filter_by(telegram_id=telegram_id).first()
                         if not user:
+                            logger.error(f"❌ User not found in database: telegram_id={telegram_id}")
                             send_message(chat_id, "❌ User not found. Please try again.")
                             return
-                        
+
+                        logger.info(f"✅ User loaded for /daily: user_id={user.id}, last_claim={user.last_daily_claim_at}")
+
                         now = datetime.utcnow()
-                        
+
                         # Check if user can claim (24h cooldown)
                         if user.last_daily_claim_at:
                             time_since_last_claim = now - user.last_daily_claim_at
@@ -867,30 +887,32 @@ def process_update(update):
                                 response = f"⏰ Daily credits already claimed!\n\nYou can claim again in {hours}h {minutes}m."
                                 send_message(chat_id, response)
                                 return
-                        
+
                         # Grant 25 daily credits with 48h expiry
                         user.daily_credits = 25
                         user.daily_credits_expiry = now + timedelta(hours=48)
                         user.last_daily_claim_at = now
                         db.session.commit()
-                        
+
                         # Calculate expiry countdown
                         expiry_time = user.daily_credits_expiry
                         time_until_expiry = expiry_time - now
                         hours = int(time_until_expiry.total_seconds() // 3600)
-                        
+
                         response = f"🎁 Daily credits claimed!\n\n+25 credits added (expires in {hours}h)\n\n💳 Total balance: {user.credits + user.daily_credits} credits\n  • Daily: {user.daily_credits} credits\n  • Purchased: {user.credits} credits\n\nClaim again in 24h!"
-                        
-                        logger.info(f"User {telegram_id} claimed daily credits: +25 credits")
+
+                        logger.info(f"✅ User {telegram_id} claimed daily credits: +25 credits, new total={user.credits + user.daily_credits}")
                 except Exception as db_error:
-                    logger.error(f"Database error processing /daily: {str(db_error)}")
+                    logger.error(f"❌ Database error processing /daily: {str(db_error)}", exc_info=True)
                     db.session.rollback()
                     response = "❌ Error processing daily claim. Please try again."
             else:
+                logger.warning(f"⚠️ /daily failed: DB_AVAILABLE={DB_AVAILABLE}, user_id={user_id}")
                 response = "💳 Daily credits require database access."
-            
+
             # Send response
             send_message(chat_id, response)
+            logger.info(f"✅ /daily response sent to chat_id={chat_id}")
             return
         
         # Check for /buy command
@@ -3317,7 +3339,7 @@ To create a video, you need to:
         conversation_history = []
         credits_available = True  # Track if user has credits
         selected_model = 'deepseek/deepseek-chat-v3-0324'  # Default model
-        
+
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
@@ -3332,13 +3354,39 @@ To create a video, you need to:
                             credits_to_deduct = 2
                         else:
                             credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
-                        
-                        # Deduct credits (daily credits first, then purchased)
+
+                        # CRITICAL FIX: Load conversation history BEFORE deducting credits
+                        # This ensures we always have context even if credit deduction fails
+                        logger.info(f"Loading conversation history for user_id={user_id}")
+                        from sqlalchemy import desc
+
+                        # Load last 10 COMPLETE message exchanges (where bot_response is not null)
+                        # This prevents incomplete conversations from breaking context
+                        subquery = db.session.query(Message.id).filter(
+                            Message.user_id == user_id,
+                            Message.bot_response.is_not(None),
+                            Message.bot_response != ''
+                        ).order_by(desc(Message.created_at)).limit(10).subquery()
+                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+
+                        # Format as conversation history (already in chronological order)
+                        # Only include messages with both user_message AND bot_response
+                        for msg in recent_messages:
+                            if msg.user_message and msg.bot_response:
+                                conversation_history.append({"role": "user", "content": msg.user_message})
+                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
+
+                        logger.info(f"✓ Loaded {len(recent_messages)} complete message exchanges = {len(conversation_history)} turns for user_id={user_id}")
+                        if conversation_history:
+                            logger.debug(f"First history message: role={conversation_history[0]['role']}, preview={conversation_history[0]['content'][:100]}...")
+                            logger.debug(f"Last history message: role={conversation_history[-1]['role']}, preview={conversation_history[-1]['content'][:100]}...")
+
+                        # Now deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
                         if success:
                             db.session.commit()
                             logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                            
+
                             # Store credit warning to append to response later
                             if credit_warning:
                                 user._credit_warning = credit_warning
@@ -3346,23 +3394,9 @@ To create a video, you need to:
                             credits_available = False
                     else:
                         credits_available = False
-                    
-                    # If credits available, fetch conversation history in same context
-                    if credits_available:
-                        # OPTIMIZATION: Use subquery to get last 10, then order ascending (no reverse needed)
-                        from sqlalchemy import desc
-                        subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
-                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
-                        
-                        # Format as conversation history (already in chronological order)
-                        for msg in recent_messages:
-                            conversation_history.append({"role": "user", "content": msg.user_message})
-                            if msg.bot_response:
-                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
-                        
-                        logger.info(f"Loaded {len(recent_messages)} previous messages for context")
+                        logger.warning(f"User not found for user_id={user_id}")
             except Exception as db_error:
-                logger.error(f"Error in consolidated DB operations: {str(db_error)}")
+                logger.error(f"Error in consolidated DB operations: {str(db_error)}", exc_info=True)
                 conversation_history = []
                 credits_available = True  # Allow response even if DB fails
         
@@ -3427,7 +3461,12 @@ To create a video, you need to:
                 # Text fits in one message, just update with cursor
                 display_text = accumulated_text + " ▌"
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
-        
+
+        # CRITICAL DEBUG: Log conversation_history state before calling generate_response
+        logger.info(f"🔎 About to call generate_response with conversation_history length: {len(conversation_history)}")
+        if conversation_history:
+            logger.debug(f"conversation_history preview: first message role={conversation_history[0].get('role')}")
+
         # Generate response with streaming and progressive updates (include user_id for memory injection and model selection)
         llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model)
         
@@ -3496,9 +3535,11 @@ To create a video, you need to:
                     db.session.add(message_record)
                     db.session.commit()
                     message_id = message_record.id
-                    logger.info(f"Message stored synchronously for user {user_id}: {message_id}")
+                    logger.info(f"✅ Message stored for user_id={user_id}, message_id={message_id}")
+                    logger.debug(f"Stored user_message preview: {text[:100]}...")
+                    logger.debug(f"Stored bot_response preview: {llm_response[:100]}...")
             except Exception as db_error:
-                logger.error(f"Database error storing message: {str(db_error)}")
+                logger.error(f"❌ Database error storing message: {str(db_error)}", exc_info=True)
                 # Flask-SQLAlchemy automatically rolls back on exception within app context
         
         # Store transaction record in BACKGROUND THREAD (non-critical for memory)

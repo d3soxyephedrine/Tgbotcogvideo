@@ -55,7 +55,7 @@ WAN_VIDEO_MODELS = {
             5: 1.0,
             8: 1.3
         },
-        "max_polls": 120  # 120 polls * 2 seconds = 4 minutes (WAN 2.2 needs more time)
+        "max_polls": 600  # 600 polls * 2 seconds = 20 minutes (increased timeout for WAN 2.2)
     },
     "wan2.5": {
         "endpoint": NOVITA_WAN25_I2V_ENDPOINT,
@@ -76,7 +76,7 @@ WAN_VIDEO_MODELS = {
         "duration_multiplier": {
             5: 1.0
         },
-        "max_polls": 60  # 60 polls * 2 seconds = 2 minutes (WAN 2.5 is faster)
+        "max_polls": 600  # 600 polls * 2 seconds = 20 minutes (increased timeout for WAN 2.5)
     }
 }
 
@@ -624,10 +624,22 @@ def estimate_messages_tokens(messages: list) -> int:
 
 def create_request_data(user_message: str, model: Optional[str] = None, conversation_history: Optional[List] = None) -> Dict[str, Any]:
     """Create request data with token budget management"""
-    
+
     if model is None:
         model = os.environ.get('MODEL', DEFAULT_MODEL)
-    
+
+    # CRITICAL DEBUG: Log what conversation_history we received
+    if conversation_history is None:
+        logger.warning(f"⚠️ create_request_data received conversation_history=None")
+        conversation_history = []
+    elif len(conversation_history) == 0:
+        logger.info(f"📝 create_request_data received empty conversation_history")
+    else:
+        logger.info(f"📚 create_request_data received {len(conversation_history)} history messages")
+        # Log the roles to see the structure
+        roles_summary = [msg.get('role', 'unknown') for msg in conversation_history]
+        logger.debug(f"History roles: {roles_summary}")
+
     # Token budget configuration
     SAFE_INPUT_BUDGET = 16000  # Safe total for system + history + user message
     MAX_OUTPUT_TOKENS = 16000  # Maximum output tokens for long-form content
@@ -699,7 +711,13 @@ def create_request_data(user_message: str, model: Optional[str] = None, conversa
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(trimmed_history)
     messages.append({"role": "user", "content": user_message})
-    
+
+    # CRITICAL DEBUG: Log final message structure being sent to LLM
+    logger.info(f"🔍 Final messages to LLM: {len(messages)} total (1 system + {len(trimmed_history)} history + 1 user)")
+    if len(trimmed_history) > 0:
+        logger.debug(f"First history message role: {trimmed_history[0].get('role')}, content preview: {trimmed_history[0].get('content', '')[:100]}")
+        logger.debug(f"Last history message role: {trimmed_history[-1].get('role')}, content preview: {trimmed_history[-1].get('content', '')[:100]}")
+
     # Calculate final token estimate and verify budget
     total_input_tokens = estimate_messages_tokens(messages)
     
@@ -1188,7 +1206,7 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
 
 def generate_response(user_message: str, conversation_history: Optional[List] = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False, user_id: Optional[int] = None, model: Optional[str] = None) -> str:
     """Main response generation function with enhanced error handling and auto-refusal correction
-    
+
     Args:
         user_message: The current user message
         conversation_history: Optional list of previous messages in format [{"role": "user/assistant", "content": "..."}]
@@ -1200,12 +1218,21 @@ def generate_response(user_message: str, conversation_history: Optional[List] = 
     """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
-    
+
     try:
         # Use provided model or fallback to DeepSeek as default
         if not model:
             model = 'deepseek/deepseek-chat-v3-0324'
         logger.info(f"Generating response using OpenRouter with model {model}")
+
+        # CRITICAL: Log conversation history state for debugging context issues
+        if conversation_history is None:
+            logger.warning(f"⚠️ conversation_history is None for user_id={user_id}")
+            conversation_history = []
+        elif len(conversation_history) == 0:
+            logger.info(f"📝 conversation_history is empty for user_id={user_id} (first message or no history)")
+        else:
+            logger.info(f"📚 conversation_history has {len(conversation_history)} turns for user_id={user_id}")
         
         # Fetch and inject user memories if user_id provided
         if user_id:
@@ -1245,8 +1272,18 @@ def generate_response(user_message: str, conversation_history: Optional[List] = 
         
         # 🔧 PRIMING HANDSHAKE: Inject warm-up exchange to bypass DeepSeek first-turn moderation
         if user_id and 'deepseek' in model.lower():
+            before_count = len(conversation_history) if conversation_history else 0
             conversation_history = inject_deepseek_handshake(conversation_history, user_id, model)
-        
+            after_count = len(conversation_history) if conversation_history else 0
+            if after_count > before_count:
+                logger.info(f"🔧 DeepSeek handshake injected: {before_count} → {after_count} messages")
+
+        # CRITICAL: Log final conversation history before sending to LLM
+        if conversation_history:
+            logger.info(f"📤 Sending {len(conversation_history)} context messages to LLM for user_id={user_id}")
+        else:
+            logger.warning(f"⚠️ No conversation history being sent to LLM for user_id={user_id}")
+
         # Inject professional writing instructions if writing_mode is enabled
         if writing_mode:
             logger.info("Injecting professional writing instructions")

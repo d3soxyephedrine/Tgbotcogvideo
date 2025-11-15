@@ -7,6 +7,7 @@ import json
 import hmac
 import hashlib
 import uuid
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
@@ -30,6 +31,37 @@ DB_AVAILABLE = False
 DB_INIT_ATTEMPTS = 0
 MAX_DB_INIT_ATTEMPTS = 3
 
+# Track whether we're using the on-disk SQLite fallback database
+USING_SQLITE_FALLBACK = False
+
+
+def ensure_database_url():
+    """Ensure DATABASE_URL is configured, falling back to SQLite if needed."""
+
+    global USING_SQLITE_FALLBACK
+
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    # No DATABASE_URL configured – fall back to a local SQLite database so
+    # credit-related commands (/daily, /balance, etc.) still function in
+    # development environments.
+    fallback_path = os.path.join(os.path.dirname(__file__), "local.db")
+    os.makedirs(os.path.dirname(fallback_path), exist_ok=True)
+    database_url = f"sqlite:///{fallback_path}"
+    os.environ["DATABASE_URL"] = database_url
+    USING_SQLITE_FALLBACK = True
+
+    logging.getLogger(__name__).warning(
+        "DATABASE_URL not set – using fallback SQLite database at %s", fallback_path
+    )
+
+    return database_url
+
+DATABASE_URL = ensure_database_url()
+
+
 def validate_environment():
     """Validate required environment variables at startup"""
     required_vars = ["BOT_TOKEN"]
@@ -48,10 +80,13 @@ def validate_environment():
     
     # Log database configuration status
     if os.environ.get("DATABASE_URL"):
-        logger.info("DATABASE_URL is configured")
+        if USING_SQLITE_FALLBACK:
+            logger.info("DATABASE_URL configured via fallback SQLite database")
+        else:
+            logger.info("DATABASE_URL is configured")
     else:
         logger.warning("DATABASE_URL not configured - database features will be disabled")
-    
+
     return len(missing_required) == 0
 
 # Validate environment variables
@@ -62,20 +97,32 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key")
 
 # Configure the database with Cloud Run compatible settings
-DATABASE_URL = os.environ.get("DATABASE_URL")
 if DATABASE_URL:
     app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_timeout": 30,
-        "connect_args": {
-            "connect_timeout": 10,
-            "options": "-c statement_timeout=30000"
+
+    parsed_db_url = urlparse(DATABASE_URL)
+    is_sqlite = parsed_db_url.scheme.startswith("sqlite")
+
+    if is_sqlite:
+        # SQLite does not support the same engine options as Postgres.
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "connect_args": {"check_same_thread": False}
         }
-    }
+        logger.info("Configured SQLite engine options (fallback database)")
+    else:
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_recycle": 300,
+            "pool_pre_ping": True,
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_timeout": 30,
+            "connect_args": {
+                "connect_timeout": 10,
+                "options": "-c statement_timeout=30000"
+            }
+        }
+        logger.info("Configured production database engine options")
+
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     logger.info("Database configuration applied")
 else:
