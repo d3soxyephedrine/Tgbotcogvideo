@@ -7,6 +7,7 @@ import json
 import hmac
 import hashlib
 import uuid
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
@@ -194,6 +195,76 @@ def mask_api_key(key):
     if not key or len(key) < 8:
         return "***"
     return f"{key[:3]}...{key[-3:]}"
+
+def _sanitize_domain(candidate: str | None) -> str | None:
+    """Normalize domain values from environment variables."""
+    if not candidate:
+        return None
+
+    candidate = candidate.strip()
+    if not candidate:
+        return None
+
+    parsed = urlparse(candidate if candidate.startswith("http") else f"https://{candidate}")
+    host = (parsed.netloc or parsed.path).strip("/")
+    return host or None
+
+def _normalize_base_url(raw_url: str | None) -> str | None:
+    """Convert a raw domain or URL into a canonical base URL with scheme."""
+    if not raw_url:
+        return None
+
+    raw_url = raw_url.strip()
+    if not raw_url:
+        return None
+
+    if not raw_url.startswith(("http://", "https://")):
+        raw_url = f"https://{raw_url}"
+
+    parsed = urlparse(raw_url)
+    if not parsed.netloc:
+        return None
+
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    return base
+
+def get_preferred_webhook_domain() -> str | None:
+    """Resolve the domain that should be used when registering the Telegram webhook."""
+    domain_candidates = [
+        os.environ.get("TELEGRAM_WEBHOOK_DOMAIN"),
+        os.environ.get("RAILWAY_PUBLIC_DOMAIN"),
+        os.environ.get("RAILWAY_STATIC_URL"),
+        os.environ.get("PUBLIC_URL"),
+    ]
+
+    for candidate in domain_candidates:
+        domain = _sanitize_domain(candidate)
+        if domain:
+            return domain
+
+    fallback = _sanitize_domain(os.environ.get("DEFAULT_WEBHOOK_DOMAIN", "tgbotcogvideo-production.up.railway.app"))
+    return fallback
+
+def build_webhook_url(url_override: str | None = None) -> str | None:
+    """Construct the full Telegram webhook URL using the resolved domain or override."""
+    if not BOT_TOKEN:
+        return None
+
+    if url_override:
+        base_url = _normalize_base_url(url_override)
+        if not base_url:
+            return None
+
+        if base_url.rstrip('/').endswith(f"/{BOT_TOKEN}"):
+            return base_url.rstrip('/')
+
+        return f"{base_url.rstrip('/')}/{BOT_TOKEN}"
+
+    domain = get_preferred_webhook_domain()
+    if not domain:
+        return None
+
+    return f"https://{domain}/{BOT_TOKEN}"
 
 from functools import wraps
 
@@ -1169,26 +1240,37 @@ def register_telegram_webhook():
         return
 
     try:
-        # Use RAILWAY_PUBLIC_DOMAIN if set, otherwise fall back to production domain
-        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+        webhook_url = build_webhook_url()
+        if not webhook_url:
+            logger.error("Unable to resolve webhook URL - skipping automatic registration to avoid disabling webhook")
+            return
 
-        # Build webhook URL
-        webhook_url = f"https://{domain}/{BOT_TOKEN}"
-        
-        # Redact BOT_TOKEN from webhook_url for logging (do this early)
         safe_webhook_url = webhook_url.replace(BOT_TOKEN, "[REDACTED]")
-        
-        # Call Telegram API to set webhook
-        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
-        response = requests.get(telegram_url, timeout=10)
+
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            json={
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query", "pre_checkout_query", "channel_post", "edited_message"]
+            },
+            timeout=10
+        )
+        response.raise_for_status()
         response_data = response.json()
-        
+
         if response_data.get('ok'):
             logger.info(f"✓ Webhook registered successfully: {safe_webhook_url}")
         else:
             logger.error(f"✗ Failed to register webhook to {safe_webhook_url}: {response_data}")
+    except requests.exceptions.HTTPError as http_error:
+        response = http_error.response
+        body = response.text if response is not None else 'No response body'
+        logger.error(
+            "HTTP error registering webhook: %s | Response: %s",
+            str(http_error).replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else str(http_error),
+            body.replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else body,
+        )
     except Exception as e:
-        # Redact BOT_TOKEN from exception message before logging
         error_msg = str(e).replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else str(e)
         logger.error(f"Error registering webhook: {error_msg}")
 
@@ -1830,38 +1912,34 @@ def set_webhook():
         return jsonify({"error": "Bot token not configured"}), 500
         
     try:
-        # Get domain from environment or request parameter
-        url = request.args.get('url')
-        if not url:
-            # Try to auto-detect domain from Railway environment
-            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
-            if not domain.startswith('http'):
-                url = f"https://{domain}"
-            else:
-                url = domain
-            
-        webhook_url = f"{url}/{BOT_TOKEN}"
-        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
-        
-        # Make the actual request to Telegram
-        response = requests.get(telegram_url)
+        override = request.args.get('url')
+        webhook_url = build_webhook_url(override)
+        if not webhook_url:
+            return jsonify({"success": False, "error": "Invalid or missing domain for webhook"}), 400
+
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url},
+            timeout=10
+        )
+        response.raise_for_status()
         response_data = response.json()
-        
+
         if response_data.get('ok'):
-            logger.info(f"Webhook set successfully to: {webhook_url}")
+            logger.info(f"Webhook set successfully to: {webhook_url.replace(BOT_TOKEN, '[REDACTED]')}")
             return jsonify({
                 "success": True,
                 "message": "Webhook set successfully",
                 "webhook_url": webhook_url,
                 "telegram_response": response_data
             })
-        else:
-            logger.error(f"Failed to set webhook: {response_data}")
-            return jsonify({
-                "success": False,
-                "error": "Failed to set webhook",
-                "telegram_response": response_data
-            }), 400
+
+        logger.error(f"Failed to set webhook: {response_data}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to set webhook",
+            "telegram_response": response_data
+        }), 400
     except Exception as e:
         logger.error(f"Error setting webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500

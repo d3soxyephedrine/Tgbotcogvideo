@@ -6,7 +6,21 @@ echo "=========================="
 
 # Get environment variables
 BOT_TOKEN="${BOT_TOKEN}"
-DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-tgbotcogvideo-production.up.railway.app}"
+
+# Prefer explicit webhook domain if provided, then Railway-provided domains
+if [ -n "${TELEGRAM_WEBHOOK_DOMAIN}" ]; then
+    DOMAIN="${TELEGRAM_WEBHOOK_DOMAIN}"
+elif [ -n "${RAILWAY_PUBLIC_DOMAIN}" ]; then
+    DOMAIN="${RAILWAY_PUBLIC_DOMAIN}"
+elif [ -n "${RAILWAY_STATIC_URL}" ]; then
+    DOMAIN="${RAILWAY_STATIC_URL}"
+else
+    DOMAIN="tgbotcogvideo-production.up.railway.app"
+fi
+
+# Strip protocol if DOMAIN already includes it
+DOMAIN="${DOMAIN#https://}"
+DOMAIN="${DOMAIN#http://}"
 
 if [ -z "$BOT_TOKEN" ]; then
     echo "⚠️  BOT_TOKEN not set, skipping webhook setup"

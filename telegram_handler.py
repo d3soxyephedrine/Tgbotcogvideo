@@ -5,6 +5,8 @@ import threading
 import time
 import io
 import base64
+from collections import deque
+from typing import Deque, Dict, List, Tuple
 from llm_api import generate_response, generate_image, generate_qwen_image, generate_qwen_edit_image, generate_grok_image, generate_hunyuan_image, generate_wan25_video
 from models import db, User, Message, Payment, Transaction, Memory, TelegramPayment, CryptoPayment
 from memory_utils import parse_memory_command, store_memory, get_user_memories, delete_memory, format_memories_for_display
@@ -19,6 +21,56 @@ logger = logging.getLogger(__name__)
 
 # Flag to track database availability (will be set by main.py)
 DB_AVAILABLE = False
+
+# Lightweight in-memory history fallback for when the database is unavailable
+IN_MEMORY_HISTORY_LIMIT = 20  # store up to 10 message pairs (user+assistant)
+_in_memory_conversations: Dict[int, Deque[Tuple[str, str]]] = {}
+_in_memory_lock = threading.Lock()
+
+def _append_in_memory_history(chat_id: int | None, role: str, content: str | None) -> None:
+    """Append a single message to the in-memory fallback history."""
+    if chat_id is None or not content or role not in {"user", "assistant"}:
+        return
+
+    with _in_memory_lock:
+        history = _in_memory_conversations.setdefault(chat_id, deque(maxlen=IN_MEMORY_HISTORY_LIMIT))
+        history.append((role, content))
+
+def _replace_in_memory_history(chat_id: int | None, history_items: List[dict]) -> None:
+    """Replace the cached history with the latest database snapshot."""
+    if chat_id is None:
+        return
+
+    filtered: List[Tuple[str, str]] = []
+    for item in history_items[-IN_MEMORY_HISTORY_LIMIT:]:
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and content:
+            filtered.append((role, content))
+
+    with _in_memory_lock:
+        if filtered:
+            _in_memory_conversations[chat_id] = deque(filtered, maxlen=IN_MEMORY_HISTORY_LIMIT)
+        else:
+            _in_memory_conversations.pop(chat_id, None)
+
+def _get_in_memory_history(chat_id: int | None) -> List[dict]:
+    """Retrieve a copy of the cached history for fallback usage."""
+    if chat_id is None:
+        return []
+
+    with _in_memory_lock:
+        stored = list(_in_memory_conversations.get(chat_id, []))
+
+    return [{"role": role, "content": content} for role, content in stored]
+
+def _clear_in_memory_history(chat_id: int | None) -> None:
+    """Remove any cached history for the provided chat."""
+    if chat_id is None:
+        return
+
+    with _in_memory_lock:
+        _in_memory_conversations.pop(chat_id, None)
 
 # Rate limiting for /video command (user_id: timestamp)
 user_video_cooldown = {}
@@ -1065,22 +1117,22 @@ Use /buy to purchase more credits or /daily for free credits.
         
         # Check for /clear command
         if text.lower() == '/clear':
+            had_fallback_history = bool(_get_in_memory_history(chat_id))
+            _clear_in_memory_history(chat_id)
+
             if DB_AVAILABLE and user_id:
                 try:
                     from flask import current_app
                     with current_app.app_context():
                         # First, delete all transactions that reference messages for this user
-                        # Get all message IDs for this user
                         message_ids = [msg.id for msg in Message.query.filter_by(user_id=user_id).all()]
-                        
-                        # Delete transactions that reference these messages
+
                         if message_ids:
                             Transaction.query.filter(Transaction.message_id.in_(message_ids)).delete(synchronize_session=False)
-                        
-                        # Now delete all messages for this user
+
                         deleted_count = Message.query.filter_by(user_id=user_id).delete()
                         db.session.commit()
-                        
+
                         response = f"✅ Conversation history cleared!\n\n{deleted_count} messages deleted from your history.\n\nYou can now start a fresh conversation with full system prompt effectiveness."
                         logger.info(f"Cleared {deleted_count} messages for user {user_id}")
                 except Exception as db_error:
@@ -1088,9 +1140,11 @@ Use /buy to purchase more credits or /daily for free credits.
                     db.session.rollback()
                     response = "❌ Error clearing conversation history. Please try again."
             else:
-                response = "❌ Conversation history feature requires database access."
-            
-            # Send response
+                if had_fallback_history:
+                    response = "✅ Conversation history cleared from temporary storage. Database history is unavailable right now."
+                else:
+                    response = "❌ Conversation history feature requires database access."
+
             send_message(chat_id, response)
             return
         
@@ -3353,19 +3407,28 @@ To create a video, you need to:
                         from sqlalchemy import desc
                         subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
                         recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
-                        
+
                         # Format as conversation history (already in chronological order)
                         for msg in recent_messages:
                             conversation_history.append({"role": "user", "content": msg.user_message})
                             if msg.bot_response:
                                 conversation_history.append({"role": "assistant", "content": msg.bot_response})
-                        
+
+                        if conversation_history:
+                            _replace_in_memory_history(chat_id, conversation_history)
+
                         logger.info(f"Loaded {len(recent_messages)} previous messages for context")
             except Exception as db_error:
                 logger.error(f"Error in consolidated DB operations: {str(db_error)}")
                 conversation_history = []
                 credits_available = True  # Allow response even if DB fails
-        
+
+        if not conversation_history:
+            fallback_history = _get_in_memory_history(chat_id)
+            if fallback_history:
+                conversation_history = fallback_history
+                logger.info(f"Using in-memory fallback history for chat {chat_id} ({len(conversation_history)} messages)")
+
         # If no credits, send error and return
         if not credits_available:
             response = "⚠️ You're out of credits!\n\nTo continue using the bot:\n• Use /daily to claim free credits\n• Or purchase more with /buy"
@@ -3477,7 +3540,11 @@ To create a video, you need to:
                         send_message(chat_id, user._credit_warning)
             except Exception as e:
                 logger.debug(f"Error sending credit warning: {e}")
-        
+
+        # Update in-memory history fallback for future messages
+        _append_in_memory_history(chat_id, "user", text)
+        _append_in_memory_history(chat_id, "assistant", llm_response)
+
         # CRITICAL: Store message SYNCHRONOUSLY for conversation memory to work
         # Credit already deducted above, so user can't use same credit twice
         message_id = None
