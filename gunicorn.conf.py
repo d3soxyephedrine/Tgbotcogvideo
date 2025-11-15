@@ -107,12 +107,15 @@ def post_worker_init(worker):
 
     # Dispose of any inherited database connections from parent process
     try:
-        from main import app, db
-        with app.app_context():
-            db.engine.dispose()
-            logger.debug(f"Worker {worker.pid}: Disposed inherited database connections")
+        from main import app, db, DB_AVAILABLE
+        if DB_AVAILABLE:
+            with app.app_context():
+                db.engine.dispose()
+                logger.debug(f"Worker {worker.pid}: Disposed inherited database connections")
+        else:
+            logger.debug(f"Worker {worker.pid}: Database not available, skipping cleanup")
     except Exception as e:
-        logger.debug(f"Worker {worker.pid}: Could not dispose database connections: {str(e)}")
+        logger.warning(f"Worker {worker.pid}: Could not dispose database connections: {str(e)}")
 
 def worker_exit(server, worker):
     """Called when a worker exits
@@ -125,13 +128,16 @@ def worker_exit(server, worker):
 
     # Clean up database connections
     try:
-        from main import app, db
-        with app.app_context():
-            db.session.remove()
-            db.engine.dispose()
-            logger.debug(f"Worker {worker.pid}: Cleaned up database connections")
+        from main import app, db, DB_AVAILABLE
+        if DB_AVAILABLE:
+            with app.app_context():
+                db.session.remove()
+                db.engine.dispose()
+                logger.debug(f"Worker {worker.pid}: Cleaned up database connections")
+        else:
+            logger.debug(f"Worker {worker.pid}: Database not available, skipping cleanup")
     except Exception as e:
-        logger.debug(f"Worker {worker.pid}: Could not clean up database connections: {str(e)}")
+        logger.warning(f"Worker {worker.pid}: Could not clean up database connections: {str(e)}")
 
 def on_exit(server):
     """Called when gunicorn is shutting down"""
@@ -141,10 +147,13 @@ def on_exit(server):
 
     # Final cleanup
     try:
-        from main import app, db
-        with app.app_context():
-            db.session.remove()
-            db.engine.dispose()
-            logger.info("Master process: Cleaned up all database connections")
+        from main import app, db, DB_AVAILABLE
+        if DB_AVAILABLE:
+            with app.app_context():
+                db.session.remove()
+                db.engine.dispose()
+                logger.info("Master process: Cleaned up all database connections")
+        else:
+            logger.debug("Master process: Database not available, skipping cleanup")
     except Exception as e:
-        logger.debug(f"Master process: Could not clean up database connections: {str(e)}")
+        logger.warning(f"Master process: Could not clean up database connections: {str(e)}")

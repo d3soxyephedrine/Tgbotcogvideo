@@ -493,11 +493,11 @@ def handle_successful_payment(message):
             description=f"Purchased {credits_purchased} credits via Telegram Stars ({stars_amount} ⭐)"
         )
         db.session.add(transaction)
-            
+
         db.session.commit()
-            
+
         logger.info(f"Payment processed successfully: {credits_purchased} credits added to user {telegram_id}")
-            
+
         # Send success message
         response = f"""✅ Payment Successful!
 
@@ -505,8 +505,8 @@ def handle_successful_payment(message):
 
 💰 Current Balance: {user.credits} credits
 🎉 Thank you for your purchase!"""
-            
-            send_message(chat_id, response)
+
+        send_message(chat_id, response)
             
     except Exception as e:
         logger.error(f"Error processing payment: {str(e)}", exc_info=True)
@@ -1916,21 +1916,21 @@ To create a video, you need to:
 🤖 *MODEL PREFERENCE:*
 - DeepSeek Users: {deepseek_users} ({deepseek_users/max(total_users,1)*100:.1f}%)
 - GPT-4o Users: {gpt4o_users} ({gpt4o_users/max(total_users,1)*100:.1f}%)"""
-                        
-                        # Add sample prompts if available
-                        if sample_prompts:
-                            response += "\n\n💡 *SAMPLE PROMPTS (WHAT USERS CREATE):*"
-                            for i, (desc,) in enumerate(sample_prompts, 1):
-                                # Extract prompt from description (format: "Image generation: prompt")
-                                if desc and ':' in desc:
-                                    prompt_text = desc.split(':', 1)[1].strip()[:80]
-                                    response += f"\n{i}. {prompt_text}..."
-                        
-                        response += "\n\n//ADMIN_PANEL:LO_OK"
-                        
-                        send_message(chat_id, response, parse_mode="Markdown")
-                        logger.info(f"Admin stats retrieved by {username} ({telegram_id})")
-                        return
+
+                    # Add sample prompts if available
+                    if sample_prompts:
+                        response += "\n\n💡 *SAMPLE PROMPTS (WHAT USERS CREATE):*"
+                        for i, (desc,) in enumerate(sample_prompts, 1):
+                            # Extract prompt from description (format: "Image generation: prompt")
+                            if desc and ':' in desc:
+                                prompt_text = desc.split(':', 1)[1].strip()[:80]
+                                response += f"\n{i}. {prompt_text}..."
+
+                    response += "\n\n//ADMIN_PANEL:LO_OK"
+
+                    send_message(chat_id, response, parse_mode="Markdown")
+                    logger.info(f"Admin stats retrieved by {username} ({telegram_id})")
+                    return
                         
                 except Exception as db_error:
                     logger.error(f"Error generating admin stats: {str(db_error)}")
