@@ -38,8 +38,8 @@ class User(db.Model):
     # Model selection (deepseek vs gpt4o vs kimi)
     preferred_model = db.Column(db.String(50), default='deepseek/deepseek-chat-v3-0324', nullable=False)
 
-    # Kimi K2 mode selection (False = APEX, True = Orchestrator)
-    kimi_orchestrator_mode = db.Column(db.Boolean, default=False, nullable=False)
+    # Kimi K2 mode selection: 'apex' (default), 'orchestrator', or 'pandora'
+    kimi_mode = db.Column(db.String(20), default='apex', nullable=False)
 
     # Priming handshake for DeepSeek first-turn moderation bypass
     deepseek_primed = db.Column(db.Boolean, default=False, nullable=False)

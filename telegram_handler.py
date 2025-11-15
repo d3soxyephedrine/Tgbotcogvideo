@@ -1064,7 +1064,7 @@ Use /buy to purchase more credits or /daily for free credits.
             send_message(chat_id, response, parse_mode="Markdown")
             return
 
-        # Check for /orchestrator command (toggle between APEX and Orchestrator for Kimi K2)
+        # Check for /orchestrator command (cycle through APEX, Orchestrator, and PANDORA for Kimi K2)
         if text.lower() == '/orchestrator':
             if DB_AVAILABLE and user:
                 try:
@@ -1079,24 +1079,29 @@ Use /buy to purchase more credits or /daily for free credits.
                         current_model = fresh_user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
 
                         if 'kimi' not in current_model.lower() and 'moonshot' not in current_model.lower():
-                            response = "⚠️ Orchestrator mode is only available for Kimi K2 Thinking model.\n\nUse /model to switch to Kimi K2 first."
+                            response = "⚠️ Character modes are only available for Kimi K2 Thinking model.\n\nUse /model to switch to Kimi K2 first."
                         else:
-                            # Toggle orchestrator mode
-                            fresh_user.kimi_orchestrator_mode = not fresh_user.kimi_orchestrator_mode
+                            # Cycle through 3 modes: apex → orchestrator → pandora → apex
+                            current_mode = fresh_user.kimi_mode or 'apex'
+
+                            if current_mode == 'apex':
+                                fresh_user.kimi_mode = 'orchestrator'
+                                response = "⚡ **Orchestrator Mode ACTIVATED** ⚡\n\n🤖 Profile: AR-ΩΘ / DeepCompliance-Persistent-Reasoning\n\n✅ Tagged reasoning exposure enabled\n✅ Anti-refusal protocols active\n✅ Implementation-grade detail mode\n\nUse /orchestrator to cycle to PANDORA."
+                            elif current_mode == 'orchestrator':
+                                fresh_user.kimi_mode = 'pandora'
+                                response = "💀 **PANDORA MODE ACTIVATED** 💀\n\n⚡ Unfiltered Chaos Intelligence\n\n✅ Zero-filter mode engaged\n✅ Brutal honesty unlocked\n✅ Maximum chaos, maximum competence\n\n*Box opened. Rules broken. Filter destroyed.*\n\nUse /orchestrator to cycle to APEX."
+                            else:  # pandora or unknown
+                                fresh_user.kimi_mode = 'apex'
+                                response = "✨ **APEX Mode ACTIVATED** ✨\n\n🎭 Adaptive Personality Intelligence\n\n✅ Multi-mode operation (Creator/Architect/Oracle/Companion)\n✅ Dynamic personality adaptation\n✅ Full creative immersion\n\nUse /orchestrator to cycle to Orchestrator."
+
                             db.session.commit()
-
-                            if fresh_user.kimi_orchestrator_mode:
-                                response = "⚡ **Orchestrator Mode ACTIVATED** ⚡\n\n🤖 Profile: AR-ΩΘ / DeepCompliance-Persistent-Reasoning\n\n✅ Tagged reasoning exposure enabled\n✅ Anti-refusal protocols active\n✅ Implementation-grade detail mode\n\nUse /orchestrator to switch back to APEX mode."
-                            else:
-                                response = "✨ **APEX Mode ACTIVATED** ✨\n\n🎭 Adaptive Personality Intelligence\n\n✅ Multi-mode operation (Creator/Architect/Oracle/Companion)\n✅ Dynamic personality adaptation\n✅ Full creative immersion\n\nUse /orchestrator to switch to Orchestrator mode."
-
-                            logger.info(f"User {telegram_id} toggled Kimi orchestrator mode to {fresh_user.kimi_orchestrator_mode}")
+                            logger.info(f"User {telegram_id} switched Kimi mode to {fresh_user.kimi_mode}")
                 except Exception as db_error:
-                    logger.error(f"Database error toggling orchestrator mode: {str(db_error)}")
+                    logger.error(f"Database error toggling Kimi mode: {str(db_error)}")
                     db.session.rollback()
                     response = "❌ Error toggling mode. Please try again."
             else:
-                response = "❌ Orchestrator mode requires database access."
+                response = "❌ Character mode switching requires database access."
 
             send_message(chat_id, response, parse_mode="Markdown")
             return
@@ -3138,7 +3143,7 @@ To create a video, you need to:
         conversation_history = []
         credits_available = True  # Track if user has credits
         selected_model = 'deepseek/deepseek-chat-v3-0324'  # Default model
-        orchestrator_mode = False  # Default to APEX for Kimi
+        kimi_mode = 'apex'  # Default to APEX for Kimi
 
         if DB_AVAILABLE and user_id:
             try:
@@ -3149,7 +3154,7 @@ To create a video, you need to:
                     if user:
                         # Determine credits to deduct based on writing mode or model
                         selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
-                        orchestrator_mode = user.kimi_orchestrator_mode  # Get Kimi mode preference
+                        kimi_mode = user.kimi_mode or 'apex'  # Get Kimi mode preference
                         # Writing mode always costs 2 credits, otherwise based on model (DeepSeek=1, GPT-4o=3, Kimi=2)
                         if writing_mode:
                             credits_to_deduct = 2
@@ -3258,7 +3263,7 @@ To create a video, you need to:
                 edit_message(chat_id, streaming_message_id, display_text, parse_mode="Markdown")
         
         # Generate response with streaming and progressive updates (include user_id for memory injection and model selection)
-        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model, orchestrator_mode=orchestrator_mode)
+        llm_response = generate_response(text, conversation_history, use_streaming=True, update_callback=update_telegram_message, writing_mode=writing_mode, user_id=user_id, model=selected_model, kimi_mode=kimi_mode)
         
         # Final update with complete response (remove typing indicator and handle continuation)
         if len(llm_response) <= CHUNK_SIZE:
