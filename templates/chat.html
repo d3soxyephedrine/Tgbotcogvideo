@@ -816,6 +816,131 @@
             backdrop-filter: blur(10px);
         }
 
+        /* Message Action Buttons */
+        .message-actions {
+            position: absolute;
+            top: -12px;
+            right: 12px;
+            display: none;
+            gap: 6px;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .message:hover .message-actions {
+            display: flex;
+            opacity: 1;
+        }
+
+        .message-action-btn {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11px;
+            color: var(--primary-purple);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .message-action-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: var(--primary-purple);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .message-action-btn:active {
+            transform: translateY(0);
+        }
+
+        .message-action-btn.regenerate {
+            background: linear-gradient(135deg, rgba(65, 105, 225, 0.2), rgba(139, 92, 246, 0.2));
+        }
+
+        .message-action-btn.regenerate:hover {
+            background: linear-gradient(135deg, rgba(65, 105, 225, 0.3), rgba(139, 92, 246, 0.3));
+        }
+
+        /* Message Edit Mode */
+        .message.editing .message-text {
+            display: none;
+        }
+
+        .message.editing .message-edit-form {
+            display: flex;
+        }
+
+        .message-text {
+            display: block;
+        }
+
+        .message-edit-form {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .message-edit-textarea {
+            width: 100%;
+            min-height: 60px;
+            background: rgba(20, 20, 30, 0.6);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            backdrop-filter: blur(10px);
+        }
+
+        .message-edit-textarea:focus {
+            outline: none;
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+        }
+
+        .message-edit-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .message-edit-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .message-edit-btn.cancel {
+            background: rgba(160, 160, 184, 0.2);
+            color: var(--text-secondary);
+        }
+
+        .message-edit-btn.cancel:hover {
+            background: rgba(160, 160, 184, 0.3);
+        }
+
+        .message-edit-btn.save {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: white;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+        }
+
+        .message-edit-btn.save:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.6);
+        }
+
         /* Typing Indicator */
         .typing-indicator {
             background: var(--glass-bg);
@@ -1903,25 +2028,38 @@
             }
         }
 
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message || !apiKey) return;
+        async function sendMessage(event = null, isRegenerate = false) {
+            let message;
 
-            // Disable input and show loading state
-            messageInput.disabled = true;
-            sendButton.disabled = true;
-            sendButton.classList.add('loading');
+            if (!isRegenerate) {
+                message = messageInput.value.trim();
+                if (!message || !apiKey) return;
 
-            // Add user message to chat
-            addMessage('user', message);
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
+                // Disable input and show loading state
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                sendButton.classList.add('loading');
 
-            // Add to conversation history
-            conversationHistory.push({
-                role: 'user',
-                content: message
-            });
+                // Add user message to chat
+                const userIndex = conversationHistory.length;
+                addMessage('user', message, userIndex);
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+
+                // Add to conversation history
+                conversationHistory.push({
+                    role: 'user',
+                    content: message
+                });
+            } else {
+                // Regenerate mode - just check for API key
+                if (!apiKey) return;
+
+                // Disable input and show loading state
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                sendButton.classList.add('loading');
+            }
 
             // Show typing indicator
             typingIndicator.classList.add('active');
@@ -1976,9 +2114,10 @@
                                     // Create or update message element
                                     if (!messageElement) {
                                         typingIndicator.classList.remove('active');
-                                        messageElement = addMessage('assistant', assistantMessage);
+                                        const assistantIndex = conversationHistory.length;
+                                        messageElement = addMessage('assistant', assistantMessage, assistantIndex);
                                     } else {
-                                        messageElement.textContent = assistantMessage;
+                                        messageElement.querySelector('.message-text').textContent = assistantMessage;
                                     }
 
                                     scrollToBottom();
@@ -2030,10 +2169,74 @@
             }
         }
 
-        function addMessage(type, content) {
+        function addMessage(type, content, messageIndex = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
-            messageDiv.textContent = content;
+            messageDiv.dataset.type = type;
+
+            if (messageIndex !== null) {
+                messageDiv.dataset.index = messageIndex;
+            }
+
+            // Create message text container
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+            textDiv.textContent = content;
+            messageDiv.appendChild(textDiv);
+
+            // Add action buttons for user and assistant messages
+            if (type === 'user' || type === 'assistant') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+
+                if (type === 'user') {
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'message-action-btn edit';
+                    editBtn.textContent = '✏️ Edit';
+                    editBtn.onclick = () => enableMessageEdit(messageDiv);
+                    actionsDiv.appendChild(editBtn);
+                }
+
+                if (type === 'assistant') {
+                    const regenerateBtn = document.createElement('button');
+                    regenerateBtn.className = 'message-action-btn regenerate';
+                    regenerateBtn.textContent = '🔄 Regenerate';
+                    regenerateBtn.onclick = () => regenerateMessage(messageDiv);
+                    actionsDiv.appendChild(regenerateBtn);
+                }
+
+                messageDiv.appendChild(actionsDiv);
+
+                // Create edit form (hidden by default)
+                if (type === 'user') {
+                    const editForm = document.createElement('div');
+                    editForm.className = 'message-edit-form';
+
+                    const textarea = document.createElement('textarea');
+                    textarea.className = 'message-edit-textarea';
+                    textarea.value = content;
+                    editForm.appendChild(textarea);
+
+                    const editActions = document.createElement('div');
+                    editActions.className = 'message-edit-actions';
+
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'message-edit-btn cancel';
+                    cancelBtn.textContent = 'Cancel';
+                    cancelBtn.onclick = () => cancelMessageEdit(messageDiv);
+                    editActions.appendChild(cancelBtn);
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.className = 'message-edit-btn save';
+                    saveBtn.textContent = 'Save & Resend';
+                    saveBtn.onclick = () => saveMessageEdit(messageDiv);
+                    editActions.appendChild(saveBtn);
+
+                    editForm.appendChild(editActions);
+                    messageDiv.appendChild(editForm);
+                }
+            }
+
             chatArea.appendChild(messageDiv);
             scrollToBottom();
             return messageDiv;
@@ -2041,6 +2244,88 @@
 
         function scrollToBottom() {
             chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // Message Edit and Regenerate Functions
+        function enableMessageEdit(messageDiv) {
+            messageDiv.classList.add('editing');
+            const textarea = messageDiv.querySelector('.message-edit-textarea');
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+
+        function cancelMessageEdit(messageDiv) {
+            messageDiv.classList.remove('editing');
+        }
+
+        async function saveMessageEdit(messageDiv) {
+            const textarea = messageDiv.querySelector('.message-edit-textarea');
+            const newContent = textarea.value.trim();
+
+            if (!newContent) {
+                showToast('Message cannot be empty', 'error');
+                return;
+            }
+
+            // Get the message index in conversation history
+            const messageIndex = parseInt(messageDiv.dataset.index);
+
+            // Update the conversation history
+            if (messageIndex >= 0 && messageIndex < conversationHistory.length) {
+                conversationHistory[messageIndex].content = newContent;
+
+                // Remove all messages after this one (including assistant responses)
+                conversationHistory = conversationHistory.slice(0, messageIndex + 1);
+
+                // Clear chat area and redisplay all messages
+                const messages = chatArea.querySelectorAll('.message');
+                const messagesToKeep = [];
+                for (let i = 0; i < messages.length; i++) {
+                    const msg = messages[i];
+                    const idx = parseInt(msg.dataset.index);
+                    if (idx <= messageIndex) {
+                        messagesToKeep.push(msg);
+                    } else {
+                        msg.remove();
+                    }
+                }
+
+                // Update the current message display
+                messageDiv.querySelector('.message-text').textContent = newContent;
+                messageDiv.classList.remove('editing');
+
+                // Re-send the message to get new response
+                await sendMessage(null, true);
+            }
+        }
+
+        async function regenerateMessage(messageDiv) {
+            // Find the user message that generated this response
+            let userMessage = messageDiv.previousElementSibling;
+            while (userMessage && !userMessage.classList.contains('user')) {
+                userMessage = userMessage.previousElementSibling;
+            }
+
+            if (!userMessage) {
+                showToast('Could not find the original message', 'error');
+                return;
+            }
+
+            // Get the index of the user message
+            const userIndex = parseInt(userMessage.dataset.index);
+
+            if (userIndex >= 0) {
+                // Remove assistant message from history and UI
+                const assistantIndex = parseInt(messageDiv.dataset.index);
+                if (assistantIndex >= 0) {
+                    conversationHistory = conversationHistory.slice(0, assistantIndex);
+                }
+
+                messageDiv.remove();
+
+                // Re-send the user message to get new response
+                await sendMessage(null, true);
+            }
         }
 
         // Focus input on load
