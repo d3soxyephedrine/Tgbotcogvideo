@@ -7,7 +7,7 @@ import json
 import hmac
 import hashlib
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from flask import Flask, request, jsonify, render_template_string, render_template
 from telegram_handler import process_update, send_message
 from llm_api import generate_response, OPENROUTER_API_KEY, OPENROUTER_ENDPOINT
@@ -1220,16 +1220,16 @@ def register_telegram_webhook():
 
     try:
         # Use RAILWAY_PUBLIC_DOMAIN if set, otherwise fall back to production domain
-        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "tgbotcogvideo-production.up.railway.app")
 
         # Build webhook URL
         webhook_url = f"https://{domain}/{BOT_TOKEN}"
-        
+
         # Redact BOT_TOKEN from webhook_url for logging (do this early)
         safe_webhook_url = webhook_url.replace(BOT_TOKEN, "[REDACTED]")
-        
-        # Call Telegram API to set webhook
-        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
+
+        # Call Telegram API to set webhook (URL-encode the webhook_url parameter)
+        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={quote(webhook_url, safe='')}"
         response = requests.get(telegram_url, timeout=10)
         response_data = response.json()
         
@@ -1884,14 +1884,14 @@ def set_webhook():
         url = request.args.get('url')
         if not url:
             # Try to auto-detect domain from Railway environment
-            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "tgbotcogvideo-production.up.railway.app")
             if not domain.startswith('http'):
                 url = f"https://{domain}"
             else:
                 url = domain
-            
+
         webhook_url = f"{url}/{BOT_TOKEN}"
-        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={webhook_url}"
+        telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={quote(webhook_url, safe='')}"
         
         # Make the actual request to Telegram
         response = requests.get(telegram_url)
