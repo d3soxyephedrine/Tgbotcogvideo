@@ -1893,10 +1893,15 @@
                     showToast('Invalid API key. Please log in again.', 'error');
                     localStorage.removeItem('uncensored_ai_api_key');
                     setTimeout(() => location.reload(), 2000);
+                } else if (response.status === 503) {
+                    console.error('Database unavailable (503)');
+                    showToast('⚠️ Database not connected. The server may be starting up. Retrying in 5s...', 'error');
+                    // Retry after 5 seconds
+                    setTimeout(() => loadConversations(), 5000);
                 } else {
                     const errorData = await response.json().catch(() => ({}));
                     console.error('Failed to load conversations:', errorData);
-                    showToast('Failed to load conversations', 'error');
+                    showToast(`Failed to load conversations: ${errorData.error || 'Unknown error'}`, 'error');
                 }
             } catch (error) {
                 console.error('Failed to load conversations:', error);
@@ -1969,8 +1974,11 @@
                     renderConversations();
                     await switchConversation(newConv.id);
                     showToast('New chat created!', 'success');
+                } else if (response.status === 503) {
+                    console.error('Database unavailable (503)');
+                    showToast('⚠️ Database not connected. Please wait for the server to start and try again.', 'error');
                 } else {
-                    const error = await response.json();
+                    const error = await response.json().catch(() => ({}));
                     console.error('Failed to create conversation:', error);
                     showToast('Failed to create new chat: ' + (error.error || 'Unknown error'), 'error');
                 }
