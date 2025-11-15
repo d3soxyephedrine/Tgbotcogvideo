@@ -61,9 +61,21 @@ curl https://api.telegram.org/bot8129731076:AAE_RjwUf0_6k5PKwAtOYfgWvLIocWejQcY/
 
 ## Manual Webhook Set
 
-If you need to manually set it (shouldn't be necessary):
+If you need to manually set it after deployment:
+
+**Quick one-liner:**
+```bash
+curl -X POST "https://api.telegram.org/bot8129731076:AAE_RjwUf0_6k5PKwAtOYfgWvLIocWejQcY/setWebhook" -H "Content-Type: application/json" -d '{"url":"https://tgbotcogvideo-production.up.railway.app/8129731076:AAE_RjwUf0_6k5PKwAtOYfgWvLIocWejQcY"}'
+```
+
+**Alternative (GET request):**
 ```bash
 curl "https://api.telegram.org/bot8129731076:AAE_RjwUf0_6k5PKwAtOYfgWvLIocWejQcY/setWebhook?url=https://tgbotcogvideo-production.up.railway.app/8129731076:AAE_RjwUf0_6k5PKwAtOYfgWvLIocWejQcY"
+```
+
+**Or use the web endpoint:**
+```bash
+curl "https://tgbotcogvideo-production.up.railway.app/set_webhook"
 ```
 
 ## Troubleshooting
