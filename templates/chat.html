@@ -23,8 +23,8 @@
             /* Black - Power & Sophistication */
             --black-bg: #0a0a0a;
             --darker-black: #050505;
-            --card-bg: rgba(10, 10, 10, 0.85);
-            --glass-bg: rgba(20, 20, 30, 0.6);
+            --card-bg: rgba(10, 10, 10, 0.5);
+            --glass-bg: rgba(20, 20, 30, 0.4);
 
             /* Text Colors */
             --text-primary: #e8e8f0;
@@ -33,6 +33,10 @@
             /* Status Colors */
             --error-red: #ef4444;
             --success-green: #10b981;
+
+            /* Edge Accents - Power & Freedom */
+            --accent-red: #ff3366;
+            --electric-cyan: #00ffff;
         }
 
         body {
@@ -65,8 +69,10 @@
             width: 200%;
             height: 200%;
             background:
-                radial-gradient(circle at 20% 50%, rgba(65, 105, 225, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+                radial-gradient(circle at 20% 50%, rgba(65, 105, 225, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 50% 20%, rgba(255, 51, 102, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 40%, rgba(0, 255, 255, 0.06) 0%, transparent 35%);
             animation: drift 20s ease-in-out infinite;
         }
 
@@ -122,12 +128,12 @@
         .sidebar {
             width: 280px;
             background: var(--card-bg);
-            backdrop-filter: blur(15px);
+            backdrop-filter: blur(25px) saturate(180%);
             border-right: 1px solid rgba(139, 92, 246, 0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3), inset -1px 0 1px rgba(139, 92, 246, 0.1);
         }
 
         .sidebar-header {
@@ -185,23 +191,26 @@
         .conversation-item {
             padding: 12px 15px;
             margin-bottom: 8px;
-            background: rgba(20, 20, 30, 0.5);
+            background: rgba(20, 20, 30, 0.3);
             border: 1px solid rgba(139, 92, 246, 0.1);
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
         }
 
         .conversation-item:hover {
-            background: rgba(20, 20, 30, 0.9);
+            background: rgba(20, 20, 30, 0.6);
             border-color: rgba(139, 92, 246, 0.4);
             transform: translateX(2px);
+            backdrop-filter: blur(15px);
         }
 
         .conversation-item.active {
-            background: linear-gradient(135deg, rgba(65, 105, 225, 0.15), rgba(139, 92, 246, 0.15));
+            background: linear-gradient(135deg, rgba(65, 105, 225, 0.2), rgba(139, 92, 246, 0.2));
             border-color: var(--primary-purple);
             box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), inset 0 0 20px rgba(139, 92, 246, 0.1);
+            backdrop-filter: blur(15px);
         }
 
         .conversation-title {
@@ -318,12 +327,12 @@
         .header {
             padding: 20px 30px;
             background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px) saturate(180%);
             border-bottom: 1px solid rgba(139, 92, 246, 0.3);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
+            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1), inset 0 -1px 1px rgba(139, 92, 246, 0.1);
         }
 
         .header-left {
@@ -468,19 +477,19 @@
         }
 
         .message.user {
-            background: linear-gradient(135deg, rgba(65, 105, 225, 0.25), rgba(139, 92, 246, 0.25));
+            background: linear-gradient(135deg, rgba(65, 105, 225, 0.2), rgba(139, 92, 246, 0.2));
             align-self: flex-end;
             margin-left: auto;
             border: 1px solid rgba(139, 92, 246, 0.4);
-            backdrop-filter: blur(15px);
+            backdrop-filter: blur(20px) saturate(150%);
             box-shadow: 0 4px 20px rgba(139, 92, 246, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1);
         }
 
         .message.assistant {
             background: var(--glass-bg);
             align-self: flex-start;
-            border: 1px solid rgba(139, 92, 246, 0.15);
-            backdrop-filter: blur(15px);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            backdrop-filter: blur(20px) saturate(150%);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(139, 92, 246, 0.05);
         }
 
@@ -560,9 +569,9 @@
         .input-area {
             padding: 20px 30px 30px;
             background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px) saturate(180%);
             border-top: 1px solid rgba(139, 92, 246, 0.3);
-            box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
+            box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1), inset 0 1px 1px rgba(139, 92, 246, 0.1);
         }
 
         .input-container {
@@ -575,7 +584,7 @@
         #message-input {
             flex: 1;
             padding: 16px 20px;
-            background: rgba(20, 20, 30, 0.7);
+            background: rgba(20, 20, 30, 0.5);
             border: 1px solid rgba(139, 92, 246, 0.3);
             border-radius: 12px;
             color: var(--text-primary);
@@ -585,7 +594,7 @@
             font-family: inherit;
             max-height: 200px;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(15px);
+            backdrop-filter: blur(20px) saturate(150%);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
@@ -677,13 +686,13 @@
 
         .modal-content {
             background: var(--card-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(30px) saturate(180%);
             padding: 40px;
             border-radius: 20px;
             max-width: 500px;
             width: 90%;
-            box-shadow: 0 20px 60px rgba(139, 92, 246, 0.3);
-            border: 1px solid rgba(139, 92, 246, 0.3);
+            box-shadow: 0 20px 60px rgba(139, 92, 246, 0.4), 0 0 80px rgba(65, 105, 225, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
             animation: slideUp 0.4s ease-out;
             position: relative;
         }
