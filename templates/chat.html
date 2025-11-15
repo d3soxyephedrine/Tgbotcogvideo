@@ -1494,7 +1494,23 @@
         }
 
         const API_ENDPOINT = '/v1/chat/completions';
+
+        // Sanitize API key on load to prevent invalid characters
         let apiKey = localStorage.getItem('uncensored_ai_api_key') || '';
+        if (apiKey) {
+            const sanitized = apiKey.trim().replace(/[^\x00-\x7F]/g, '');
+            if (sanitized !== apiKey) {
+                console.warn('API key contained invalid characters - sanitized');
+                apiKey = sanitized;
+                if (sanitized) {
+                    localStorage.setItem('uncensored_ai_api_key', sanitized);
+                } else {
+                    localStorage.removeItem('uncensored_ai_api_key');
+                    apiKey = '';
+                }
+            }
+        }
+
         let conversationHistory = [];
         let currentConversationId = null;
         let conversations = [];
@@ -1578,20 +1594,34 @@
             }, 3000);
         }
 
+        // API key validation and sanitization
+        function sanitizeApiKey(key) {
+            // Remove any non-ASCII characters and trim whitespace
+            return key.trim().replace(/[^\x00-\x7F]/g, '');
+        }
+
         // Save API key
         saveApiKeyButton.addEventListener('click', () => {
-            const key = apiKeyInput.value.trim();
-            if (key) {
-                apiKey = key;
-                localStorage.setItem('uncensored_ai_api_key', key);
-                apiKeyModal.style.display = 'none';
-                updateCreditBalance();
-                loadConversations();
-                loadMemories();
-                showToast('API key saved successfully!', 'success');
-            } else {
+            const rawKey = apiKeyInput.value.trim();
+            const key = sanitizeApiKey(rawKey);
+
+            if (!key) {
                 showToast('Please enter a valid API key', 'error');
+                return;
             }
+
+            // Check if sanitization removed characters
+            if (rawKey !== key) {
+                showToast('⚠️ Invalid characters removed from API key', 'warning');
+            }
+
+            apiKey = key;
+            localStorage.setItem('uncensored_ai_api_key', key);
+            apiKeyModal.style.display = 'none';
+            updateCreditBalance();
+            loadConversations();
+            loadMemories();
+            showToast('API key saved successfully!', 'success');
         });
 
         // New chat button
