@@ -55,7 +55,7 @@ WAN_VIDEO_MODELS = {
             5: 1.0,
             8: 1.3
         },
-        "max_polls": 120  # 120 polls * 2 seconds = 4 minutes (WAN 2.2 needs more time)
+        "max_polls": 600  # 600 polls * 2 seconds = 20 minutes (increased timeout for WAN 2.2)
     },
     "wan2.5": {
         "endpoint": NOVITA_WAN25_I2V_ENDPOINT,
@@ -76,7 +76,7 @@ WAN_VIDEO_MODELS = {
         "duration_multiplier": {
             5: 1.0
         },
-        "max_polls": 60  # 60 polls * 2 seconds = 2 minutes (WAN 2.5 is faster)
+        "max_polls": 600  # 600 polls * 2 seconds = 20 minutes (increased timeout for WAN 2.5)
     }
 }
 
