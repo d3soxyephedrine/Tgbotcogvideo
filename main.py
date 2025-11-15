@@ -896,9 +896,9 @@ def register_telegram_webhook():
         return
     
     try:
-        # Use production domain (ko2bot.com) - locked in for production deployment
-        domain = "ko2bot.com"
-        
+        # Use production domain (Railway deployment) - locked in for production deployment
+        domain = "tgbotcogvideo-production.up.railway.app"
+
         # Build webhook URL
         webhook_url = f"https://{domain}/{BOT_TOKEN}"
         
