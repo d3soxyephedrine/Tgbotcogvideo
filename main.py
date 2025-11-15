@@ -1315,10 +1315,18 @@ def chat_completions_proxy():
             }), 401
         
         logger.info(f"Authenticated web user: {user.telegram_id} (username: {user.username})")
-        
-        # Calculate credit cost based on user's preferred model (DeepSeek=1, GPT-4o=3)
-        selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+
+        # Get model from request payload (user's selection in UI)
+        payload = request.get_json()
+        selected_model = payload.get('model') if payload else None
+        if not selected_model:
+            selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+
+        logger.info(f"Selected model: {selected_model}")
+
+        # Calculate credit cost based on selected model (DeepSeek=1, GPT-4o=3)
         credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
+        logger.info(f"Credits to deduct: {credits_to_deduct}")
         
         from telegram_handler import deduct_credits
         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
@@ -1344,8 +1352,8 @@ def chat_completions_proxy():
         
         db.session.commit()
         logger.info(f"Deducted {credits_to_deduct} credit(s) (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-        
-        payload = request.get_json()
+
+        # Payload already loaded earlier for model selection
         if not payload:
             return jsonify({
                 "error": {
@@ -1582,9 +1590,9 @@ def chat_completions_proxy():
             def update_callback(chunk):
                 nonlocal accumulated_response
                 accumulated_response += chunk
-            
-            # Call generate_response with streaming callback (include user_id for memory injection and user's preferred model)
-            selected_model = user.preferred_model or 'deepseek/deepseek-chat-v3-0324'
+
+            # Call generate_response with streaming callback (include user_id for memory injection and selected model from UI)
+            # selected_model already set earlier from payload.get('model')
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
@@ -1604,8 +1612,8 @@ def chat_completions_proxy():
                 conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
+                model_used=selected_model,
+                credits_charged=credits_to_deduct,
                 platform='web'
             )
             db.session.add(message_record)
@@ -1619,10 +1627,10 @@ def chat_completions_proxy():
             # Create transaction record
             transaction = Transaction(
                 user_id=user.id,
-                credits_used=1,
+                credits_used=credits_to_deduct,
                 message_id=message_id,
                 transaction_type='web_message',
-                description=f"Web chat message"
+                description=f"Web chat message ({selected_model})"
             )
             db.session.add(transaction)
             db.session.commit()
@@ -1664,13 +1672,14 @@ def chat_completions_proxy():
             
             return Response(generate_openai_stream(), content_type='text/event-stream')
         else:
-            # Non-streaming response (include user_id for memory injection)
+            # Non-streaming response (include user_id for memory injection and selected model from UI)
             bot_response = generate_response(
                 user_message=user_message,
                 conversation_history=conversation_history,
                 use_streaming=False,
                 writing_mode=False,
-                user_id=user.id
+                user_id=user.id,
+                model=selected_model
             )
             
             # Auto-title if first message
@@ -1682,8 +1691,8 @@ def chat_completions_proxy():
                 conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
+                model_used=selected_model,
+                credits_charged=credits_to_deduct,
                 platform='web'
             )
             db.session.add(message_record)
@@ -1696,10 +1705,10 @@ def chat_completions_proxy():
             # Create transaction
             transaction = Transaction(
                 user_id=user.id,
-                credits_used=1,
+                credits_used=credits_to_deduct,
                 message_id=message_record.id,
                 transaction_type='web_message',
-                description=f"Web chat message"
+                description=f"Web chat message ({selected_model})"
             )
             db.session.add(transaction)
             db.session.commit()
