@@ -1170,7 +1170,8 @@ def register_telegram_webhook():
 
     try:
         # Use RAILWAY_PUBLIC_DOMAIN if set, otherwise fall back to production domain
-        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+        # MUST MATCH the fallback in railway_start.sh to prevent domain conflicts
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "tgbotcogvideo-production.up.railway.app")
 
         # Build webhook URL
         webhook_url = f"https://{domain}/{BOT_TOKEN}"
@@ -1828,13 +1829,14 @@ def set_webhook():
     """Helper endpoint to set the webhook URL for Telegram"""
     if not BOT_TOKEN:
         return jsonify({"error": "Bot token not configured"}), 500
-        
+
     try:
         # Get domain from environment or request parameter
         url = request.args.get('url')
         if not url:
             # Try to auto-detect domain from Railway environment
-            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            # MUST MATCH the fallback in railway_start.sh and register_telegram_webhook()
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "tgbotcogvideo-production.up.railway.app")
             if not domain.startswith('http'):
                 url = f"https://{domain}"
             else:

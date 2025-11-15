@@ -54,18 +54,31 @@ def on_starting(server):
     logger.info("Master process starting - will register webhook after workers are ready")
 
 def when_ready(server):
-    """Called just after the server is started - runs only once on master process"""
+    """Called just after the server is started - runs only once on master process
+
+    This is a safety measure - the webhook should have been set by railway_start.sh
+    but we register it here as a backup in case:
+    1. The startup script webhook registration failed
+    2. The Railway domain changed between startup script and server ready
+    3. Any other edge cases
+
+    Domain must match the fallback in railway_start.sh and register_telegram_webhook()
+    to prevent duplicate registrations with different domains.
+    """
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("Server ready - registering Telegram webhook and commands from master process")
-    
+    logger.info("Server ready - registering Telegram webhook and commands from master process (safety measure)")
+
     # Import and call registration functions
     try:
         from main import register_telegram_commands, register_telegram_webhook
+        logger.info("Registering Telegram commands...")
         register_telegram_commands()
+        logger.info("Registering Telegram webhook (as safety backup)...")
         register_telegram_webhook()
+        logger.info("✓ Telegram webhook and commands registered successfully")
     except Exception as e:
-        logger.error(f"Error during webhook registration: {str(e)}")
+        logger.error(f"✗ Error during webhook registration: {str(e)}", exc_info=True)
 
 # Worker lifecycle hooks for monitoring
 def worker_int(worker):
