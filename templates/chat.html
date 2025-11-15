@@ -467,6 +467,7 @@
             flex-direction: column;
             flex: 1;
             height: 100vh;
+            overflow: hidden;
         }
 
         /* Hamburger Menu Button */
@@ -547,6 +548,7 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1), inset 0 -1px 1px rgba(139, 92, 246, 0.1);
+            flex-shrink: 0;
         }
 
         .header-left {
@@ -1003,6 +1005,7 @@
             backdrop-filter: blur(25px) saturate(180%);
             border-top: 1px solid rgba(139, 92, 246, 0.3);
             box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1), inset 0 1px 1px rgba(139, 92, 246, 0.1);
+            flex-shrink: 0;
         }
 
         .input-container {
@@ -1330,10 +1333,29 @@
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
+            .container {
+                height: 100dvh; /* Use dynamic viewport height on mobile */
+                min-height: -webkit-fill-available;
+            }
+
+            body {
+                min-height: 100vh;
+                min-height: -webkit-fill-available;
+            }
+
+            .main-wrapper {
+                height: 100dvh;
+                min-height: -webkit-fill-available;
+            }
+
             .header {
                 padding: 12px 16px;
                 flex-wrap: wrap;
                 gap: 12px;
+                flex-shrink: 0;
+                position: sticky;
+                top: 0;
+                z-index: 100;
             }
 
             .header-left {
@@ -1438,8 +1460,17 @@
 
         /* Extra small devices (phones < 480px) */
         @media (max-width: 480px) {
+            .container {
+                height: 100dvh;
+                min-height: -webkit-fill-available;
+            }
+
             .header {
                 padding: 10px 12px;
+                flex-shrink: 0;
+                position: sticky;
+                top: 0;
+                z-index: 100;
             }
 
             .header-controls {
