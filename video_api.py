@@ -8,6 +8,19 @@ logger = logging.getLogger(__name__)
 VIDEO_API_URL = os.getenv("VIDEO_API_URL")
 VIDEO_API_KEY = os.getenv("VIDEO_API_KEY")
 
+# Allow switching between the legacy CogVideo payload and the Wan 2.1 payload
+VIDEO_API_MODE = os.getenv("VIDEO_API_MODE", "legacy").strip().lower()
+
+# Common parameter defaults with environment overrides so ops can tune without redeploying
+DEFAULT_FPS = int(os.getenv("VIDEO_API_FPS", "8"))
+DEFAULT_GUIDANCE_SCALE = float(os.getenv("VIDEO_API_GUIDANCE_SCALE", "7.5"))
+DEFAULT_HEIGHT = int(os.getenv("VIDEO_API_HEIGHT", "384"))
+DEFAULT_WIDTH = int(os.getenv("VIDEO_API_WIDTH", "640"))
+DEFAULT_ENABLE_SAFETY_CHECKER = os.getenv("VIDEO_API_ENABLE_SAFETY_CHECKER", "false").strip().lower() == "true"
+DEFAULT_SEED = os.getenv("VIDEO_API_SEED")
+WAN_LORA_MODEL = os.getenv("VIDEO_API_LORA_MODEL")
+WAN_LORA_STRENGTH = os.getenv("VIDEO_API_LORA_STRENGTH")
+
 def check_video_api_health() -> Tuple[bool, str]:
     """
     Check if the VIDEO API server is accessible and healthy.
@@ -37,6 +50,66 @@ def check_video_api_health() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"GPU server health check failed: {str(e)}"
 
+def _build_request_payload(prompt: str, frames: int, steps: int) -> Dict:
+    """Return the request payload for the configured video API mode."""
+    fps = DEFAULT_FPS
+    guidance_scale = DEFAULT_GUIDANCE_SCALE
+
+    if VIDEO_API_MODE == "wan21":
+        parameters: Dict[str, object] = {
+            "frames": frames,
+            "fps": fps,
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "height": DEFAULT_HEIGHT,
+            "width": DEFAULT_WIDTH,
+            "enable_safety_checker": DEFAULT_ENABLE_SAFETY_CHECKER,
+        }
+
+        if DEFAULT_SEED is not None and DEFAULT_SEED != "":
+            try:
+                parameters["seed"] = int(DEFAULT_SEED)
+            except ValueError:
+                logger.warning("Invalid VIDEO_API_SEED value '%s'; ignoring", DEFAULT_SEED)
+
+        if WAN_LORA_MODEL:
+            parameters["lora_model"] = WAN_LORA_MODEL
+
+            if WAN_LORA_STRENGTH:
+                try:
+                    parameters["lora_strength"] = float(WAN_LORA_STRENGTH)
+                except ValueError:
+                    logger.warning(
+                        "Invalid VIDEO_API_LORA_STRENGTH value '%s'; ignoring", WAN_LORA_STRENGTH
+                    )
+
+        payload = {
+            "input": {
+                "text": prompt
+            },
+            "parameters": parameters
+        }
+    else:
+        # Legacy CogVideo-compatible payload
+        payload = {
+            "prompt": prompt,
+            "frames": frames,
+            "fps": fps,
+            "steps": steps,
+            "guidance_scale": guidance_scale,
+            "height": DEFAULT_HEIGHT,
+            "width": DEFAULT_WIDTH,
+        }
+
+        if DEFAULT_SEED:
+            try:
+                payload["seed"] = int(DEFAULT_SEED)
+            except ValueError:
+                logger.warning("Invalid VIDEO_API_SEED value '%s'; ignoring", DEFAULT_SEED)
+
+    return payload
+
+
 def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
     """
     Generate video via Novita GPU API.
@@ -60,21 +133,26 @@ def generate_video(prompt: str, frames: int = 16, steps: int = 20) -> Dict:
         return {"status": "error", "error": "Video API key not configured"}
     
     try:
-        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}/generate_video")
-        logger.debug(f"Request: prompt='{prompt[:50]}...', frames={frames}, steps={steps}")
+        logger.info(f"Calling VIDEO_API at {VIDEO_API_URL}/generate_video (mode={VIDEO_API_MODE})")
+        logger.debug(f"Request metadata: frames={frames}, steps={steps}")
         
+        payload = _build_request_payload(prompt, frames, steps)
+
+        safe_payload = dict(payload)
+        if "input" in safe_payload and isinstance(safe_payload["input"], dict):
+            safe_payload["input"] = {**safe_payload["input"], "text": "<redacted>"}
+        if "prompt" in safe_payload:
+            safe_payload["prompt"] = "<redacted>"
+
+        logger.debug(f"Payload for VIDEO_API_MODE='{VIDEO_API_MODE}': {safe_payload}")
+
         response = requests.post(
             f"{VIDEO_API_URL}/generate_video",
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": VIDEO_API_KEY
             },
-            json={
-                "prompt": prompt,
-                "frames": frames,
-                "fps": 8,
-                "steps": steps
-            },
+            json=payload,
             timeout=90
         )
         response.raise_for_status()
