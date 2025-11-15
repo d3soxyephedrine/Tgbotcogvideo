@@ -322,6 +322,161 @@ def prompt_maker():
     """Canmore Syntax Injector - Base64 payload generator"""
     return render_template('prompt-maker.html')
 
+@app.route('/diagnostic')
+def diagnostic():
+    """Diagnostic page for troubleshooting database and configuration issues"""
+    import sys
+
+    diagnostic_info = {
+        "database": {
+            "url_configured": DATABASE_URL is not None,
+            "url_starts_with": DATABASE_URL[:20] + "..." if DATABASE_URL else None,
+            "available": DB_AVAILABLE,
+            "init_attempts": DB_INIT_ATTEMPTS
+        },
+        "environment": {
+            "bot_token_set": BOT_TOKEN is not None,
+            "openrouter_key_set": OPENROUTER_API_KEY is not None,
+            "nowpayments_key_set": NOWPAYMENTS_API_KEY is not None,
+            "python_version": sys.version,
+            "platform": sys.platform
+        },
+        "app_status": {
+            "running": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    }
+
+    # Try to get database stats if available
+    if DB_AVAILABLE:
+        try:
+            with app.app_context():
+                diagnostic_info["database"]["stats"] = {
+                    "users": User.query.count(),
+                    "conversations": Conversation.query.count(),
+                    "messages": Message.query.count()
+                }
+        except Exception as e:
+            diagnostic_info["database"]["stats_error"] = str(e)
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Ko2 Diagnostic</title>
+        <style>
+            body {{
+                font-family: 'Monaco', 'Courier New', monospace;
+                background: #0a0a0a;
+                color: #e8e8f0;
+                padding: 40px;
+                line-height: 1.6;
+            }}
+            .container {{
+                max-width: 900px;
+                margin: 0 auto;
+            }}
+            h1 {{
+                background: linear-gradient(135deg, #4169e1, #8b5cf6);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                font-size: 2.5em;
+                margin-bottom: 30px;
+            }}
+            .section {{
+                background: rgba(20, 20, 30, 0.6);
+                border: 1px solid rgba(139, 92, 246, 0.3);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 20px;
+            }}
+            .section h2 {{
+                color: #8b5cf6;
+                margin-top: 0;
+                font-size: 1.3em;
+            }}
+            .status {{
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 0.9em;
+            }}
+            .status.ok {{
+                background: rgba(16, 185, 129, 0.2);
+                color: #10b981;
+                border: 1px solid #10b981;
+            }}
+            .status.error {{
+                background: rgba(239, 68, 68, 0.2);
+                color: #ef4444;
+                border: 1px solid #ef4444;
+            }}
+            .status.warning {{
+                background: rgba(245, 158, 11, 0.2);
+                color: #f59e0b;
+                border: 1px solid #f59e0b;
+            }}
+            pre {{
+                background: rgba(10, 10, 10, 0.8);
+                padding: 15px;
+                border-radius: 8px;
+                overflow-x: auto;
+                border: 1px solid rgba(139, 92, 246, 0.2);
+            }}
+            .fix {{
+                background: rgba(65, 105, 225, 0.1);
+                border-left: 4px solid #4169e1;
+                padding: 15px;
+                margin: 15px 0;
+            }}
+            code {{
+                color: #00ffff;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔧 Ko2 Diagnostic Report</h1>
+
+            <div class="section">
+                <h2>Database Status</h2>
+                <p><strong>Configured:</strong> <span class="status {'ok' if diagnostic_info['database']['url_configured'] else 'error'}">{'YES' if diagnostic_info['database']['url_configured'] else 'NO'}</span></p>
+                <p><strong>Available:</strong> <span class="status {'ok' if diagnostic_info['database']['available'] else 'error'}">{'YES' if diagnostic_info['database']['available'] else 'NO'}</span></p>
+                <p><strong>Init Attempts:</strong> {diagnostic_info['database']['init_attempts']}/{MAX_DB_INIT_ATTEMPTS}</p>
+                {f"<p><strong>URL Prefix:</strong> <code>{diagnostic_info['database']['url_starts_with']}</code></p>" if diagnostic_info['database']['url_starts_with'] else ""}
+
+                {f"<pre>{diagnostic_info['database'].get('stats', 'No stats available')}</pre>" if DB_AVAILABLE else ""}
+            </div>
+
+            <div class="section">
+                <h2>Environment Variables</h2>
+                <p><strong>BOT_TOKEN:</strong> <span class="status {'ok' if diagnostic_info['environment']['bot_token_set'] else 'error'}">{'SET' if diagnostic_info['environment']['bot_token_set'] else 'NOT SET'}</span></p>
+                <p><strong>OPENROUTER_API_KEY:</strong> <span class="status {'ok' if diagnostic_info['environment']['openrouter_key_set'] else 'warning'}">{'SET' if diagnostic_info['environment']['openrouter_key_set'] else 'NOT SET'}</span></p>
+                <p><strong>NOWPAYMENTS_API_KEY:</strong> <span class="status {'ok' if diagnostic_info['environment']['nowpayments_key_set'] else 'warning'}">{'SET' if diagnostic_info['environment']['nowpayments_key_set'] else 'NOT SET'}</span></p>
+            </div>
+
+            <div class="section">
+                <h2>App Info</h2>
+                <p><strong>Status:</strong> <span class="status ok">RUNNING</span></p>
+                <p><strong>Python:</strong> {diagnostic_info['environment']['python_version'].split()[0]}</p>
+                <p><strong>Platform:</strong> {diagnostic_info['environment']['platform']}</p>
+                <p><strong>Timestamp:</strong> {diagnostic_info['app_status']['timestamp']}</p>
+            </div>
+
+            {'<div class="section"><h2>🚨 Database Not Available</h2><div class="fix"><h3>How to Fix on Railway:</h3><ol><li><strong>Add PostgreSQL Database:</strong><ul><li>Go to your Railway project</li><li>Click <code>+ New</code> → <code>Database</code> → <code>PostgreSQL</code></li><li>Railway will automatically add <code>DATABASE_URL</code> to your environment</li></ul></li><li><strong>Restart the Service:</strong><ul><li>Go to your service in Railway</li><li>Click the 3 dots menu → <code>Restart</code></li></ul></li><li><strong>Check Logs:</strong><ul><li>Look for "Database connection validated successfully"</li><li>If you see errors, check your DATABASE_URL is correct</li></ul></li></ol></div></div>' if not DB_AVAILABLE else ''}
+
+            <div class="section">
+                <h2>Raw Data</h2>
+                <pre>{str(diagnostic_info)}</pre>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return html
+
 @app.route('/api/balance', methods=['GET'])
 @require_api_key
 def get_balance(**kwargs):
