@@ -3094,7 +3094,7 @@ To create a video, you need to:
         conversation_history = []
         credits_available = True  # Track if user has credits
         selected_model = 'deepseek/deepseek-chat-v3-0324'  # Default model
-        
+
         if DB_AVAILABLE and user_id:
             try:
                 from flask import current_app
@@ -3109,13 +3109,31 @@ To create a video, you need to:
                             credits_to_deduct = 2
                         else:
                             credits_to_deduct = 3 if 'gpt-4o' in selected_model.lower() or 'chatgpt' in selected_model.lower() else 1
-                        
-                        # Deduct credits (daily credits first, then purchased)
+
+                        # CRITICAL FIX: Load conversation history BEFORE deducting credits
+                        # This ensures we always have context even if credit deduction fails
+                        logger.info(f"Loading conversation history for user_id={user_id}")
+                        from sqlalchemy import desc
+                        subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
+                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
+
+                        # Format as conversation history (already in chronological order)
+                        for msg in recent_messages:
+                            conversation_history.append({"role": "user", "content": msg.user_message})
+                            if msg.bot_response:
+                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
+
+                        logger.info(f"✓ Loaded {len(recent_messages)} message records = {len(conversation_history)} conversation turns for user_id={user_id}")
+                        if conversation_history:
+                            logger.debug(f"First message preview: {conversation_history[0]['content'][:100]}...")
+                            logger.debug(f"Last message preview: {conversation_history[-1]['content'][:100]}...")
+
+                        # Now deduct credits (daily credits first, then purchased)
                         success, daily_used, purchased_used, credit_warning = deduct_credits(user, credits_to_deduct)
                         if success:
                             db.session.commit()
                             logger.debug(f"Credit deducted (daily: {daily_used}, purchased: {purchased_used}). New balance: daily={user.daily_credits}, purchased={user.credits}")
-                            
+
                             # Store credit warning to append to response later
                             if credit_warning:
                                 user._credit_warning = credit_warning
@@ -3123,23 +3141,9 @@ To create a video, you need to:
                             credits_available = False
                     else:
                         credits_available = False
-                    
-                    # If credits available, fetch conversation history in same context
-                    if credits_available:
-                        # OPTIMIZATION: Use subquery to get last 10, then order ascending (no reverse needed)
-                        from sqlalchemy import desc
-                        subquery = db.session.query(Message.id).filter_by(user_id=user_id).order_by(desc(Message.created_at)).limit(10).subquery()
-                        recent_messages = Message.query.filter(Message.id.in_(subquery)).order_by(Message.created_at.asc()).all()
-                        
-                        # Format as conversation history (already in chronological order)
-                        for msg in recent_messages:
-                            conversation_history.append({"role": "user", "content": msg.user_message})
-                            if msg.bot_response:
-                                conversation_history.append({"role": "assistant", "content": msg.bot_response})
-                        
-                        logger.info(f"Loaded {len(recent_messages)} previous messages for context")
+                        logger.warning(f"User not found for user_id={user_id}")
             except Exception as db_error:
-                logger.error(f"Error in consolidated DB operations: {str(db_error)}")
+                logger.error(f"Error in consolidated DB operations: {str(db_error)}", exc_info=True)
                 conversation_history = []
                 credits_available = True  # Allow response even if DB fails
         

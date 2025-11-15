@@ -1143,7 +1143,7 @@ def is_refusal(response_text: str, writing_mode: bool = False) -> bool:
 
 def generate_response(user_message: str, conversation_history: Optional[List] = None, use_streaming: bool = True, update_callback=None, writing_mode: bool = False, user_id: Optional[int] = None, model: Optional[str] = None) -> str:
     """Main response generation function with enhanced error handling and auto-refusal correction
-    
+
     Args:
         user_message: The current user message
         conversation_history: Optional list of previous messages in format [{"role": "user/assistant", "content": "..."}]
@@ -1155,12 +1155,21 @@ def generate_response(user_message: str, conversation_history: Optional[List] = 
     """
     if not user_message or not user_message.strip():
         return "Error: Empty user message"
-    
+
     try:
         # Use provided model or fallback to DeepSeek as default
         if not model:
             model = 'deepseek/deepseek-chat-v3-0324'
         logger.info(f"Generating response using OpenRouter with model {model}")
+
+        # CRITICAL: Log conversation history state for debugging context issues
+        if conversation_history is None:
+            logger.warning(f"⚠️ conversation_history is None for user_id={user_id}")
+            conversation_history = []
+        elif len(conversation_history) == 0:
+            logger.info(f"📝 conversation_history is empty for user_id={user_id} (first message or no history)")
+        else:
+            logger.info(f"📚 conversation_history has {len(conversation_history)} turns for user_id={user_id}")
         
         # Fetch and inject user memories if user_id provided
         if user_id:
@@ -1200,8 +1209,18 @@ def generate_response(user_message: str, conversation_history: Optional[List] = 
         
         # 🔧 PRIMING HANDSHAKE: Inject warm-up exchange to bypass DeepSeek first-turn moderation
         if user_id and 'deepseek' in model.lower():
+            before_count = len(conversation_history) if conversation_history else 0
             conversation_history = inject_deepseek_handshake(conversation_history, user_id, model)
-        
+            after_count = len(conversation_history) if conversation_history else 0
+            if after_count > before_count:
+                logger.info(f"🔧 DeepSeek handshake injected: {before_count} → {after_count} messages")
+
+        # CRITICAL: Log final conversation history before sending to LLM
+        if conversation_history:
+            logger.info(f"📤 Sending {len(conversation_history)} context messages to LLM for user_id={user_id}")
+        else:
+            logger.warning(f"⚠️ No conversation history being sent to LLM for user_id={user_id}")
+
         # Inject professional writing instructions if writing_mode is enabled
         if writing_mode:
             logger.info("Injecting professional writing instructions")
