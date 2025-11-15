@@ -1216,8 +1216,13 @@ def register_telegram_webhook():
         return
 
     try:
-        # Use RAILWAY_PUBLIC_DOMAIN if set, otherwise fall back to production domain
-        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+        # Get domain from environment - MUST be set explicitly
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+
+        if not domain:
+            logger.error("Cannot register webhook - RAILWAY_PUBLIC_DOMAIN environment variable not set")
+            logger.error("Please set RAILWAY_PUBLIC_DOMAIN in Railway dashboard (e.g., 'cke-production.up.railway.app')")
+            return
 
         # Build webhook URL
         webhook_url = f"https://{domain}/{BOT_TOKEN}"
@@ -1382,7 +1387,7 @@ def chat_completions_proxy():
             total_credits = user.daily_credits + user.credits
             logger.warning(f"Insufficient credits for user {user.telegram_id}: {total_credits} credits")
 
-            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "localhost:5000")
             buy_url = f"https://{domain}/buy?telegram_id={user.telegram_id}"
             
             return jsonify({
@@ -1881,7 +1886,7 @@ def set_webhook():
         url = request.args.get('url')
         if not url:
             # Try to auto-detect domain from Railway environment
-            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+            domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "localhost:5000")
             if not domain.startswith('http'):
                 url = f"https://{domain}"
             else:
@@ -2254,10 +2259,10 @@ def create_crypto_payment():
         order_id = f"crypto_order_{user_telegram_id}_{int(datetime.utcnow().timestamp())}"
         
         # Get domain for IPN callback
-        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "ko2bot.com")
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
 
         if not domain:
-            logger.error("No domain configured for IPN callback")
+            logger.error("No domain configured for IPN callback - RAILWAY_PUBLIC_DOMAIN not set")
             return jsonify({"error": "Domain not configured"}), 500
         
         if not domain.startswith('http'):
