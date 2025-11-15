@@ -110,18 +110,21 @@ if DATABASE_URL:
         }
         logger.info("Configured SQLite engine options (fallback database)")
     else:
+        # STABILITY FIX: Increased pool size for 3 workers + background threads
+        # pool_size=15 base connections + max_overflow=30 = 45 total connections max
+        # Each worker can have ~15 connections (45/3) which is sufficient for webhook processing
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-            "pool_recycle": 300,
-            "pool_pre_ping": True,
-            "pool_size": 10,
-            "max_overflow": 20,
-            "pool_timeout": 30,
+            "pool_recycle": 300,  # Recycle connections after 5 minutes
+            "pool_pre_ping": True,  # Verify connections before use
+            "pool_size": 15,  # Base connection pool size (increased from 10)
+            "max_overflow": 30,  # Additional connections when needed (increased from 20)
+            "pool_timeout": 30,  # Timeout waiting for connection from pool
             "connect_args": {
-                "connect_timeout": 10,
-                "options": "-c statement_timeout=30000"
+                "connect_timeout": 10,  # Connection timeout
+                "options": "-c statement_timeout=30000"  # Query timeout (30 seconds)
             }
         }
-        logger.info("Configured production database engine options")
+        logger.info("Configured production database engine options (pool_size=15, max_overflow=30)")
 
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     logger.info("Database configuration applied")
@@ -1960,6 +1963,131 @@ def test_bot():
     except Exception as e:
         logger.error(f"Error in test endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """
+    Health check endpoint for monitoring webhook stability
+
+    Returns detailed health metrics including:
+    - Overall status
+    - Database connectivity
+    - Webhook registration status
+    - Database pool statistics
+    - Environment configuration
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "checks": {}
+    }
+
+    # Check database connectivity
+    try:
+        if DATABASE_URL and DB_AVAILABLE:
+            # Test database connection
+            with app.app_context():
+                db.engine.connect()
+
+            # Get pool statistics if available
+            pool_stats = {}
+            try:
+                pool = db.engine.pool
+                pool_stats = {
+                    "size": pool.size(),
+                    "checked_in": pool.checkedin(),
+                    "checked_out": pool.checkedout(),
+                    "overflow": pool.overflow(),
+                    "total_connections": pool.size() + pool.overflow()
+                }
+            except Exception as pool_error:
+                logger.debug(f"Could not get pool stats: {str(pool_error)}")
+                pool_stats = {"error": "Pool statistics unavailable"}
+
+            health_status["checks"]["database"] = {
+                "status": "healthy",
+                "available": True,
+                "url_configured": True,
+                "pool_stats": pool_stats
+            }
+        else:
+            health_status["checks"]["database"] = {
+                "status": "degraded",
+                "available": False,
+                "url_configured": bool(DATABASE_URL),
+                "message": "Database not available or not initialized"
+            }
+            health_status["status"] = "degraded"
+    except Exception as db_error:
+        health_status["checks"]["database"] = {
+            "status": "unhealthy",
+            "error": str(db_error)
+        }
+        health_status["status"] = "unhealthy"
+
+    # Check webhook status
+    try:
+        if BOT_TOKEN:
+            # Get webhook info from Telegram
+            webhook_info_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo"
+            webhook_response = requests.get(webhook_info_url, timeout=5)
+            webhook_data = webhook_response.json()
+
+            if webhook_data.get('ok'):
+                webhook_info = webhook_data.get('result', {})
+                # Redact the webhook URL for security
+                webhook_url = webhook_info.get('url', '')
+                safe_webhook_url = webhook_url.replace(BOT_TOKEN, "[REDACTED]") if BOT_TOKEN else webhook_url
+
+                health_status["checks"]["webhook"] = {
+                    "status": "healthy" if webhook_url else "degraded",
+                    "url": safe_webhook_url,
+                    "has_custom_certificate": webhook_info.get('has_custom_certificate', False),
+                    "pending_update_count": webhook_info.get('pending_update_count', 0),
+                    "last_error_date": webhook_info.get('last_error_date'),
+                    "last_error_message": webhook_info.get('last_error_message')
+                }
+
+                # Mark as degraded if there are pending updates or errors
+                if webhook_info.get('pending_update_count', 0) > 10:
+                    health_status["checks"]["webhook"]["status"] = "degraded"
+                    health_status["checks"]["webhook"]["warning"] = "High pending update count"
+                    health_status["status"] = "degraded"
+
+                if webhook_info.get('last_error_message'):
+                    health_status["checks"]["webhook"]["status"] = "degraded"
+                    health_status["status"] = "degraded"
+            else:
+                health_status["checks"]["webhook"] = {
+                    "status": "unhealthy",
+                    "error": "Failed to get webhook info from Telegram"
+                }
+                health_status["status"] = "unhealthy"
+        else:
+            health_status["checks"]["webhook"] = {
+                "status": "unhealthy",
+                "error": "BOT_TOKEN not configured"
+            }
+            health_status["status"] = "unhealthy"
+    except Exception as webhook_error:
+        health_status["checks"]["webhook"] = {
+            "status": "unhealthy",
+            "error": str(webhook_error)
+        }
+        health_status["status"] = "unhealthy"
+
+    # Environment info
+    health_status["environment"] = {
+        "using_sqlite_fallback": USING_SQLITE_FALLBACK,
+        "db_init_attempts": DB_INIT_ATTEMPTS,
+        "railway_domain": os.environ.get("RAILWAY_PUBLIC_DOMAIN", "not set")
+    }
+
+    # Return appropriate HTTP status code
+    http_status = 200 if health_status["status"] == "healthy" else 503
+
+    return jsonify(health_status), http_status
 
 
 @app.route('/buy', methods=['GET'])
