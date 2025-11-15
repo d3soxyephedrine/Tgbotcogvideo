@@ -1327,7 +1327,10 @@ def chat_completions_proxy():
                 })
         
         logger.info(f"Built conversation history with {len(conversation_history)} messages")
-        
+        if conversation_history:
+            logger.info(f"First message in history: {conversation_history[0]['role']}: {conversation_history[0]['content'][:50]}...")
+            logger.info(f"Last message in history: {conversation_history[-1]['role']}: {conversation_history[-1]['content'][:50]}...")
+
         # Use the SAME generate_response function as Telegram (includes jailbreak, refusal detection, etc.)
         is_streaming = payload.get('stream', True)
         
@@ -1362,8 +1365,8 @@ def chat_completions_proxy():
                 conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
+                model_used=selected_model,
+                credits_charged=credits_to_deduct,
                 platform='web'
             )
             db.session.add(message_record)
@@ -1377,10 +1380,10 @@ def chat_completions_proxy():
             # Create transaction record
             transaction = Transaction(
                 user_id=user.id,
-                credits_used=1,
+                credits_used=credits_to_deduct,
                 message_id=message_id,
                 transaction_type='web_message',
-                description=f"Web chat message"
+                description=f"Web chat ({selected_model})"
             )
             db.session.add(transaction)
             db.session.commit()
@@ -1442,8 +1445,8 @@ def chat_completions_proxy():
                 conversation_id=conversation_id,
                 user_message=user_message[:1000],
                 bot_response=bot_response[:10000] if bot_response else "",
-                model_used=payload.get('model', 'openai/chatgpt-4o-latest'),
-                credits_charged=1,
+                model_used=selected_model,
+                credits_charged=credits_to_deduct,
                 platform='web'
             )
             db.session.add(message_record)
@@ -1456,10 +1459,10 @@ def chat_completions_proxy():
             # Create transaction
             transaction = Transaction(
                 user_id=user.id,
-                credits_used=1,
+                credits_used=credits_to_deduct,
                 message_id=message_record.id,
                 transaction_type='web_message',
-                description=f"Web chat message"
+                description=f"Web chat ({selected_model})"
             )
             db.session.add(transaction)
             db.session.commit()
@@ -1473,7 +1476,7 @@ def chat_completions_proxy():
                 "id": f"chatcmpl-{uuid.uuid4()}",
                 "object": "chat.completion",
                 "created": int(time.time()),
-                "model": payload.get('model', 'openai/chatgpt-4o-latest'),
+                "model": selected_model,
                 "choices": [{
                     "index": 0,
                     "message": {
